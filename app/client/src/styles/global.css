@@ -1,0 +1,48 @@
+:root {
+  color: var(--color-text-primary);
+  background: var(--color-page-bg);
+  font-family: var(--font-family-sans);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+body {
+  overflow-x: hidden;
+  background: var(--color-page-bg);
+  color: var(--color-text-primary);
+  line-height: var(--line-height-normal);
+}
+
+::selection {
+  color: var(--color-text-primary);
+  background: var(--color-primary-soft);
+}
+
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--color-focus) 42%, transparent);
+  outline-offset: 3px;
+}
+
+button,
+a,
+select {
+  cursor: pointer;
+}
+
+button:disabled,
+input:disabled,
+select:disabled,
+textarea:disabled {
+  cursor: not-allowed;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    scroll-behavior: auto !important;
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}

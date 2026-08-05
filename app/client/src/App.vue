@@ -1,3 +1,9 @@
+<script setup lang="ts">
+import AppFrame from './layouts/AppFrame.vue';
+</script>
+
 <template>
-  <RouterView />
+  <AppFrame>
+    <RouterView />
+  </AppFrame>
 </template>

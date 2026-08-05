@@ -1,0 +1,62 @@
+:root {
+  --color-primary: #f47f9f;
+  --color-primary-hover: #e96e91;
+  --color-primary-soft: #fde4eb;
+  --color-page-bg: #fff8fa;
+  --color-green: #9fd3b1;
+  --color-green-soft: #eaf7ef;
+  --color-orange: #f3b27b;
+  --color-orange-soft: #fff1e8;
+  --color-purple: #c4b0f2;
+  --color-blue-soft: #eaf3ff;
+  --color-text-primary: #2f282b;
+  --color-text-secondary: #756d70;
+  --color-text-muted: #aaa1a5;
+  --color-border: #f1dde4;
+  --color-card: #ffffff;
+  --color-danger: #c9576b;
+  --color-danger-soft: #fff0f2;
+  --color-success: #4e9a68;
+  --color-success-soft: #effaf2;
+  --color-focus: #8d4c64;
+
+  --font-family-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", Arial, sans-serif;
+  --font-family-display: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-size-xs: 12px;
+  --font-size-sm: 14px;
+  --font-size-md: 16px;
+  --font-size-lg: 20px;
+  --font-size-xl: 28px;
+  --font-size-2xl: 36px;
+  --line-height-tight: 1.25;
+  --line-height-normal: 1.6;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 20px;
+  --space-6: 24px;
+  --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+
+  --radius-tag: 999px;
+  --radius-input: 14px;
+  --radius-card: 18px;
+  --radius-card-large: 22px;
+  --radius-dialog: 24px;
+  --shadow-card: 0 8px 24px rgba(92, 58, 70, 0.06);
+  --shadow-dialog: 0 20px 60px rgba(92, 58, 70, 0.16);
+
+  --page-max-width: 1440px;
+  --sidebar-width: 220px;
+  --mobile-nav-height: 68px;
+  --motion-fast: 140ms;
+  --motion-normal: 220ms;
+  --z-content: 1;
+  --z-sidebar: 10;
+  --z-header: 20;
+  --z-overlay: 100;
+  --z-toast: 200;
+}
