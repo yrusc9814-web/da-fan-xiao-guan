@@ -21,7 +21,13 @@ describe('基础 HTTP 接口', () => {
     });
     const payload = response.json() as {
       success: boolean;
-      data: { status: string; app: string; version: string; timestamp: string };
+      data: {
+        status: string;
+        app: string;
+        version: string;
+        database: { status: string; provider: string };
+        timestamp: string;
+      };
       error: null;
     };
 
@@ -30,7 +36,8 @@ describe('基础 HTTP 接口', () => {
     expect(payload.data).toMatchObject({
       status: 'ok',
       app: '搭饭小馆',
-      version: '0.1.0'
+      version: '0.1.0',
+      database: { status: 'ok', provider: 'sqlite' }
     });
     expect(Number.isNaN(Date.parse(payload.data.timestamp))).toBe(false);
     expect(payload.error).toBeNull();

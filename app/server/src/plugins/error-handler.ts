@@ -1,5 +1,6 @@
 import type { FastifyError, FastifyInstance } from 'fastify';
 
+import { VersionConflictError } from '../database/optimistic-lock.js';
 import { failure } from '../shared/http.js';
 
 export function registerErrorHandlers(app: FastifyInstance): void {
@@ -8,10 +9,25 @@ export function registerErrorHandlers(app: FastifyInstance): void {
   });
 
   app.setErrorHandler((error: FastifyError, _request, reply) => {
+    if (error instanceof VersionConflictError) {
+      return reply.code(409).send(failure('VERSION_CONFLICT', error.message, {
+        entity: error.conflict.entity,
+        id: error.conflict.id,
+        expectedVersion: error.conflict.expectedVersion,
+        actualVersion: error.conflict.actualVersion
+      }));
+    }
+
     const statusCode = typeof error.statusCode === 'number' && error.statusCode >= 400
       ? error.statusCode
       : 500;
-    const code = statusCode === 400 ? 'BAD_REQUEST' : 'INTERNAL_ERROR';
+    const code = statusCode === 400 || statusCode === 422
+      ? 'VALIDATION_ERROR'
+      : statusCode === 401
+        ? 'UNAUTHORIZED'
+        : statusCode === 409
+          ? 'CONFLICT'
+          : 'INTERNAL_ERROR';
     const message = statusCode >= 500 ? '服务器内部错误' : error.message;
 
     if (statusCode >= 500) {

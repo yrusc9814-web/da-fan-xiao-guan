@@ -13,6 +13,7 @@ pnpm-debug.log*
 
 # Vue/Vite build output
 dist/
+dist-server/
 dist-ssr/
 .vite/
 coverage/

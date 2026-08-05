@@ -7,7 +7,7 @@
 
 ## 当前开发阶段
 
-节点 1：前后端基础工程。
+节点 2：SQLite、Prisma 与 API 数据契约。
 
 ## 开发命令
 
@@ -36,4 +36,17 @@ npm run dev
 npm run typecheck
 npm run test
 npm run build
+```
+
+## 节点 2：数据库基础
+
+SQLite 数据库由 Prisma 管理，开发数据库位于 `data/app.db`，正式结构通过 Migration 建立。
+
+测试使用独立的 `data/test.db`，每次测试前重建并执行同一套 Migration，不污染开发数据库。
+
+```bash
+npm run prisma:generate
+npm run prisma:validate
+npm run prisma:migrate
+npm run prisma:migrate:status
 ```

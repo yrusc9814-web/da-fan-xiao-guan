@@ -1,21 +1,12 @@
-export interface ApiError {
-  code: string;
-  message: string;
-}
+import type {
+  ApiError,
+  ApiErrorCode,
+  ApiFailure,
+  ApiResponse,
+  ApiSuccess
+} from '../../../shared/types/api.js';
 
-export interface ApiSuccess<T> {
-  success: true;
-  data: T;
-  error: null;
-}
-
-export interface ApiFailure {
-  success: false;
-  data: null;
-  error: ApiError;
-}
-
-export type ApiResponse<T> = ApiSuccess<T> | ApiFailure;
+export type { ApiError, ApiFailure, ApiResponse, ApiSuccess };
 
 export function success<T>(data: T): ApiSuccess<T> {
   return {
@@ -25,13 +16,18 @@ export function success<T>(data: T): ApiSuccess<T> {
   };
 }
 
-export function failure(code: string, message: string): ApiFailure {
+export function failure(
+  code: ApiErrorCode,
+  message: string,
+  details?: Record<string, string | number | boolean | null>
+): ApiFailure {
   return {
     success: false,
     data: null,
     error: {
       code,
-      message
+      message,
+      ...(details ? { details } : {})
     }
   };
 }
