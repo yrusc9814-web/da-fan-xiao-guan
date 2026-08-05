@@ -1,0 +1,125 @@
+:root {
+  color: #2f282b;
+  background: #fff8fa;
+  font-family: "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  min-width: 320px;
+  min-height: 100vh;
+  margin: 0;
+}
+
+button {
+  font: inherit;
+}
+
+.temporary-home {
+  display: grid;
+  min-height: 100vh;
+  place-items: center;
+  padding: 24px;
+}
+
+.status-card {
+  width: min(100%, 560px);
+  padding: 40px;
+  border: 1px solid #f1dde4;
+  border-radius: 18px;
+  background: #ffffff;
+  box-shadow: 0 8px 24px rgb(92 58 70 / 6%);
+}
+
+.eyebrow {
+  margin: 0 0 12px;
+  color: #e96e91;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(32px, 6vw, 52px);
+}
+
+.status-copy,
+.scope-note {
+  color: #756d70;
+}
+
+.status-copy {
+  margin: 12px 0 28px;
+  font-size: 18px;
+}
+
+.backend-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: #f7f4f5;
+  font-weight: 600;
+}
+
+.status-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #aaa1a5;
+}
+
+.backend-status[data-status="available"] .status-dot {
+  background: #5aaf78;
+}
+
+.backend-status[data-status="checking"] .status-dot {
+  background: #f3b27b;
+}
+
+.backend-status[data-status="unavailable"] .status-dot {
+  background: #d45b6f;
+}
+
+.error-copy {
+  margin: 14px 0 0;
+  color: #b23b50;
+  font-size: 14px;
+}
+
+.check-button {
+  margin-top: 24px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 10px;
+  color: #ffffff;
+  background: #f47f9f;
+  cursor: pointer;
+}
+
+.check-button:hover {
+  background: #e96e91;
+}
+
+.scope-note {
+  margin: 24px 0 0;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+@media (max-width: 480px) {
+  .temporary-home {
+    padding: 16px;
+  }
+
+  .status-card {
+    padding: 28px 24px;
+  }
+}
