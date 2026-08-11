@@ -21,6 +21,12 @@
 
 本节点只包含框架、占位路由和公共组件预览，不包含正式首页、业务 CRUD、Mock 业务数据或数据库业务查询。小羊素材目录已建立，统一本地透明资产待提供，当前使用无外部依赖的占位组件。
 
+## 节点 4：正式首页双端开发
+
+正式首页当前状态：桌面端和移动端首页已接入只读 Dashboard、开发 Seed、真实空状态、动态问候、推荐菜谱、饮食记录、库存概览、本周统计和饮食日历。开发环境可使用 `npm run seed:dev` 幂等写入演示数据；演示菜谱图片位于 `app/client/src/assets/demo-food/`，与用户上传图片目录隔离。
+
+视觉验收截图与报告位于 `work/visual-acceptance/node-4/`。节点 4 的视觉基准仍为 `docs/design/desktop-home-reference.png` 和 `docs/design/mobile-home-reference.png`。小羊素材已从用户提供的本地 PNG 接入，正式透明资产替换不会改变首页布局结构。
+
 ## 节点 2：SQLite、Prisma 与 API 数据契约。
 
 ## 开发命令

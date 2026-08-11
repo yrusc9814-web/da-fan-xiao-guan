@@ -1,6 +1,7 @@
 {
   "name": "搭饭小馆",
   "private": true,
+  "type": "module",
   "workspaces": [
     "app/client",
     "app/server"
@@ -12,6 +13,7 @@
     "build": "npm run build:client && npm run build:server",
     "build:client": "npm --workspace @dafan/client run build",
     "build:server": "npm --workspace @dafan/server run build",
+    "start:prod": "node dist-server/server/src/server.js",
     "typecheck": "npm run typecheck:client && npm run typecheck:server",
     "typecheck:client": "npm --workspace @dafan/client run typecheck",
     "typecheck:server": "npm --workspace @dafan/server run typecheck",
@@ -22,7 +24,8 @@
     "prisma:migrate:deploy": "node scripts/ensure-sqlite-file.mjs && prisma migrate deploy",
     "prisma:migrate:status": "prisma migrate status",
     "prisma:validate": "prisma validate",
-    "prisma:test:setup": "node ./node_modules/cross-env/src/bin/cross-env.js DATABASE_URL=file:../../../data/test.db node scripts/reset-test-database.mjs && node ./node_modules/cross-env/src/bin/cross-env.js DATABASE_URL=file:../../../data/test.db node scripts/ensure-sqlite-file.mjs && node ./node_modules/cross-env/src/bin/cross-env.js DATABASE_URL=file:../../../data/test.db prisma migrate deploy"
+    "prisma:test:setup": "node ./node_modules/cross-env/src/bin/cross-env.js DATABASE_URL=file:../../../data/test.db node scripts/reset-test-database.mjs && node ./node_modules/cross-env/src/bin/cross-env.js DATABASE_URL=file:../../../data/test.db node scripts/ensure-sqlite-file.mjs && node ./node_modules/cross-env/src/bin/cross-env.js DATABASE_URL=file:../../../data/test.db prisma migrate deploy",
+    "seed:dev": "node scripts/ensure-sqlite-file.mjs && prisma migrate deploy && node --import tsx/esm scripts/seed-dev.mjs"
   },
   "devDependencies": {
     "concurrently": "^9.1.2",

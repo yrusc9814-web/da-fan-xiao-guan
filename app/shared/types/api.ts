@@ -8,7 +8,13 @@ export type ApiErrorCode =
   | 'VERSION_CONFLICT'
   | 'DUPLICATE_RESOURCE'
   | 'INVALID_UNIT'
-  | 'UNIT_CONVERSION_REQUIRED';
+  | 'UNIT_CONVERSION_REQUIRED'
+  | 'INVALID_STATE'
+  | 'MAINTENANCE'
+  | 'REFERENCED_RESOURCE'
+  | 'IDEMPOTENCY_CONFLICT'
+  | 'FILE_TOO_LARGE'
+  | 'INVALID_FILE';
 
 export interface ApiError {
   code: ApiErrorCode;

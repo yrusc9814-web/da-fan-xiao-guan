@@ -40,6 +40,10 @@ data/app.pid
 storage/
 uploads/
 
+# The upload API is application source code; only runtime upload data is private.
+!app/server/src/modules/uploads/
+!app/server/src/modules/uploads/**
+
 # Application logs
 logs/
 *.log
@@ -49,3 +53,12 @@ logs/
 .vscode/*
 !.vscode/extensions.json
 !.vscode/settings.json
+
+# Local Codex configuration and visual review evidence are not application source.
+.agents/
+AGENTS.md
+work/
+
+# Raw design source material is kept locally; production assets live under app/client/src/assets/.
+docs/design/ChatGPT Image *.png
+docs/design/小羊*.png

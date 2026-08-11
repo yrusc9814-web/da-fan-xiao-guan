@@ -1,17 +1,22 @@
 <script setup lang="ts">
-import AppIcon from '../components/AppIcon.vue';
 import MascotPlaceholder from '../components/mascot/MascotPlaceholder.vue';
-import AppCard from '../components/ui/AppCard.vue';
+import NavIllustration from '../components/NavIllustration.vue';
+import { useDashboardStore } from '../stores/dashboard';
+
+const dashboardStore = useDashboardStore();
 
 const navItems = [
   { label: '首页', path: '/', icon: 'home' as const },
   { label: '菜谱推荐', path: '/recommendations', icon: 'chef' as const },
+  { label: '我的菜谱', path: '/recipes', icon: 'journal' as const },
+  { label: '饮食计划', path: '/plans', icon: 'calendar' as const },
   { label: '饮食记录', path: '/records', icon: 'journal' as const },
-  { label: '食材库存', path: '/inventory', icon: 'shopping' as const },
+  { label: '食材库存', path: '/inventory', icon: 'ingredient' as const },
+  { label: '厨房工具', path: '/tools', icon: 'chef' as const },
   { label: '饮食日历', path: '/calendar', icon: 'calendar' as const },
   { label: '统计分析', path: '/statistics', icon: 'statistics' as const },
   { label: '收藏夹', path: '/favorites', icon: 'heart' as const },
-  { label: '购物清单', path: '/shopping', icon: 'check' as const },
+  { label: '购物清单', path: '/shopping', icon: 'clipboard-check' as const },
   { label: '设置', path: '/settings', icon: 'settings' as const }
 ];
 </script>
@@ -35,15 +40,17 @@ const navItems = [
       exact-active-class="desktop-nav-link--active"
       :aria-label="item.label"
     >
-      <AppIcon :name="item.icon" :size="21" />
+      <span class="desktop-nav-link__icon" :class="`desktop-nav-link__icon--${item.icon}`" aria-hidden="true">
+        <NavIllustration :name="item.icon" :size="22" />
+      </span>
       <span>{{ item.label }}</span>
     </RouterLink>
   </nav>
 
-  <AppCard class="desktop-sidebar__tip" :elevated="false">
+  <div class="desktop-sidebar__tip">
     <MascotPlaceholder placement="sidebar-tip" />
     <strong>搭饭小贴士</strong>
-    <p>公共提示位将在后续节点接入真实内容。</p>
-  </AppCard>
+    <p>{{ dashboardStore.data?.tip ?? '记得记录今天吃过的每一餐，慢慢找到适合自己的节奏。' }}</p>
+  </div>
 </aside>
 </template>

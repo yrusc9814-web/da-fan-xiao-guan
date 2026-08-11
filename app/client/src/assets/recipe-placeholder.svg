@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 360" role="img" aria-labelledby="title desc">
+  <title id="title">菜谱占位图</title>
+  <desc id="desc">柔和粉色背景上的餐盘与餐具</desc>
+  <rect width="640" height="360" rx="28" fill="#fff4f7"/>
+  <circle cx="320" cy="182" r="96" fill="#fde4eb"/>
+  <circle cx="320" cy="182" r="64" fill="#fff" stroke="#f4a1b5" stroke-width="8"/>
+  <circle cx="320" cy="182" r="39" fill="#f9c3d1"/>
+  <path d="M285 182c12-17 23-17 35 0s23 17 35 0" fill="none" stroke="#e97999" stroke-width="7" stroke-linecap="round"/>
+  <path d="M206 128v108m-14-108v33c0 12 7 20 14 20s14-8 14-20v-33m214 0v108m-14-108v41m14-41v41m14-41v41" fill="none" stroke="#d9899e" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M250 274h140" stroke="#f4a1b5" stroke-width="8" stroke-linecap="round"/>
+</svg>

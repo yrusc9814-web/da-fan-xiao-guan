@@ -3,7 +3,7 @@ withDefaults(defineProps<{
   modelValue?: string;
   label: string;
   placeholder?: string;
-  type?: 'text' | 'search' | 'email' | 'password';
+  type?: 'text' | 'search' | 'email' | 'password' | 'date' | 'number';
   error?: string;
   disabled?: boolean;
 }>(), {

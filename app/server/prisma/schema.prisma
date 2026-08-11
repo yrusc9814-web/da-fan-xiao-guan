@@ -53,6 +53,19 @@ enum PlanItemType {
   CUSTOM
 }
 
+enum MealRole {
+  MAIN
+  SIDE
+  STAPLE
+  SOUP
+  DRINK
+}
+
+enum RecordStatus {
+  DRAFT
+  CONFIRMED
+}
+
 enum RecordSourceType {
   HOMEMADE
   DINE_IN
@@ -84,50 +97,53 @@ enum ShoppingSourceType {
   RECOMMENDATION
   LOW_STOCK
   PLAN
+  INSUFFICIENT_STOCK
 }
 
 model Settings {
-  id                   Int      @id @default(1)
-  appName              String   @default("搭饭小馆")
-  subtitle             String   @default("让每一餐都更美好")
-  userNickname         String?
-  userAvatarPath       String?
-  pinHash              String?
-  pinEnabled           Boolean  @default(false)
-  defaultPort          Int      @default(8787)
-  autoBackupEnabled    Boolean  @default(true)
-  autoDeductInventory  Boolean  @default(false)
-  defaultRepeatDays    Int      @default(0)
-  onboardingCompleted  Boolean  @default(false)
-  version              Int      @default(1)
-  createdAt            DateTime @default(now())
-  updatedAt            DateTime @updatedAt
+  id                  Int      @id @default(1)
+  appName             String   @default("搭饭小馆")
+  subtitle            String   @default("让每一餐都更美好")
+  userNickname        String?
+  userAvatarPath      String?
+  pinHash             String?
+  pinEnabled          Boolean  @default(false)
+  defaultPort         Int      @default(8787)
+  autoBackupEnabled   Boolean  @default(true)
+  autoDeductInventory Boolean  @default(false)
+  defaultRepeatDays   Int      @default(0)
+  onboardingCompleted Boolean  @default(false)
+  version             Int      @default(1)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model Recipe {
-  id                      String             @id @default(cuid())
-  name                    String
-  imagePath               String?
-  ingredientsText         String?
-  cookingTimeMinutes      Int?
-  difficulty              String?
-  spicyLevel              Int?
-  servings                Int?
-  sourceNote              String?
-  notes                   String?
-  favorite                Boolean            @default(false)
-  enabledForRecommendation Boolean           @default(true)
-  version                 Int                @default(1)
-  deletedAt               DateTime?
-  createdAt               DateTime           @default(now())
-  updatedAt               DateTime           @updatedAt
-  ingredients             RecipeIngredient[]
-  steps                   RecipeStep[]
-  tags                    RecipeTag[]
-  mealTypes               RecipeMealType[]
-  tools                   RecipeTool[]
-  planItems               MealPlanItem[]
-  recordItems             MealRecordItem[]
+  id                       String             @id @default(cuid())
+  name                     String
+  imagePath                String?
+  ingredientsText          String?
+  cookingTimeMinutes       Int?
+  difficulty               String?
+  spicyLevel               Int?
+  servings                 Int?
+  sourceNote               String?
+  notes                    String?
+  favorite                 Boolean            @default(false)
+  enabledForRecommendation Boolean            @default(true)
+  version                  Int                @default(1)
+  deletedAt                DateTime?
+  createdAt                DateTime           @default(now())
+  updatedAt                DateTime           @updatedAt
+  ingredients              RecipeIngredient[]
+  steps                    RecipeStep[]
+  tags                     RecipeTag[]
+  mealTypes                RecipeMealType[]
+  mealRoles                RecipeMealRole[]
+  tools                    RecipeTool[]
+  planItems                MealPlanItem[]
+  recordItems              MealRecordItem[]
+  uploadAssets             UploadAsset[]      @relation("RecipeImageAsset")
 
   @@index([name])
   @@index([deletedAt])
@@ -135,96 +151,110 @@ model Recipe {
 }
 
 model RecipeIngredient {
-  id                    String     @id @default(cuid())
-  recipeId              String
-  ingredientId          String?
+  id                     String        @id @default(cuid())
+  recipeId               String
+  ingredientId           String?
   ingredientNameSnapshot String
-  quantity              Float?
-  unit                  QuantityUnit?
-  optional              Boolean    @default(false)
-  isPrimary             Boolean    @default(false)
-  sortOrder             Int        @default(0)
-  createdAt             DateTime   @default(now())
-  updatedAt             DateTime   @updatedAt
-  recipe                Recipe     @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  ingredient            Ingredient? @relation(fields: [ingredientId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  quantity               Float?
+  unit                   QuantityUnit?
+  optional               Boolean       @default(false)
+  isPrimary              Boolean       @default(false)
+  sortOrder              Int           @default(0)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  recipe                 Recipe        @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  ingredient             Ingredient?   @relation(fields: [ingredientId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([recipeId, sortOrder])
   @@index([ingredientId])
 }
 
 model RecipeStep {
-  id         String   @id @default(cuid())
-  recipeId   String
-  stepNo     Int
-  content    String
-  imagePath  String?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  recipe     Recipe   @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  id        String   @id @default(cuid())
+  recipeId  String
+  stepNo    Int
+  content   String
+  imagePath String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([recipeId, stepNo])
   @@index([recipeId, stepNo])
 }
 
 model Tag {
-  id         String     @id @default(cuid())
-  name       String
-  type       TagType    @default(GENERAL)
-  deletedAt  DateTime?
-  createdAt  DateTime   @default(now())
-  updatedAt  DateTime   @updatedAt
-  recipes    RecipeTag[]
+  id        String      @id @default(cuid())
+  name      String
+  type      TagType     @default(GENERAL)
+  deletedAt DateTime?
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  recipes   RecipeTag[]
 
   @@unique([name, type])
   @@index([deletedAt])
 }
 
 model RecipeTag {
-  id         String   @id @default(cuid())
-  recipeId   String
-  tagId      String
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  recipe     Recipe   @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  tag        Tag      @relation(fields: [tagId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  id        String   @id @default(cuid())
+  recipeId  String
+  tagId     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  tag       Tag      @relation(fields: [tagId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([recipeId, tagId])
   @@index([tagId])
 }
 
 model RecipeMealType {
-  id         String   @id @default(cuid())
-  recipeId   String
-  mealType   MealType
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-  recipe     Recipe   @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  id        String   @id @default(cuid())
+  recipeId  String
+  mealType  MealType
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([recipeId, mealType])
   @@index([mealType])
 }
 
+model RecipeMealRole {
+  id        String   @id @default(cuid())
+  recipeId  String
+  mealRole  MealRole
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([recipeId, mealRole])
+  @@index([mealRole])
+}
+
 model Ingredient {
-  id               String             @id @default(cuid())
-  name             String
-  imagePath        String?
-  category         String?
-  quantity         Float              @default(0)
-  unit             QuantityUnit       @default(OTHER)
-  purchaseDate     String?
-  expiryDate       String?
-  location         String?
-  minStock         Float?
-  opened           Boolean            @default(false)
-  notes            String?
-  version          Int                @default(1)
-  deletedAt        DateTime?
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  id                String             @id @default(cuid())
+  name              String
+  imagePath         String?
+  category          String?
+  quantity          Float              @default(0)
+  unit              QuantityUnit       @default(OTHER)
+  purchaseDate      String?
+  expiryDate        String?
+  location          String?
+  minStock          Float?
+  maxStock          Float?
+  opened            Boolean            @default(false)
+  notes             String?
+  version           Int                @default(1)
+  deletedAt         DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   recipeIngredients RecipeIngredient[]
-  inventoryLogs    InventoryLog[]
-  shoppingItems    ShoppingListItem[]
+  inventoryLogs     InventoryLog[]
+  inventoryBatches  InventoryBatch[]
+  shoppingItems     ShoppingListItem[]
 
   @@index([name])
   @@index([expiryDate])
@@ -232,86 +262,114 @@ model Ingredient {
   @@index([category])
 }
 
+model InventoryBatch {
+  id              String         @id @default(cuid())
+  ingredientId    String
+  quantity        Float          @default(0)
+  unit            QuantityUnit
+  purchaseDate    String?
+  expiryDate      String?
+  location        String?
+  opened          Boolean        @default(false)
+  consumePriority Boolean        @default(false)
+  notes           String?
+  version         Int            @default(1)
+  deletedAt       DateTime?
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+  ingredient      Ingredient     @relation(fields: [ingredientId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  inventoryLogs   InventoryLog[]
+
+  @@index([ingredientId, deletedAt])
+  @@index([expiryDate])
+  @@index([consumePriority])
+}
+
 model InventoryLog {
-  id                String              @id @default(cuid())
-  ingredientId      String?
+  id                     String              @id @default(cuid())
+  ingredientId           String?
   ingredientNameSnapshot String
-  beforeQuantity    Float
-  changeQuantity    Float
-  afterQuantity     Float
-  unit              QuantityUnit
-  changeType        InventoryChangeType
-  relatedPlanId     String?
-  relatedRecordId   String?
-  notes             String?
-  createdAt         DateTime            @default(now())
-  updatedAt         DateTime            @updatedAt
-  ingredient        Ingredient?         @relation(fields: [ingredientId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  relatedPlan       MealPlan?           @relation("PlanInventoryLogs", fields: [relatedPlanId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  relatedRecord     MealRecord?         @relation("RecordInventoryLogs", fields: [relatedRecordId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  inventoryBatchId       String?
+  beforeQuantity         Float
+  changeQuantity         Float
+  afterQuantity          Float
+  unit                   QuantityUnit
+  changeType             InventoryChangeType
+  relatedPlanId          String?
+  relatedRecordId        String?
+  notes                  String?
+  createdAt              DateTime            @default(now())
+  updatedAt              DateTime            @updatedAt
+  ingredient             Ingredient?         @relation(fields: [ingredientId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  inventoryBatch         InventoryBatch?     @relation(fields: [inventoryBatchId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  relatedPlan            MealPlan?           @relation("PlanInventoryLogs", fields: [relatedPlanId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  relatedRecord          MealRecord?         @relation("RecordInventoryLogs", fields: [relatedRecordId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([ingredientId, createdAt])
+  @@index([inventoryBatchId, createdAt])
   @@index([relatedPlanId])
   @@index([relatedRecordId])
 }
 
 model KitchenTool {
-  id          String       @id @default(cuid())
-  name        String
-  imagePath   String?
-  category    String?
-  quantity    Int          @default(1)
-  status      String?
-  notes       String?
-  version     Int          @default(1)
-  deletedAt   DateTime?
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  recipes     RecipeTool[]
+  id        String       @id @default(cuid())
+  name      String
+  imagePath String?
+  category  String?
+  quantity  Int          @default(1)
+  status    String?
+  notes     String?
+  version   Int          @default(1)
+  deletedAt DateTime?
+  createdAt DateTime     @default(now())
+  updatedAt DateTime     @updatedAt
+  recipes   RecipeTool[]
 
   @@index([name])
   @@index([deletedAt])
 }
 
 model RecipeTool {
-  id              String       @id @default(cuid())
-  recipeId        String
-  toolId          String?
+  id               String       @id @default(cuid())
+  recipeId         String
+  toolId           String?
   toolNameSnapshot String
-  required        Boolean      @default(true)
-  createdAt       DateTime     @default(now())
-  updatedAt       DateTime     @updatedAt
-  recipe          Recipe       @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  tool            KitchenTool? @relation(fields: [toolId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  required         Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+  recipe           Recipe       @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  tool             KitchenTool? @relation(fields: [toolId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([recipeId])
   @@index([toolId])
 }
 
 model Store {
-  id                 String          @id @default(cuid())
-  name               String
-  imagePath          String?
-  address            String?
-  storeType          String?
-  cuisine            String?
-  averageCost        Float?
-  supportsDineIn     Boolean         @default(false)
-  supportsTakeout    Boolean         @default(false)
-  contact            String?
-  businessHours      String?
-  rating             Float?
-  recommendedDishes  String?
-  avoidDishes        String?
-  tagsText           String?
-  notes              String?
-  favorite           Boolean         @default(false)
-  version            Int             @default(1)
-  deletedAt          DateTime?
-  createdAt          DateTime        @default(now())
-  updatedAt          DateTime        @updatedAt
-  planItems          MealPlanItem[]
-  recordItems        MealRecordItem[]
+  id                String           @id @default(cuid())
+  name              String
+  imagePath         String?
+  address           String?
+  storeType         String?
+  cuisine           String?
+  averageCost       Float?
+  supportsDineIn    Boolean          @default(false)
+  supportsTakeout   Boolean          @default(false)
+  contact           String?
+  businessHours     String?
+  rating            Float?
+  recommendedDishes String?
+  avoidDishes       String?
+  tagsText          String?
+  notes             String?
+  favorite          Boolean          @default(false)
+  version           Int              @default(1)
+  deletedAt         DateTime?
+  createdAt         DateTime         @default(now())
+  updatedAt         DateTime         @updatedAt
+  planItems         MealPlanItem[]
+  recordItems       MealRecordItem[]
+  mealTypes         StoreMealType[]
+  uploadAssets      UploadAsset[]    @relation("StoreImageAsset")
 
   @@index([name])
   @@index([storeType])
@@ -319,60 +377,77 @@ model Store {
   @@index([favorite])
 }
 
+model StoreMealType {
+  id        String   @id @default(cuid())
+  storeId   String
+  mealType  MealType
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  store     Store    @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@unique([storeId, mealType])
+  @@index([mealType])
+}
+
 model Diner {
-  id            String             @id @default(cuid())
-  name          String
-  avatarPath    String?
-  active        Boolean            @default(true)
-  likesText     String?
-  dislikesText  String?
-  tabooText     String?
-  allergyText   String?
-  portionNote   String?
-  notes         String?
-  version       Int                @default(1)
-  createdAt     DateTime           @default(now())
-  updatedAt     DateTime           @updatedAt
-  planLinks     MealPlanDiner[]
-  recordLinks   MealRecordDiner[]
+  id           String            @id @default(cuid())
+  name         String
+  avatarPath   String?
+  active       Boolean           @default(true)
+  likesText    String?
+  dislikesText String?
+  tabooText    String?
+  allergyText  String?
+  portionNote  String?
+  notes        String?
+  version      Int               @default(1)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+  planLinks    MealPlanDiner[]
+  recordLinks  MealRecordDiner[]
 
   @@index([name])
   @@index([active])
 }
 
 model MealPlan {
-  id             String            @id @default(cuid())
-  planDate       String
-  mealType       MealType
-  dinerCount     Int               @default(1)
-  status         PlanStatus        @default(UNPLANNED)
-  notes          String?
-  version        Int               @default(1)
-  createdAt      DateTime          @default(now())
-  updatedAt      DateTime          @updatedAt
-  items          MealPlanItem[]
-  diners         MealPlanDiner[]
-  inventoryLogs  InventoryLog[]    @relation("PlanInventoryLogs")
-  records        MealRecord[]
+  id            String          @id @default(cuid())
+  planDate      String
+  mealType      MealType
+  dinerCount    Int             @default(1)
+  status        PlanStatus      @default(UNPLANNED)
+  notes         String?
+  version       Int             @default(1)
+  completedAt   DateTime?
+  deletedAt     DateTime?
+  createdAt     DateTime        @default(now())
+  updatedAt     DateTime        @updatedAt
+  items         MealPlanItem[]
+  diners        MealPlanDiner[]
+  inventoryLogs InventoryLog[]  @relation("PlanInventoryLogs")
+  records       MealRecord[]    @relation("RelatedMealPlan")
+  sourceRecords MealRecord[]    @relation("SourceMealPlan")
 
   @@unique([planDate, mealType])
   @@index([planDate])
   @@index([status])
+  @@index([deletedAt])
 }
 
 model MealPlanItem {
-  id          String       @id @default(cuid())
-  mealPlanId  String
-  itemType    PlanItemType
-  recipeId    String?
-  storeId     String?
-  customName  String?
-  sortOrder   Int          @default(0)
-  createdAt   DateTime     @default(now())
-  updatedAt   DateTime     @updatedAt
-  mealPlan    MealPlan     @relation(fields: [mealPlanId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  recipe      Recipe?      @relation(fields: [recipeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  store       Store?       @relation(fields: [storeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  id         String       @id @default(cuid())
+  mealPlanId String
+  itemType   PlanItemType
+  mealRole   MealRole?
+  recipeId   String?
+  storeId    String?
+  customName String?
+  sortOrder  Int          @default(0)
+  createdAt  DateTime     @default(now())
+  updatedAt  DateTime     @updatedAt
+  mealPlan   MealPlan     @relation(fields: [mealPlanId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  recipe     Recipe?      @relation(fields: [recipeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  store      Store?       @relation(fields: [storeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([mealPlanId, sortOrder])
   @@index([recipeId])
@@ -380,135 +455,181 @@ model MealPlanItem {
 }
 
 model MealPlanDiner {
-  id          String     @id @default(cuid())
-  mealPlanId  String
-  dinerId     String?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
-  mealPlan    MealPlan  @relation(fields: [mealPlanId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  diner       Diner?    @relation(fields: [dinerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  id         String   @id @default(cuid())
+  mealPlanId String
+  dinerId    String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  mealPlan   MealPlan @relation(fields: [mealPlanId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  diner      Diner?   @relation(fields: [dinerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@unique([mealPlanId, dinerId])
   @@index([dinerId])
 }
 
 model MealRecord {
-  id             String             @id @default(cuid())
-  recordDate     String
-  recordTime     String?
-  mealType       MealType
-  sourceType     RecordSourceType
-  imagePath      String?
-  rating         Float?
-  isNewTry       Boolean            @default(false)
-  favorite       Boolean            @default(false)
-  notes          String?
-  relatedPlanId  String?
-  version        Int                @default(1)
-  deletedAt      DateTime?
-  createdAt      DateTime           @default(now())
-  updatedAt      DateTime           @updatedAt
-  items          MealRecordItem[]
-  diners         MealRecordDiner[]
-  relatedPlan    MealPlan?          @relation(fields: [relatedPlanId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  inventoryLogs  InventoryLog[]     @relation("RecordInventoryLogs")
+  id                    String                 @id @default(cuid())
+  recordDate            String
+  recordTime            String?
+  mealType              MealType
+  sourceType            RecordSourceType
+  status                RecordStatus           @default(CONFIRMED)
+  imagePath             String?
+  rating                Float?
+  isNewTry              Boolean                @default(false)
+  favorite              Boolean                @default(false)
+  notes                 String?
+  relatedPlanId         String?
+  sourceMealPlanId      String?                @unique
+  confirmedAt           DateTime?
+  version               Int                    @default(1)
+  deletedAt             DateTime?
+  createdAt             DateTime               @default(now())
+  updatedAt             DateTime               @updatedAt
+  items                 MealRecordItem[]
+  diners                MealRecordDiner[]
+  relatedPlan           MealPlan?              @relation("RelatedMealPlan", fields: [relatedPlanId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  sourceMealPlan        MealPlan?              @relation("SourceMealPlan", fields: [sourceMealPlanId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  inventoryLogs         InventoryLog[]         @relation("RecordInventoryLogs")
+  consumptionOperations ConsumptionOperation[]
+  uploadAssets          UploadAsset[]          @relation("RecordImageAsset")
 
   @@index([recordDate])
   @@index([mealType, recordDate])
   @@index([deletedAt])
+  @@index([status, recordDate])
 }
 
 model MealRecordItem {
-  id           String          @id @default(cuid())
+  id           String         @id @default(cuid())
   mealRecordId String
   itemType     RecordItemType
+  mealRole     MealRole?
   recipeId     String?
   storeId      String?
   customName   String?
-  sortOrder    Int             @default(0)
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  mealRecord   MealRecord      @relation(fields: [mealRecordId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  recipe       Recipe?         @relation(fields: [recipeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  store        Store?          @relation(fields: [storeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  sortOrder    Int            @default(0)
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+  mealRecord   MealRecord     @relation(fields: [mealRecordId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  recipe       Recipe?        @relation(fields: [recipeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  store        Store?         @relation(fields: [storeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([mealRecordId, sortOrder])
   @@index([recipeId])
   @@index([storeId])
 }
 
+model ConsumptionOperation {
+  id           String     @id
+  mealRecordId String
+  previewHash  String
+  resultJson   String
+  createdAt    DateTime   @default(now())
+  mealRecord   MealRecord @relation(fields: [mealRecordId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([mealRecordId, createdAt])
+}
+
+model UploadAsset {
+  id            String      @id @default(cuid())
+  filename      String      @unique
+  storagePath   String      @unique
+  thumbnailPath String?
+  mimeType      String
+  sizeBytes     Int
+  sha256        String
+  width         Int?
+  height        Int?
+  recipeId      String?
+  storeId       String?
+  mealRecordId  String?
+  deletedAt     DateTime?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  recipe        Recipe?     @relation("RecipeImageAsset", fields: [recipeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  store         Store?      @relation("StoreImageAsset", fields: [storeId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  mealRecord    MealRecord? @relation("RecordImageAsset", fields: [mealRecordId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+
+  @@index([deletedAt])
+  @@index([sha256])
+  @@index([recipeId])
+  @@index([storeId])
+  @@index([mealRecordId])
+}
+
 model MealRecordDiner {
-  id           String      @id @default(cuid())
+  id           String     @id @default(cuid())
   mealRecordId String
   dinerId      String?
-  createdAt    DateTime    @default(now())
-  updatedAt    DateTime    @updatedAt
-  mealRecord   MealRecord  @relation(fields: [mealRecordId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  diner        Diner?      @relation(fields: [dinerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  mealRecord   MealRecord @relation(fields: [mealRecordId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  diner        Diner?     @relation(fields: [dinerId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@unique([mealRecordId, dinerId])
   @@index([dinerId])
 }
 
 model RecommendationHistory {
-  id                String   @id @default(cuid())
+  id                 String   @id @default(cuid())
   recommendationType String
-  resultType        String
-  resultJson        String
-  filtersJson       String
-  candidateCount    Int
-  accepted          Boolean  @default(false)
-  addedToPlan       Boolean  @default(false)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  resultType         String
+  resultJson         String
+  filtersJson        String
+  candidateCount     Int
+  accepted           Boolean  @default(false)
+  addedToPlan        Boolean  @default(false)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 
   @@index([recommendationType, createdAt])
 }
 
 model ShoppingList {
-  id          String              @id @default(cuid())
-  name        String
-  status      ShoppingListStatus  @default(ACTIVE)
-  notes       String?
-  version     Int                 @default(1)
-  deletedAt   DateTime?
-  createdAt   DateTime            @default(now())
-  updatedAt   DateTime            @updatedAt
-  items       ShoppingListItem[]
+  id        String             @id @default(cuid())
+  name      String
+  status    ShoppingListStatus @default(ACTIVE)
+  notes     String?
+  version   Int                @default(1)
+  deletedAt DateTime?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  items     ShoppingListItem[]
 
   @@index([status])
   @@index([deletedAt])
 }
 
 model ShoppingListItem {
-  id                    String             @id @default(cuid())
-  shoppingListId        String
-  ingredientId          String?
+  id                     String             @id @default(cuid())
+  shoppingListId         String
+  ingredientId           String?
   ingredientNameSnapshot String
-  quantity              Float
-  unit                  QuantityUnit
-  sourceType            ShoppingSourceType
-  sourceId              String?
-  completed             Boolean            @default(false)
-  sortOrder             Int                @default(0)
-  notes                 String?
-  createdAt             DateTime           @default(now())
-  updatedAt             DateTime           @updatedAt
-  shoppingList          ShoppingList       @relation(fields: [shoppingListId], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  ingredient            Ingredient?       @relation(fields: [ingredientId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  quantity               Float
+  unit                   QuantityUnit
+  sourceType             ShoppingSourceType
+  sourceId               String?
+  completed              Boolean            @default(false)
+  sortOrder              Int                @default(0)
+  notes                  String?
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
+  shoppingList           ShoppingList       @relation(fields: [shoppingListId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  ingredient             Ingredient?        @relation(fields: [ingredientId], references: [id], onDelete: SetNull, onUpdate: Cascade)
 
   @@index([shoppingListId, completed, sortOrder])
   @@index([ingredientId])
 }
 
 model DeletedItem {
-  id         String   @id @default(cuid())
+  id         String    @id @default(cuid())
   entityType String
   entityId   String
-  deletedAt  DateTime @default(now())
+  deletedAt  DateTime  @default(now())
   expiresAt  DateTime?
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
 
   @@unique([entityType, entityId])
   @@index([expiresAt])
