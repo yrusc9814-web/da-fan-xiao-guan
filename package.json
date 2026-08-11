@@ -17,19 +17,31 @@
     "typecheck": "npm run typecheck:client && npm run typecheck:server",
     "typecheck:client": "npm --workspace @dafan/client run typecheck",
     "typecheck:server": "npm --workspace @dafan/server run typecheck",
-    "test": "npm run prisma:test:setup && npm run test:client && node ./node_modules/cross-env/src/bin/cross-env.js TEST_DATABASE_URL=file:../../../data/test.db npm --workspace @dafan/server run test",
+    "lint": "eslint . --max-warnings=0",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "test": "node scripts/run-tests.mjs",
     "test:client": "npm --workspace @dafan/client run test",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "node scripts/ensure-sqlite-file.mjs && prisma migrate dev --name init",
     "prisma:migrate:deploy": "node scripts/ensure-sqlite-file.mjs && prisma migrate deploy",
     "prisma:migrate:status": "prisma migrate status",
     "prisma:validate": "prisma validate",
-    "prisma:test:setup": "node ./node_modules/cross-env/src/bin/cross-env.js DATABASE_URL=file:../../../data/test.db node scripts/reset-test-database.mjs && node ./node_modules/cross-env/src/bin/cross-env.js DATABASE_URL=file:../../../data/test.db node scripts/ensure-sqlite-file.mjs && node ./node_modules/cross-env/src/bin/cross-env.js DATABASE_URL=file:../../../data/test.db prisma migrate deploy",
+    "prisma:test:setup": "node scripts/setup-test-database.mjs",
     "seed:dev": "node scripts/ensure-sqlite-file.mjs && prisma migrate deploy && node --import tsx/esm scripts/seed-dev.mjs"
   },
+  "dependencies": {
+    "prisma": "^6.19.0"
+  },
   "devDependencies": {
+    "@eslint/js": "^9.39.5",
     "concurrently": "^9.1.2",
     "cross-env": "^7.0.3",
-    "prisma": "^6.19.0"
+    "eslint": "^9.39.5",
+    "eslint-config-prettier": "^10.1.8",
+    "eslint-plugin-vue": "^10.10.0",
+    "prettier": "3.9.6",
+    "typescript-eslint": "^8.67.0",
+    "vue-eslint-parser": "^10.4.1"
   }
 }

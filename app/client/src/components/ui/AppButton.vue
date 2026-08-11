@@ -1,17 +1,20 @@
 <script setup lang="ts">
-withDefaults(defineProps<{
-  type?: 'button' | 'submit' | 'reset';
-  variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
-  size?: 'sm' | 'md' | 'lg';
-  loading?: boolean;
-  disabled?: boolean;
-}>(), {
-  type: 'button',
-  variant: 'primary',
-  size: 'md',
-  loading: false,
-  disabled: false
-});
+withDefaults(
+  defineProps<{
+    type?: 'button' | 'submit' | 'reset';
+    variant?: 'primary' | 'secondary' | 'ghost' | 'danger';
+    size?: 'sm' | 'md' | 'lg';
+    loading?: boolean;
+    disabled?: boolean;
+  }>(),
+  {
+    type: 'button',
+    variant: 'primary',
+    size: 'md',
+    loading: false,
+    disabled: false
+  }
+);
 </script>
 
 <template>

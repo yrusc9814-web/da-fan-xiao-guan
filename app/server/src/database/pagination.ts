@@ -7,10 +7,7 @@ export interface PaginationValues {
   take: number;
 }
 
-export function normalizePagination(
-  request: PaginationRequest = {},
-  maxPageSize = 100
-): PaginationValues {
+export function normalizePagination(request: PaginationRequest = {}, maxPageSize = 100): PaginationValues {
   const page = Math.max(1, Math.floor(request.page ?? 1));
   const pageSize = Math.min(maxPageSize, Math.max(1, Math.floor(request.pageSize ?? 20)));
 

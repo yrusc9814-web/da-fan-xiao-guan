@@ -1,9 +1,168 @@
 <script setup lang="ts">
-import { ref } from 'vue';import AppButton from '../components/ui/AppButton.vue';import {apiRequest,getPinToken} from '../services/api';
-const file=ref<File|null>(null),busy=ref(false),message=ref(''),error=ref('');
-function choose(event:Event){file.value=(event.target as HTMLInputElement).files?.[0]??null}
-async function restore(){if(!file.value||!window.confirm('恢复会替换当前数据库和图片。系统会先保留回滚副本，确定继续吗？'))return;busy.value=true;error.value='';try{const body=new FormData();body.append('file',file.value);await apiRequest('/backups/restore',{method:'POST',body});message.value='恢复成功，建议重新启动服务后继续使用。'}catch(e){error.value=e instanceof Error?e.message:'恢复失败，当前数据已回滚'}finally{busy.value=false}}
-async function exportBackup(){busy.value=true;error.value='';try{const response=await fetch('/api/v1/backups/export',{headers:getPinToken()?{'X-App-Pin-Token':getPinToken()!}:{}});if(!response.ok){const payload=await response.json();throw new Error(payload.error?.message??'导出失败')}const blob=await response.blob();const url=URL.createObjectURL(blob);const anchor=document.createElement('a');anchor.href=url;anchor.download=`搭饭小馆-${new Date().toLocaleDateString('sv-SE')}.zip`;anchor.click();URL.revokeObjectURL(url);message.value='备份已导出'}catch(e){error.value=e instanceof Error?e.message:'导出失败'}finally{busy.value=false}}
+import { onMounted, ref } from 'vue';
+
+import AppButton from '../components/ui/AppButton.vue';
+import AppDialog from '../components/ui/AppDialog.vue';
+import AppInput from '../components/ui/AppInput.vue';
+import { apiRequest, getPinToken, setPinToken } from '../services/api';
+
+const file = ref<File | null>(null);
+const busy = ref(false);
+const message = ref('');
+const error = ref('');
+const authorizeDialogOpen = ref(false);
+const pinEnabled = ref(false);
+const pin = ref('');
+const localConfirmation = ref(false);
+
+function choose(event: Event): void {
+  file.value = (event.target as HTMLInputElement).files?.[0] ?? null;
+}
+
+async function loadSecurityState(): Promise<void> {
+  try {
+    const settings = await apiRequest<{ pinEnabled: boolean }>('/settings');
+    pinEnabled.value = settings.pinEnabled;
+  } catch {
+    pinEnabled.value = false;
+  }
+}
+
+function requestRestore(): void {
+  if (!file.value) return;
+  error.value = '';
+  pin.value = '';
+  localConfirmation.value = false;
+  authorizeDialogOpen.value = true;
+}
+
+async function authorizeAndRestore(): Promise<void> {
+  if (!file.value || (pinEnabled.value ? !pin.value : !localConfirmation.value)) return;
+  busy.value = true;
+  error.value = '';
+  try {
+    let authorization: { token: string };
+    if (pinEnabled.value) {
+      authorization = await apiRequest('/settings/high-risk/authorize', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'RESTORE', pin: pin.value })
+      });
+    } else {
+      const intent = await apiRequest<{ challenge: string }>('/settings/high-risk/authorize', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'RESTORE' })
+      });
+      authorization = await apiRequest('/settings/high-risk/authorize', {
+        method: 'POST',
+        body: JSON.stringify({ action: 'RESTORE', challenge: intent.challenge, confirmation: 'RESTORE_LOCAL_DATA' })
+      });
+    }
+    const body = new FormData();
+    body.append('file', file.value);
+    await apiRequest('/backups/restore', {
+      method: 'POST',
+      body,
+      headers: { 'X-High-Risk-Token': authorization.token }
+    });
+    setPinToken(null);
+    authorizeDialogOpen.value = false;
+    message.value = '恢复成功，安全会话已失效，建议重新启动服务后继续使用。';
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : '恢复失败，当前数据已回滚';
+  } finally {
+    busy.value = false;
+  }
+}
+
+async function exportBackup(): Promise<void> {
+  busy.value = true;
+  error.value = '';
+  try {
+    const response = await fetch('/api/v1/backups/export', {
+      headers: getPinToken() ? { 'X-App-Pin-Token': getPinToken()! } : {}
+    });
+    if (!response.ok) {
+      const payload = await response.json();
+      throw new Error(payload.error?.message ?? '导出失败');
+    }
+    const blob = await response.blob();
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `搭饭小馆-${new Date().toLocaleDateString('sv-SE')}.zip`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+    message.value = '备份已导出';
+  } catch (reason) {
+    error.value = reason instanceof Error ? reason.message : '导出失败';
+  } finally {
+    busy.value = false;
+  }
+}
+
+onMounted(() => {
+  void loadSecurityState();
+});
 </script>
-<template><section class="business-page"><header class="business-hero"><div><p class="business-eyebrow">Backup & restore</p><h1>备份与恢复</h1><p>ZIP 包含 SQLite、uploads、配置快照和 SHA256 清单；恢复前会在 staging 中完整校验。</p></div><AppButton :loading="busy" @click="exportBackup">导出完整备份</AppButton></header><div class="app-card backup-panel"><h2>恢复备份</h2><p>支持本应用生成的 ZIP。路径越界、未知文件、缺少数据库或 hash 错误都会在替换前拒绝。</p><input type="file" accept=".zip,application/zip" @change="choose"><AppButton :disabled="!file" :loading="busy" @click="restore">校验并恢复</AppButton><p v-if="message" class="backup-success">{{message}}</p><p v-if="error" class="backup-error">{{error}}</p></div></section></template>
-<style scoped>.backup-panel{display:grid;gap:16px;max-width:760px}.backup-panel h2,.backup-panel p{margin:0}.backup-success{color:var(--color-success)}.backup-error{color:var(--color-danger)}</style>
+
+<template>
+  <section class="business-page">
+    <header class="business-hero">
+      <div>
+        <p class="business-eyebrow">Backup & restore</p>
+        <h1>备份与恢复</h1>
+        <p>ZIP 包含 SQLite、uploads、配置快照和 SHA256 清单；恢复前会在 staging 中完整校验。</p>
+      </div>
+      <AppButton :loading="busy" @click="exportBackup">导出完整备份</AppButton>
+    </header>
+    <div class="app-card backup-panel">
+      <h2>恢复备份</h2>
+      <p>支持本应用生成的 ZIP。路径越界、未知文件、资源超限或 hash 错误都会在替换前拒绝。</p>
+      <input type="file" accept=".zip,application/zip" @change="choose" />
+      <AppButton :disabled="!file" :loading="busy" @click="requestRestore">校验并恢复</AppButton>
+      <p v-if="message" class="backup-success">{{ message }}</p>
+      <p v-if="error" class="backup-error">{{ error }}</p>
+    </div>
+
+    <AppDialog v-model="authorizeDialogOpen" title="恢复前二次验证">
+      <p>恢复会替换当前数据库和图片。系统会先创建回滚副本，并在验证完整备份后才进入维护状态。</p>
+      <AppInput v-if="pinEnabled" v-model="pin" type="password" label="再次输入本地 PIN" />
+      <label v-else class="backup-confirmation">
+        <input v-model="localConfirmation" type="checkbox" />
+        <span>我确认要用所选备份替换当前本地数据</span>
+      </label>
+      <template #footer>
+        <AppButton variant="ghost" @click="authorizeDialogOpen = false">取消</AppButton>
+        <AppButton :disabled="pinEnabled ? !pin : !localConfirmation" :loading="busy" @click="authorizeAndRestore"
+          >二次验证并恢复</AppButton
+        >
+      </template>
+    </AppDialog>
+  </section>
+</template>
+
+<style scoped>
+.backup-panel {
+  display: grid;
+  gap: 16px;
+  max-width: 760px;
+}
+.backup-panel h2,
+.backup-panel p {
+  margin: 0;
+}
+.backup-success {
+  color: var(--color-success);
+}
+.backup-error {
+  color: var(--color-danger);
+}
+.backup-confirmation {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+}
+.backup-confirmation input {
+  margin-top: 4px;
+}
+</style>

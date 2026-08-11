@@ -40,18 +40,16 @@ function safeUploadPath(value: string): string | null {
   decoded = decoded.replaceAll('\\', '/');
   const segments = decoded.split('/');
   if (
-    !decoded
-    || decoded.startsWith('/')
-    || decoded.includes('\0')
-    || segments.some((segment) => !segment || segment === '.' || segment === '..')
+    !decoded ||
+    decoded.startsWith('/') ||
+    decoded.includes('\0') ||
+    segments.some((segment) => !segment || segment === '.' || segment === '..')
   ) {
     return null;
   }
 
   const candidate = resolve(uploadsDirectory, ...segments);
-  return candidate === uploadsDirectory || !candidate.startsWith(`${uploadsDirectory}${sep}`)
-    ? null
-    : candidate;
+  return candidate === uploadsDirectory || !candidate.startsWith(`${uploadsDirectory}${sep}`) ? null : candidate;
 }
 
 function toDto(asset: {
@@ -76,7 +74,10 @@ function toDto(asset: {
   };
 }
 
-async function isReferenced(database: PrismaClient, asset: { filename: string; thumbnailPath: string | null }): Promise<boolean> {
+async function isReferenced(
+  database: PrismaClient,
+  asset: { filename: string; thumbnailPath: string | null }
+): Promise<boolean> {
   const paths = [`/uploads/${asset.filename}`, asset.filename];
   if (asset.thumbnailPath) paths.push(`/uploads/${asset.thumbnailPath}`, asset.thumbnailPath);
   const [recipes, stores, records] = await Promise.all([
@@ -168,7 +169,7 @@ export async function registerUploadRoutes(app: FastifyInstance, database: Prism
   app.delete<{ Params: { id: string } }>('/api/v1/uploads/images/:id', async (request, reply) => {
     const asset = await database.uploadAsset.findFirst({ where: { id: request.params.id, deletedAt: null } });
     if (!asset) return reply.code(404).send(failure('NOT_FOUND', '图片不存在'));
-    if (asset.recipeId || asset.storeId || asset.mealRecordId || await isReferenced(database, asset)) {
+    if (asset.recipeId || asset.storeId || asset.mealRecordId || (await isReferenced(database, asset))) {
       return reply.code(409).send(failure('REFERENCED_RESOURCE', '图片正在被业务数据使用，不能删除'));
     }
 
@@ -186,14 +187,15 @@ export async function registerUploadRoutes(app: FastifyInstance, database: Prism
 
     try {
       const [root, file] = await Promise.all([realpath(uploadsDirectory), realpath(candidate)]);
-      if (file !== root && !file.startsWith(`${root}${sep}`)) return reply.code(404).send(failure('NOT_FOUND', '图片不存在'));
+      if (file !== root && !file.startsWith(`${root}${sep}`))
+        return reply.code(404).send(failure('NOT_FOUND', '图片不存在'));
 
       const fileStats = await stat(file);
       const contentType = contentTypes[extname(file).toLowerCase()];
       if (!fileStats.isFile() || !contentType) return reply.code(404).send(failure('NOT_FOUND', '图片不存在'));
 
       return reply
-        .header('Cache-Control', 'private, max-age=60')
+        .header('Cache-Control', 'private, max-age=31536000, immutable')
         .type(contentType)
         .send(createReadStream(file));
     } catch {

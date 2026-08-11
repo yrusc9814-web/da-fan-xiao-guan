@@ -1,2 +1,10 @@
-import type{FastifyInstance}from'fastify';import type{PrismaClient}from'@prisma/client';import{success}from'../../shared/http.js';import{listDeletedItems,restoreDeletedItem}from'./service.js';
-export async function registerDeletedItemRoutes(app:FastifyInstance,database:PrismaClient){app.get('/api/v1/deleted-items',async()=>success(await listDeletedItems(database)));app.post<{Params:{id:string}}>('/api/v1/deleted-items/:id/restore',async request=>success(await restoreDeletedItem(database,request.params.id)))}
+import type { FastifyInstance } from 'fastify';
+import type { PrismaClient } from '@prisma/client';
+import { success } from '../../shared/http.js';
+import { listDeletedItems, restoreDeletedItem } from './service.js';
+export async function registerDeletedItemRoutes(app: FastifyInstance, database: PrismaClient) {
+  app.get('/api/v1/deleted-items', async () => success(await listDeletedItems(database)));
+  app.post<{ Params: { id: string } }>('/api/v1/deleted-items/:id/restore', async (request) =>
+    success(await restoreDeletedItem(database, request.params.id))
+  );
+}

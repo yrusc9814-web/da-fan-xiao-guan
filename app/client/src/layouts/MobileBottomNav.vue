@@ -10,17 +10,17 @@ const navItems = [
 </script>
 
 <template>
-<nav class="mobile-bottom-nav mobile-only" aria-label="移动端主导航">
-  <RouterLink
-    v-for="item in navItems"
-    :key="item.path"
-    :to="item.path"
-    class="mobile-nav-link"
-    exact-active-class="mobile-nav-link--active"
-    :aria-label="item.label"
-  >
-    <AppIcon :name="item.icon" :size="22" />
-    <span>{{ item.label }}</span>
-  </RouterLink>
-</nav>
+  <nav class="mobile-bottom-nav mobile-only" aria-label="移动端主导航">
+    <RouterLink
+      v-for="item in navItems"
+      :key="item.path"
+      :to="item.path"
+      class="mobile-nav-link"
+      exact-active-class="mobile-nav-link--active"
+      :aria-label="item.label"
+    >
+      <AppIcon :name="item.icon" :size="22" />
+      <span>{{ item.label }}</span>
+    </RouterLink>
+  </nav>
 </template>

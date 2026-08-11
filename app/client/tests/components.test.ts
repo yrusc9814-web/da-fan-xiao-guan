@@ -60,14 +60,39 @@ describe('layout navigation', () => {
 
 describe('public component states', () => {
   it('首次启动收集昵称和默认食用者后进入应用', async () => {
-    const fetchMock=vi.fn()
-      .mockResolvedValueOnce({ok:true,json:async()=>({success:true,data:{version:1,pinEnabled:false,onboardingCompleted:false,userNickname:null},error:null})})
-      .mockResolvedValueOnce({ok:true,json:async()=>({success:true,data:{version:2,pinEnabled:false,onboardingCompleted:true,userNickname:'小饭'},error:null})});
-    vi.stubGlobal('fetch',fetchMock);
-    const wrapper=mount(PinGate);await flushPromises();
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { version: 1, pinEnabled: false, onboardingCompleted: false, userNickname: null },
+          error: null
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { version: 2, pinEnabled: false, onboardingCompleted: true, userNickname: '小饭' },
+          error: null
+        })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(PinGate);
+    await flushPromises();
     expect(wrapper.text()).toContain('欢迎来到搭饭小馆');
-    const inputs=wrapper.findAll('input');await inputs[0]!.setValue('小饭');await inputs[1]!.setValue('我');await wrapper.get('button').trigger('click');await flushPromises();
-    expect(wrapper.emitted('unlocked')).toHaveLength(1);expect(fetchMock).toHaveBeenCalledTimes(2);
+    const inputs = wrapper.findAll('input');
+    await inputs[0]!.setValue('小饭');
+    await inputs[1]!.setValue('我');
+    await wrapper.get('button').trigger('click');
+    await wrapper.vm.$nextTick();
+    await wrapper.findAll('button').at(-1)!.trigger('click');
+    await wrapper.vm.$nextTick();
+    await wrapper.findAll('button').at(-1)!.trigger('click');
+    await flushPromises();
+    expect(wrapper.emitted('unlocked')).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
   it('disables a loading button and exposes busy state', () => {
     const wrapper = mount(AppButton, { props: { loading: true }, slots: { default: '保存' } });

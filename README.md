@@ -1,72 +1,94 @@
 # 搭饭小馆
 
-- 项目名称：搭饭小馆
-- 当前状态：节点 3 设计系统与响应式框架已完成，等待验收
-- 权威开发文档：`agent.md`、`docs/PRD.md`
-- 视觉依据：`docs/design/desktop-home-reference.png`、`docs/design/mobile-home-reference.png`
+搭饭小馆是一款本地优先的家庭饮食决策与记录应用，覆盖菜谱、店铺、食用者、推荐、饮食计划、日记、库存、购物清单、统计与完整备份恢复。
 
-## 当前开发阶段
+## 当前状态
 
-节点 3：设计系统与响应式框架。
+P0–P6 整改已进入最终验收。业务数据来自本地 SQLite；首页视觉以 `docs/design/` 中的桌面端和移动端最终参考图为准。权威工程规则见 `agent.md`，业务规则见 `docs/PRD.md`。
 
-## 节点 3：设计系统与响应式框架
+## 技术架构
 
-统一视觉变量位于 `app/client/src/styles/tokens.css`，全局样式拆分为 reset、global、utilities 与组件样式。页面主色为粉白色系，公共组件覆盖卡片、按钮、表单控件、标签、Tabs、Dialog、Drawer、Toast、Skeleton、空状态、错误状态和区块标题。
+- 前端：Vue 3、Vue Router、Pinia、Vite、TypeScript
+- 后端：Node.js 22、Fastify、TypeScript
+- 数据：SQLite、Prisma Migration
+- 测试：Vitest、Fastify inject、Vue Test Utils
+- 工程门禁：ESLint、Prettier、GitHub Actions
 
-响应式断点固定为：手机 `0–767px`、平板 `768–1199px`、桌面 `1200px 及以上`。桌面端使用固定侧栏与顶部栏，移动端使用品牌栏与固定底部导航；页面内容支持安全区并在 360px 宽度下避免横向溢出。
+## 目录
 
-桌面导航：首页、菜谱推荐、饮食记录、食材库存、饮食日历、统计分析、收藏夹、购物清单、设置。
+- `app/client/`：前端页面、组件、样式与本地图片
+- `app/server/`：API、Prisma schema、Migration 与服务测试
+- `app/shared/`：前后端共享类型
+- `data/`：运行数据库、用户上传、备份与测试数据库（不提交）
+- `docs/`：PRD、最终视觉依据、整改指令与历史资料
+- `scripts/`：数据库初始化、测试重建与开发数据脚本
 
-移动导航：首页、厨师、觅食、日记；设置入口位于顶部品牌栏右侧。
-
-本节点只包含框架、占位路由和公共组件预览，不包含正式首页、业务 CRUD、Mock 业务数据或数据库业务查询。小羊素材目录已建立，统一本地透明资产待提供，当前使用无外部依赖的占位组件。
-
-## 节点 4：正式首页双端开发
-
-正式首页当前状态：桌面端和移动端首页已接入只读 Dashboard、开发 Seed、真实空状态、动态问候、推荐菜谱、饮食记录、库存概览、本周统计和饮食日历。开发环境可使用 `npm run seed:dev` 幂等写入演示数据；演示菜谱图片位于 `app/client/src/assets/demo-food/`，与用户上传图片目录隔离。
-
-视觉验收截图与报告位于 `work/visual-acceptance/node-4/`。节点 4 的视觉基准仍为 `docs/design/desktop-home-reference.png` 和 `docs/design/mobile-home-reference.png`。小羊素材已从用户提供的本地 PNG 接入，正式透明资产替换不会改变首页布局结构。
-
-## 节点 2：SQLite、Prisma 与 API 数据契约。
-
-## 开发命令
-
-首次使用先安装依赖：
+## 开发启动
 
 ```bash
 npm install
-```
-
-分别启动前端或后端：
-
-```bash
-npm run dev:client
-npm run dev:server
-```
-
-同时启动前端和后端：
-
-```bash
+npm run prisma:generate
+npm run prisma:migrate:deploy
 npm run dev
 ```
 
-检查类型、运行测试和构建：
+前端开发地址默认为 `http://localhost:5173`，API 默认为 `http://127.0.0.1:8787`。
+
+## 测试与质量门禁
 
 ```bash
+npm run prisma:validate
 npm run typecheck
-npm run test
+npm run lint
+npm run format:check
+npm test
+```
+
+测试会重建独立的 `data/test.db`，不会修改 `data/app.db`。
+
+## 构建
+
+```bash
 npm run build
 ```
 
-## 节点 2：数据库基础
+前端输出到 `app/client/dist/`，后端输出到 `dist-server/`。生产模式不会生成 sourcemap。
 
-SQLite 数据库由 Prisma 管理，开发数据库位于 `data/app.db`，正式结构通过 Migration 建立。
+## Windows 正式运行
 
-测试使用独立的 `data/test.db`，每次测试前重建并执行同一套 Migration，不污染开发数据库。
+正式分发包应包含 `runtime/node.exe`、生产依赖、Prisma CLI、Prisma Windows engine、schema、Migration、前后端构建结果及启动脚本。用户双击 `start.bat`；脚本固定使用 8787 端口，自动创建数据库、执行 `migrate deploy`、轮询 API 与首页后打开浏览器。`stop.bat` 仅停止 PID 文件指向且命令行匹配本应用的进程。
 
-```bash
-npm run prisma:generate
-npm run prisma:validate
-npm run prisma:migrate
-npm run prisma:migrate:status
-```
+## 数据位置
+
+- 数据库：`data/app.db`
+- 用户图片：`data/uploads/`
+- 自动备份：`data/backups/`
+- PID：`data/app.pid`
+
+这些运行数据均应被 Git 忽略。不要在服务运行期间手工替换数据库。
+
+## 图片位置
+
+首页小羊与快捷入口图位于 `app/client/src/assets/`；菜谱演示照片位于 `app/client/src/assets/recipe-photos/`；用户上传只进入 `data/uploads/`。
+
+## 备份与恢复
+
+设置页可导出包含 SQLite、配置快照和上传文件的 ZIP。恢复会校验路径、文件集合、大小、SHA-256、SQLite 完整性与 Migration，并要求一次性高风险授权；替换失败会回滚。
+
+## 手机局域网访问
+
+电脑与手机连接同一可信 Wi‑Fi，在设置页生成当前地址二维码。Windows 防火墙仅应允许专用网络访问 8787。正式环境会拒绝不匹配当前请求来源的浏览器 Origin。
+
+## 安全说明
+
+- PIN 会以加盐 scrypt 哈希保存；普通会话不能直接执行恢复。
+- 恢复授权短效且一次性，PIN 关闭时仍要求独立的高风险意图确认。
+- 首次引导只能成功一次，并以数据库条件更新保证并发安全。
+- 备份恢复采用流式上限，拒绝路径穿越、重复/大小写冲突、符号链接、加密与未知文件。
+
+## 已知限制
+
+- 本项目是个人本地应用，不提供云同步或远程账户体系。
+- 固定正式端口为 8787。
+- macOS/Linux 自动测试不能证明 Windows 双击、路径特殊字符、防火墙与跨平台 Prisma engine 的发行行为；正式发布前仍需在干净 Windows 10/11 机器完成发布 smoke test。
+- 默认餐次数量当前没有独立 schema 承载，首次引导不提供该设置。

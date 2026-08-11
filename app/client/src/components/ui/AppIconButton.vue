@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import AppIcon from '../AppIcon.vue';
 
-withDefaults(defineProps<{
-  label: string;
-  icon: InstanceType<typeof AppIcon>['$props']['name'];
-  size?: 'sm' | 'md' | 'lg';
-  disabled?: boolean;
-}>(), {
-  size: 'md',
-  disabled: false
-});
+withDefaults(
+  defineProps<{
+    label: string;
+    icon: InstanceType<typeof AppIcon>['$props']['name'];
+    size?: 'sm' | 'md' | 'lg';
+    disabled?: boolean;
+  }>(),
+  {
+    size: 'md',
+    disabled: false
+  }
+);
 </script>
 
 <template>

@@ -20,7 +20,17 @@ export async function getCalendar(database: PrismaClient, query: { start: string
       orderBy: [{ recordDate: 'asc' }, { mealType: 'asc' }]
     })
   ]);
-  const dayMap = new Map<string, { date: string; hasPlans: boolean; hasRecords: boolean; hasDrafts: boolean; plans: typeof plans; records: typeof records }>();
+  const dayMap = new Map<
+    string,
+    {
+      date: string;
+      hasPlans: boolean;
+      hasRecords: boolean;
+      hasDrafts: boolean;
+      plans: typeof plans;
+      records: typeof records;
+    }
+  >();
   const day = (date: string) => {
     let value = dayMap.get(date);
     if (!value) {
@@ -40,5 +50,9 @@ export async function getCalendar(database: PrismaClient, query: { start: string
     value.hasDrafts ||= record.status === 'DRAFT';
     value.records.push(record);
   }
-  return { start: query.start, end: query.end, days: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date)) };
+  return {
+    start: query.start,
+    end: query.end,
+    days: [...dayMap.values()].sort((a, b) => a.date.localeCompare(b.date))
+  };
 }

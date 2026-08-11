@@ -18,18 +18,22 @@ function handleKeydown(event: KeyboardEvent): void {
   }
 }
 
-watch(() => props.modelValue, async (isOpen) => {
-  if (isOpen) {
-    restoreElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    document.addEventListener('keydown', handleKeydown);
-    await nextTick();
-    dialogRef.value?.focus();
-  } else {
-    document.removeEventListener('keydown', handleKeydown);
-    restoreElement?.focus();
-    restoreElement = null;
-  }
-}, { immediate: true });
+watch(
+  () => props.modelValue,
+  async (isOpen) => {
+    if (isOpen) {
+      restoreElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      document.addEventListener('keydown', handleKeydown);
+      await nextTick();
+      dialogRef.value?.focus();
+    } else {
+      document.removeEventListener('keydown', handleKeydown);
+      restoreElement?.focus();
+      restoreElement = null;
+    }
+  },
+  { immediate: true }
+);
 
 onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
 </script>
@@ -37,14 +41,7 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="app-overlay" role="presentation" @click.self="close">
-      <section
-        ref="dialogRef"
-        class="app-dialog"
-        role="dialog"
-        aria-modal="true"
-        :aria-label="title"
-        tabindex="-1"
-      >
+      <section ref="dialogRef" class="app-dialog" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1">
         <header class="app-dialog__header">
           <h2>{{ title }}</h2>
           <button type="button" class="app-dialog__close" aria-label="关闭弹窗" @click="close">

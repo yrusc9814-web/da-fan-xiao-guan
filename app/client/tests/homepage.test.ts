@@ -24,7 +24,15 @@ function createDashboard(overrides: Partial<DashboardDto> = {}): DashboardDto {
       rating: 4.6
     })),
     todayRecords: [
-      { mealType: 'BREAKFAST', label: '早餐', time: '08:00', recorded: true, title: '番茄炒蛋', summary: '在家制作', rating: 4.6 },
+      {
+        mealType: 'BREAKFAST',
+        label: '早餐',
+        time: '08:00',
+        recorded: true,
+        title: '番茄炒蛋',
+        summary: '在家制作',
+        rating: 4.6
+      },
       { mealType: 'LUNCH', label: '午餐', time: null, recorded: false, title: null, summary: null, rating: null },
       { mealType: 'DINNER', label: '晚餐', time: null, recorded: false, title: null, summary: null, rating: null }
     ],
@@ -32,7 +40,9 @@ function createDashboard(overrides: Partial<DashboardDto> = {}): DashboardDto {
       totalIngredients: 4,
       expiringSoon: 1,
       insufficient: 1,
-      expiringIngredients: [{ id: 'ingredient-1', name: '西兰花', expiryDate: '2026-08-08', quantity: 1, unit: 'PIECE' }]
+      expiringIngredients: [
+        { id: 'ingredient-1', name: '西兰花', expiryDate: '2026-08-08', quantity: 1, unit: 'PIECE' }
+      ]
     },
     weeklyStats: { recordedDays: 2, totalMeals: 3, averageRating: 4.6, consumedIngredientCount: 2 },
     calendarDays: Array.from({ length: 7 }, (_, index) => ({
@@ -57,12 +67,40 @@ function createTestRouter() {
 async function mountHomepage(data: DashboardDto | null = createDashboard()) {
   const router = createTestRouter();
   await router.push('/');
-  const healthPayload = { success: true, data: { status: 'ok', app: '搭饭小馆', version: '0.1.0', database: { status: 'ok', provider: 'sqlite' }, timestamp: new Date().toISOString() }, error: null };
+  const healthPayload = {
+    success: true,
+    data: {
+      status: 'ok',
+      app: '搭饭小馆',
+      version: '0.1.0',
+      database: { status: 'ok', provider: 'sqlite' },
+      timestamp: new Date().toISOString()
+    },
+    error: null
+  };
   const dashboardPayload = { success: true, data, error: null };
-  vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => Promise.resolve({
-    ok: true,
-    json: async () => String(input).includes('/health') ? healthPayload : dashboardPayload
-  })));
+  vi.stubGlobal(
+    'fetch',
+    vi.fn((input: RequestInfo | URL) =>
+      Promise.resolve({
+        ok: true,
+        json: async () =>
+          String(input).includes('/health')
+            ? healthPayload
+            : String(input).includes('/calendar')
+              ? {
+                  success: true,
+                  data: {
+                    start: '2026-08-10',
+                    end: '2026-08-16',
+                    days: [{ date: '2026-08-10', hasPlans: false, hasRecords: true, hasDrafts: false }]
+                  },
+                  error: null
+                }
+              : dashboardPayload
+      })
+    )
+  );
   const wrapper = mount(HomePage, { global: { plugins: [createPinia(), router] } });
   await flushPromises();
   return wrapper;
@@ -76,7 +114,9 @@ afterEach(() => {
 describe('正式首页结构', () => {
   it('Dashboard 请求沿用统一客户端并携带 PIN 会话', async () => {
     setPinToken('test-pin-session');
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ success: true, data: createDashboard(), error: null }) });
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValue({ ok: true, json: async () => ({ success: true, data: createDashboard(), error: null }) });
     vi.stubGlobal('fetch', fetchMock);
     await fetchDashboard();
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toMatchObject({ 'X-App-Pin-Token': 'test-pin-session' });
@@ -102,10 +142,13 @@ describe('正式首页结构', () => {
     expect(wrapper.findAll('.quick-action-card')).toHaveLength(4);
     expect(wrapper.findAll('.recipe-card')).toHaveLength(6);
     expect(wrapper.find('.recipe-scroller').exists()).toBe(true);
+    expect(wrapper.get('.recipe-card').attributes('href')).toBe('/recipes/recipe-0');
   });
 
   it('使用 Dashboard 的动态问候和用户昵称', async () => {
-    const wrapper = await mountHomepage(createDashboard({ greetingPeriod: 'morning', greetingText: '今天也要好好吃饭呀～', userNickname: '小厨房' }));
+    const wrapper = await mountHomepage(
+      createDashboard({ greetingPeriod: 'morning', greetingText: '今天也要好好吃饭呀～', userNickname: '小厨房' })
+    );
 
     expect(wrapper.get('h1').text()).toContain('早上好，小厨房');
     expect(wrapper.text()).toContain('今天也要好好吃饭呀～');
@@ -127,5 +170,16 @@ describe('正式首页结构', () => {
 
     expect(wrapper.text()).toContain('首页数据暂时不可用');
     expect(wrapper.text()).toContain('网络不可用');
+  });
+
+  it('切换周时读取真实 calendar API，不伪造平移后的空数据', async () => {
+    const wrapper = await mountHomepage();
+    await wrapper.get('button[aria-label="下一周"]').trigger('click');
+    await flushPromises();
+    expect(
+      vi.mocked(fetch).mock.calls.some(([input]) => String(input).includes('/calendar?start=2026-08-10&end=2026-08-16'))
+    ).toBe(true);
+    expect(wrapper.find('.calendar-day[data-status="recorded"]').exists()).toBe(true);
+    expect(wrapper.text()).toContain('8/10');
   });
 });

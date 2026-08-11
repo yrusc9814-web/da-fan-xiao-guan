@@ -1,4 +1,12 @@
-import type { MealRole, MealType, Prisma, PrismaClient, RecordItemType, RecordSourceType, RecordStatus } from '@prisma/client';
+import type {
+  MealRole,
+  MealType,
+  Prisma,
+  PrismaClient,
+  RecordItemType,
+  RecordSourceType,
+  RecordStatus
+} from '@prisma/client';
 
 import { VersionConflictError } from '../../database/optimistic-lock.js';
 import { recordDeletedItem } from '../../database/deleted-items.js';
@@ -39,13 +47,22 @@ function httpError(statusCode: number, message: string): Error {
 
 function validate(input: RecordInput): void {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(input.recordDate)) throw httpError(400, '记录日期必须使用 YYYY-MM-DD 格式');
-  if (input.rating !== null && input.rating !== undefined && (!Number.isFinite(input.rating) || input.rating < 0 || input.rating > 5)) throw httpError(400, '评分必须在 0 到 5 之间');
+  if (
+    input.rating !== null &&
+    input.rating !== undefined &&
+    (!Number.isFinite(input.rating) || input.rating < 0 || input.rating > 5)
+  )
+    throw httpError(400, '评分必须在 0 到 5 之间');
   for (const item of input.items ?? []) {
-    const links = Number(Boolean(item.recipeId)) + Number(Boolean(item.storeId)) + Number(Boolean(item.customName?.trim()));
+    const links =
+      Number(Boolean(item.recipeId)) + Number(Boolean(item.storeId)) + Number(Boolean(item.customName?.trim()));
     if (links !== 1) throw httpError(400, '每个记录项目必须且只能关联菜谱、店铺或自定义名称之一');
-    if ((item.itemType === 'RECIPE') !== Boolean(item.recipeId)
-      || (item.itemType === 'STORE') !== Boolean(item.storeId)
-      || (item.itemType === 'CUSTOM') !== Boolean(item.customName?.trim())) throw httpError(400, '记录项目类型与关联内容不一致');
+    if (
+      (item.itemType === 'RECIPE') !== Boolean(item.recipeId) ||
+      (item.itemType === 'STORE') !== Boolean(item.storeId) ||
+      (item.itemType === 'CUSTOM') !== Boolean(item.customName?.trim())
+    )
+      throw httpError(400, '记录项目类型与关联内容不一致');
   }
 }
 
@@ -60,21 +77,49 @@ function itemCreates(items: RecordItemInput[] = []): Prisma.MealRecordItemCreate
   }));
 }
 
-export async function listRecords(database: PrismaClient, query: {
-  from?: string; to?: string; sourceType?: RecordSourceType; mealType?: MealType; status?: RecordStatus;
-  minRating?: string; dinerId?: string; q?: string;
-}) {
+export async function listRecords(
+  database: PrismaClient,
+  query: {
+    from?: string;
+    to?: string;
+    sourceType?: RecordSourceType;
+    mealType?: MealType;
+    status?: RecordStatus;
+    minRating?: string;
+    dinerId?: string;
+    q?: string;
+  }
+) {
   const q = query.q?.trim();
   return database.mealRecord.findMany({
     where: {
       deletedAt: null,
-      ...(query.from || query.to ? { recordDate: { ...(query.from ? { gte: query.from } : {}), ...(query.to ? { lte: query.to } : {}) } } : {}),
+      ...(query.from || query.to
+        ? { recordDate: { ...(query.from ? { gte: query.from } : {}), ...(query.to ? { lte: query.to } : {}) } }
+        : {}),
       ...(query.sourceType ? { sourceType: query.sourceType } : {}),
       ...(query.mealType ? { mealType: query.mealType } : {}),
       ...(query.status ? { status: query.status } : {}),
       ...(query.minRating ? { rating: { gte: Number(query.minRating) } } : {}),
       ...(query.dinerId ? { diners: { some: { dinerId: query.dinerId } } } : {}),
-      ...(q ? { OR: [{ notes: { contains: q } }, { items: { some: { OR: [{ customName: { contains: q } }, { recipe: { name: { contains: q } } }, { store: { name: { contains: q } } }] } } }] } : {})
+      ...(q
+        ? {
+            OR: [
+              { notes: { contains: q } },
+              {
+                items: {
+                  some: {
+                    OR: [
+                      { customName: { contains: q } },
+                      { recipe: { name: { contains: q } } },
+                      { store: { name: { contains: q } } }
+                    ]
+                  }
+                }
+              }
+            ]
+          }
+        : {})
     },
     include: recordInclude,
     orderBy: [{ recordDate: 'desc' }, { recordTime: 'desc' }]
@@ -114,7 +159,13 @@ export async function updateRecord(database: PrismaClient, id: string, version: 
   return database.$transaction(async (tx) => {
     const current = await tx.mealRecord.findFirst({ where: { id, deletedAt: null } });
     if (!current) throw httpError(404, '饮食记录不存在');
-    if (current.version !== version) throw new VersionConflictError({ entity: 'MealRecord', id, expectedVersion: version, actualVersion: current.version });
+    if (current.version !== version)
+      throw new VersionConflictError({
+        entity: 'MealRecord',
+        id,
+        expectedVersion: version,
+        actualVersion: current.version
+      });
     const merged: RecordInput = {
       recordDate: input.recordDate ?? current.recordDate,
       recordTime: input.recordTime === undefined ? current.recordTime : input.recordTime,
@@ -167,9 +218,34 @@ export async function deleteRecord(database: PrismaClient, id: string, version: 
   return database.$transaction(async (tx) => {
     const current = await tx.mealRecord.findFirst({ where: { id, deletedAt: null } });
     if (!current) throw httpError(404, '饮食记录不存在');
-    if (current.version !== version) throw new VersionConflictError({ entity: 'MealRecord', id, expectedVersion: version, actualVersion: current.version });
-    const deletedAt=new Date();await tx.mealRecord.update({ where: { id }, data: { deletedAt, version: { increment: 1 } } });
-    await recordDeletedItem(tx,'MealRecord',id,deletedAt);
+    if (current.version !== version)
+      throw new VersionConflictError({
+        entity: 'MealRecord',
+        id,
+        expectedVersion: version,
+        actualVersion: current.version
+      });
+    const deletedAt = new Date();
+    await tx.mealRecord.update({ where: { id }, data: { deletedAt, version: { increment: 1 } } });
+    await recordDeletedItem(tx, 'MealRecord', id, deletedAt);
     return { id };
   });
+}
+
+export async function setRecordFavorite(database: PrismaClient, id: string, version: number, favorite: boolean) {
+  const updated = await database.mealRecord.updateMany({
+    where: { id, version, deletedAt: null },
+    data: { favorite, version: { increment: 1 } }
+  });
+  if (!updated.count) {
+    const current = await database.mealRecord.findFirst({ where: { id, deletedAt: null } });
+    if (!current) throw httpError(404, '饮食记录不存在');
+    throw new VersionConflictError({
+      entity: 'MealRecord',
+      id,
+      expectedVersion: version,
+      actualVersion: current.version
+    });
+  }
+  return getRecord(database, id);
 }

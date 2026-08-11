@@ -1,0 +1,9 @@
+node_modules
+dist
+dist-server
+data
+runtime
+docs
+agent.md
+package-lock.json
+app/client/src/assets

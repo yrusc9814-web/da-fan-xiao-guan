@@ -53,8 +53,13 @@ function dinerData(input: Partial<DinerWriteInput>, requireName: boolean): Prism
     data.name = name;
   }
   for (const [key, label] of [
-    ['avatarPath', '头像路径'], ['likesText', '喜好'], ['dislikesText', '不喜欢'],
-    ['tabooText', '忌口'], ['allergyText', '过敏提示'], ['portionNote', '默认餐量'], ['notes', '备注']
+    ['avatarPath', '头像路径'],
+    ['likesText', '喜好'],
+    ['dislikesText', '不喜欢'],
+    ['tabooText', '忌口'],
+    ['allergyText', '过敏提示'],
+    ['portionNote', '默认餐量'],
+    ['notes', '备注']
   ] as const) {
     if (input[key] !== undefined) data[key] = cleaned(input[key], label);
   }
@@ -77,15 +82,25 @@ export async function listDiners(database: PrismaClient, query: DinerListQuery =
   const search = query.search?.trim();
   const where: Prisma.DinerWhereInput = {
     ...(query.active !== undefined ? { active: query.active } : {}),
-    ...(search ? {
-      OR: [
-        { name: { contains: search } }, { likesText: { contains: search } }, { dislikesText: { contains: search } },
-        { tabooText: { contains: search } }, { allergyText: { contains: search } }
-      ]
-    } : {})
+    ...(search
+      ? {
+          OR: [
+            { name: { contains: search } },
+            { likesText: { contains: search } },
+            { dislikesText: { contains: search } },
+            { tabooText: { contains: search } },
+            { allergyText: { contains: search } }
+          ]
+        }
+      : {})
   };
   const [items, total] = await Promise.all([
-    database.diner.findMany({ where, orderBy: { name: query.sortOrder ?? 'asc' }, skip: pagination.skip, take: pagination.take }),
+    database.diner.findMany({
+      where,
+      orderBy: { name: query.sortOrder ?? 'asc' },
+      skip: pagination.skip,
+      take: pagination.take
+    }),
     database.diner.count({ where })
   ]);
   return toPaginationResponse(items, pagination.page, pagination.pageSize, total);
@@ -104,11 +119,17 @@ export async function updateDiner(database: PrismaClient, id: string, input: Din
   if (!Number.isInteger(input.version) || input.version < 1) throw new DinerRequestError('版本号无效');
   const data = dinerData(input, false);
   const result = await database.diner.updateMany({
-    where: { id, version: input.version }, data: { ...data, version: { increment: 1 } }
+    where: { id, version: input.version },
+    data: { ...data, version: { increment: 1 } }
   });
   if (result.count !== 1) {
     const current = await dinerOrThrow(database, id);
-    throw new VersionConflictError({ entity: 'Diner', id, expectedVersion: input.version, actualVersion: current.version });
+    throw new VersionConflictError({
+      entity: 'Diner',
+      id,
+      expectedVersion: input.version,
+      actualVersion: current.version
+    });
   }
   return database.diner.findUniqueOrThrow({ where: { id } });
 }
@@ -121,7 +142,8 @@ export async function deactivateDiner(database: PrismaClient, id: string, versio
       throw new VersionConflictError({ entity: 'Diner', id, expectedVersion: version, actualVersion: current.version });
     }
     const result = await transaction.diner.updateMany({
-      where: { id, version }, data: { active: false, version: { increment: 1 } }
+      where: { id, version },
+      data: { active: false, version: { increment: 1 } }
     });
     if (result.count !== 1) {
       const latest = await dinerOrThrow(transaction, id);

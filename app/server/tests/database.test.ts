@@ -1,7 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   MealType,
-  PrismaClient,
   QuantityUnit,
   RecordItemType,
   RecordSourceType,
@@ -44,9 +43,7 @@ describe('节点 2 数据库底座', () => {
     const result = await database.$queryRaw<Array<{ value: bigint }>>`SELECT 1 AS value`;
 
     expect(result[0]?.value).toBe(1n);
-    expect(filePathFromDatabaseUrl(testDatabaseUrl)).not.toBe(
-      filePathFromDatabaseUrl('file:../../../data/app.db')
-    );
+    expect(filePathFromDatabaseUrl(testDatabaseUrl)).not.toBe(filePathFromDatabaseUrl('file:../../../data/app.db'));
     expect(resolveDatabaseUrl({ DATABASE_URL: 'file:../../../data/app.db' })).toContain('/data/app.db');
     expect(resolveDatabaseUrl({ TEST_DATABASE_URL: 'file:../../../data/test.db' })).toContain('/data/test.db');
   });
@@ -61,9 +58,7 @@ describe('节点 2 数据库底座', () => {
   });
 
   it('数据库不可用时健康接口返回明确错误', async () => {
-    const unavailableDatabase = createPrismaClient(
-      'file:/private/tmp/dafan-node2-missing-health-db/health.db'
-    );
+    const unavailableDatabase = createPrismaClient('file:/private/tmp/dafan-node2-missing-health-db/health.db');
     const app = await buildApp({ logger: false, database: unavailableDatabase });
     const response = await app.inject({ method: 'GET', url: '/api/v1/health' });
     const payload = response.json() as {
@@ -261,10 +256,12 @@ describe('节点 2 数据库底座', () => {
   it('事务失败时回滚写入', async () => {
     const before = await database.recipe.count();
 
-    await expect(database.$transaction(async (transaction) => {
-      await transaction.recipe.create({ data: { name: '事务内临时菜谱' } });
-      throw new Error('force rollback');
-    })).rejects.toThrow('force rollback');
+    await expect(
+      database.$transaction(async (transaction) => {
+        await transaction.recipe.create({ data: { name: '事务内临时菜谱' } });
+        throw new Error('force rollback');
+      })
+    ).rejects.toThrow('force rollback');
 
     expect(await database.recipe.count()).toBe(before);
   });

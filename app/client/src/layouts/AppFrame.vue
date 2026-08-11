@@ -6,12 +6,12 @@ import MobileShell from './MobileShell.vue';
 </script>
 
 <template>
-<div class="app-frame">
-  <DesktopShell />
-  <div class="app-main">
-    <DesktopTopbar />
-    <MobileShell />
-    <MainContent><slot /></MainContent>
+  <div class="app-frame">
+    <DesktopShell />
+    <div class="app-main">
+      <DesktopTopbar />
+      <MobileShell />
+      <MainContent><slot /></MainContent>
+    </div>
   </div>
-</div>
 </template>

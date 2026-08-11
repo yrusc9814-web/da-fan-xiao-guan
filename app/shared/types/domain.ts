@@ -107,13 +107,7 @@ export interface IngredientDto {
 }
 
 export type InventoryChangeType =
-  | 'PURCHASE'
-  | 'MANUAL_ADD'
-  | 'COOK_DEDUCT'
-  | 'MANUAL_DEDUCT'
-  | 'WASTE'
-  | 'RESTORE'
-  | 'ADJUST';
+  'PURCHASE' | 'MANUAL_ADD' | 'COOK_DEDUCT' | 'MANUAL_DEDUCT' | 'WASTE' | 'RESTORE' | 'ADJUST';
 
 export interface InventoryLogDto {
   id: ID;
@@ -248,13 +242,7 @@ export interface DinerDto {
 }
 
 export type ShoppingListStatus = 'ACTIVE' | 'COMPLETED' | 'ARCHIVED';
-export type ShoppingSourceType =
-  | 'MANUAL'
-  | 'RECIPE'
-  | 'RECOMMENDATION'
-  | 'LOW_STOCK'
-  | 'PLAN'
-  | 'INSUFFICIENT_STOCK';
+export type ShoppingSourceType = 'MANUAL' | 'RECIPE' | 'RECOMMENDATION' | 'LOW_STOCK' | 'PLAN' | 'INSUFFICIENT_STOCK';
 
 export interface ShoppingListItemDto {
   id: ID;

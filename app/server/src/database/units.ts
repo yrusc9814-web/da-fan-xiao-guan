@@ -15,11 +15,7 @@ function groupForUnit(unit: QuantityUnit): Record<string, number> | null {
   return Object.values(unitGroups).find((group) => unit in group) ?? null;
 }
 
-export function convertQuantity(
-  quantity: number,
-  from: QuantityUnit,
-  to: QuantityUnit
-): number | null {
+export function convertQuantity(quantity: number, from: QuantityUnit, to: QuantityUnit): number | null {
   if (quantity < 0) {
     throw new Error('数量不能为负数');
   }

@@ -11,11 +11,11 @@ const headingId = computed(() => `placeholder-${String(route.name ?? 'page')}`);
 </script>
 
 <template>
-<template>
-<section class="placeholder-page" :aria-labelledby="headingId">
-    <AppCard class="placeholder-page__inner">
-      <AppEmptyState :title="title" description="功能将在后续节点实现，本轮仅验证响应式页面框架。" />
-    </AppCard>
-</section>
-</template>
+  <template>
+    <section class="placeholder-page" :aria-labelledby="headingId">
+      <AppCard class="placeholder-page__inner">
+        <AppEmptyState :title="title" description="功能将在后续节点实现，本轮仅验证响应式页面框架。" />
+      </AppCard>
+    </section>
+  </template>
 </template>

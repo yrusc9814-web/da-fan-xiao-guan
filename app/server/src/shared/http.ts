@@ -1,10 +1,4 @@
-import type {
-  ApiError,
-  ApiErrorCode,
-  ApiFailure,
-  ApiResponse,
-  ApiSuccess
-} from '../../../shared/types/api.js';
+import type { ApiError, ApiErrorCode, ApiFailure, ApiResponse, ApiSuccess } from '../../../shared/types/api.js';
 
 export type { ApiError, ApiFailure, ApiResponse, ApiSuccess };
 

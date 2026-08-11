@@ -22,35 +22,35 @@ const navItems = [
 </script>
 
 <template>
-<aside class="desktop-sidebar desktop-only">
-  <RouterLink class="brand-lockup" to="/" aria-label="搭饭小馆首页">
-    <MascotPlaceholder placement="brand-logo" />
-    <span class="brand-lockup__text">
-      <strong>搭饭小馆</strong>
-      <small>让每一餐都更美好</small>
-    </span>
-  </RouterLink>
-
-  <nav class="desktop-sidebar__nav" aria-label="桌面端主导航">
-    <RouterLink
-      v-for="item in navItems"
-      :key="item.path"
-      :to="item.path"
-      class="desktop-nav-link"
-      exact-active-class="desktop-nav-link--active"
-      :aria-label="item.label"
-    >
-      <span class="desktop-nav-link__icon" :class="`desktop-nav-link__icon--${item.icon}`" aria-hidden="true">
-        <NavIllustration :name="item.icon" :size="22" />
+  <aside class="desktop-sidebar desktop-only">
+    <RouterLink class="brand-lockup" to="/" aria-label="搭饭小馆首页">
+      <MascotPlaceholder placement="brand-logo" />
+      <span class="brand-lockup__text">
+        <strong>搭饭小馆</strong>
+        <small>让每一餐都更美好</small>
       </span>
-      <span>{{ item.label }}</span>
     </RouterLink>
-  </nav>
 
-  <div class="desktop-sidebar__tip">
-    <MascotPlaceholder placement="sidebar-tip" />
-    <strong>搭饭小贴士</strong>
-    <p>{{ dashboardStore.data?.tip ?? '记得记录今天吃过的每一餐，慢慢找到适合自己的节奏。' }}</p>
-  </div>
-</aside>
+    <nav class="desktop-sidebar__nav" aria-label="桌面端主导航">
+      <RouterLink
+        v-for="item in navItems"
+        :key="item.path"
+        :to="item.path"
+        class="desktop-nav-link"
+        exact-active-class="desktop-nav-link--active"
+        :aria-label="item.label"
+      >
+        <span class="desktop-nav-link__icon" :class="`desktop-nav-link__icon--${item.icon}`" aria-hidden="true">
+          <NavIllustration :name="item.icon" :size="22" />
+        </span>
+        <span>{{ item.label }}</span>
+      </RouterLink>
+    </nav>
+
+    <div class="desktop-sidebar__tip">
+      <MascotPlaceholder placement="sidebar-tip" />
+      <strong>搭饭小贴士</strong>
+      <p>{{ dashboardStore.data?.tip ?? '记得记录今天吃过的每一餐，慢慢找到适合自己的节奏。' }}</p>
+    </div>
+  </aside>
 </template>

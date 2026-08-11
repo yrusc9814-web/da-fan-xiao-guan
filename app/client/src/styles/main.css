@@ -1,10 +1,12 @@
-@import "./tokens.css";
-@import "./reset.css";
-@import "./global.css";
-@import "./utilities.css";
-@import "./components.css";
-@import "./homepage.css";
-@import "./business.css";
+@import './tokens.css';
+@import './reset.css';
+@import './global.css';
+@import './utilities.css';
+@import './components.css';
+@import './homepage.css';
+@import './business.css';
+@import './shell.css';
+@import './business-enhancements.css';
 
 .app-frame {
   display: flex;
@@ -72,15 +74,15 @@
   background: var(--color-text-muted);
 }
 
-.system-status[data-status="available"] .status-dot {
+.system-status[data-status='available'] .status-dot {
   background: var(--color-success);
 }
 
-.system-status[data-status="checking"] .status-dot {
+.system-status[data-status='checking'] .status-dot {
   background: var(--color-orange);
 }
 
-.system-status[data-status="unavailable"] .status-dot {
+.system-status[data-status='unavailable'] .status-dot {
   background: var(--color-danger);
 }
 

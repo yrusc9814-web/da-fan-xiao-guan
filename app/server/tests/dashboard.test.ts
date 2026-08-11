@@ -51,38 +51,49 @@ describe('Dashboard 首页只读接口', () => {
 
   it('成功 DTO 返回品牌、推荐、饮食、库存、统计和日历结构', async () => {
     const database = createDashboardDatabase({
-      settings: { findUnique: vi.fn().mockResolvedValue({ appName: '搭饭小馆', subtitle: '让每一餐都更美好', userNickname: '厨房伙伴' }) },
+      settings: {
+        findUnique: vi
+          .fn()
+          .mockResolvedValue({ appName: '搭饭小馆', subtitle: '让每一餐都更美好', userNickname: '厨房伙伴' })
+      },
       recipe: {
-        findMany: vi.fn().mockResolvedValue([{
-          id: 'recipe-1',
-          name: '番茄炒蛋',
-          imagePath: 'tomato-eggs.svg',
-          cookingTimeMinutes: 15,
-          tags: [{ tag: { name: '家常菜' } }],
-          recordItems: [{ mealRecord: { rating: 4.6, deletedAt: null } }]
-        }])
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'recipe-1',
+            name: '番茄炒蛋',
+            imagePath: 'tomato-eggs.svg',
+            cookingTimeMinutes: 15,
+            tags: [{ tag: { name: '家常菜' } }],
+            recordItems: [{ mealRecord: { rating: 4.6, deletedAt: null } }]
+          }
+        ])
       },
       mealRecord: {
-        findMany: vi.fn()
-          .mockResolvedValueOnce([{
-            mealType: 'BREAKFAST',
-            recordTime: '08:00',
-            sourceType: 'HOMEMADE',
-            rating: 4.6,
-            items: [{ customName: null, recipe: { name: '番茄炒蛋' }, store: null }]
-          }])
+        findMany: vi
+          .fn()
+          .mockResolvedValueOnce([
+            {
+              mealType: 'BREAKFAST',
+              recordTime: '08:00',
+              sourceType: 'HOMEMADE',
+              rating: 4.6,
+              items: [{ customName: null, recipe: { name: '番茄炒蛋' }, store: null }]
+            }
+          ])
           .mockResolvedValueOnce([{ recordDate: '2026-08-06', rating: 4.6 }])
       },
       mealPlan: { findMany: vi.fn().mockResolvedValue([]) },
       ingredient: {
-        findMany: vi.fn().mockResolvedValue([{
-          id: 'ingredient-1',
-          name: '西兰花',
-          quantity: 1,
-          unit: 'PIECE',
-          expiryDate: '2999-01-01',
-          minStock: 2
-        }])
+        findMany: vi.fn().mockResolvedValue([
+          {
+            id: 'ingredient-1',
+            name: '西兰花',
+            quantity: 1,
+            unit: 'PIECE',
+            expiryDate: '2999-01-01',
+            minStock: 2
+          }
+        ])
       },
       inventoryLog: { count: vi.fn().mockResolvedValue(2) }
     });

@@ -1,0 +1,37 @@
+.business-card {
+  transition:
+    transform var(--motion-fast) ease,
+    box-shadow var(--motion-fast) ease,
+    border-color var(--motion-fast) ease;
+}
+.business-card:hover {
+  transform: translateY(-2px);
+  border-color: #f2c9d4;
+  box-shadow: 0 12px 30px rgba(151, 83, 104, 0.1);
+}
+.business-card--focused {
+  border-color: var(--color-primary);
+  box-shadow:
+    0 0 0 4px var(--color-primary-soft),
+    var(--shadow-card);
+}
+.business-page .app-card > h2 {
+  color: #57474d;
+}
+.business-page .business-card__actions {
+  justify-content: flex-end;
+}
+.business-page .business-card__actions .app-button {
+  box-shadow: none;
+}
+@media (max-width: 680px) {
+  .business-page .business-hero {
+    border-radius: 20px;
+  }
+  .business-page .app-card {
+    border-radius: 18px;
+  }
+  .business-page .business-card:hover {
+    transform: none;
+  }
+}

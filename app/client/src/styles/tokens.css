@@ -20,8 +20,8 @@
   --color-success-soft: #effaf2;
   --color-focus: #8d4c64;
 
-  --font-family-sans: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", "Segoe UI", Arial, sans-serif;
-  --font-family-display: "PingFang SC", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --font-family-sans: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Segoe UI', Arial, sans-serif;
+  --font-family-display: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
   --font-size-xs: 12px;
   --font-size-sm: 14px;
   --font-size-md: 16px;

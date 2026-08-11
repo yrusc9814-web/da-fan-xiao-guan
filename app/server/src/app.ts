@@ -46,7 +46,7 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   registerErrorHandlers(app);
   registerMaintenanceGuard(app);
   registerPinGuard(app, database);
-  await registerCors(app);
+  await registerCors(app, config.environment);
   await registerHealthRoutes(app, config, database);
   await registerDashboardRoutes(app, database);
   await registerStoreRoutes(app, database);
@@ -75,7 +75,9 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
     });
     app.get('/*', async (request, reply) => {
       if (request.url.startsWith('/api/') || request.url.startsWith('/uploads/')) {
-        return reply.code(404).send({ success: false, data: null, error: { code: 'NOT_FOUND', message: '请求的资源不存在' } });
+        return reply
+          .code(404)
+          .send({ success: false, data: null, error: { code: 'NOT_FOUND', message: '请求的资源不存在' } });
       }
       return reply.sendFile('index.html');
     });

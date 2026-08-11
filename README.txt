@@ -7,4 +7,4 @@
 5. 数据保存在 data\app.db，图片保存在 data\uploads，请勿在服务运行时手工替换。
 6. 可在“设置 → 备份与恢复”导出或恢复完整 ZIP。
 
-开发包未附带 runtime\node.exe 时，需要 Node.js 22+；正式分发包应将兼容运行时放入 runtime\。
+正式分发包必须同时包含 runtime\node.exe、本地生产依赖、Prisma CLI 与迁移文件；启动和迁移均不依赖系统 npm。开发包未附带 runtime\node.exe 时，需要 Node.js 22+。

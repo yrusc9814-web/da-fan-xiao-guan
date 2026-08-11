@@ -16,15 +16,19 @@ function handleKeydown(event: KeyboardEvent): void {
   if (event.key === 'Escape' && props.modelValue) close();
 }
 
-watch(() => props.modelValue, async (isOpen) => {
-  if (isOpen) {
-    document.addEventListener('keydown', handleKeydown);
-    await nextTick();
-    drawerRef.value?.focus();
-  } else {
-    document.removeEventListener('keydown', handleKeydown);
-  }
-}, { immediate: true });
+watch(
+  () => props.modelValue,
+  async (isOpen) => {
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeydown);
+      await nextTick();
+      drawerRef.value?.focus();
+    } else {
+      document.removeEventListener('keydown', handleKeydown);
+    }
+  },
+  { immediate: true }
+);
 
 onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
 </script>

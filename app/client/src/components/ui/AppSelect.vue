@@ -4,17 +4,20 @@ export interface AppSelectOption {
   value: string;
 }
 
-withDefaults(defineProps<{
-  modelValue?: string;
-  label: string;
-  options: AppSelectOption[];
-  disabled?: boolean;
-  error?: string;
-}>(), {
-  modelValue: '',
-  disabled: false,
-  error: ''
-});
+withDefaults(
+  defineProps<{
+    modelValue?: string;
+    label: string;
+    options: AppSelectOption[];
+    disabled?: boolean;
+    error?: string;
+  }>(),
+  {
+    modelValue: '',
+    disabled: false,
+    error: ''
+  }
+);
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 </script>

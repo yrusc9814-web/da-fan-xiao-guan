@@ -17,12 +17,14 @@ export async function registerHealthRoutes(
       return reply.code(503).send(failure('DATABASE_ERROR', '数据库不可用'));
     }
 
-    return reply.send(success({
-      status: 'ok' as const,
-      app: config.appName,
-      version: config.version,
-      database: databaseHealth,
-      timestamp: new Date().toISOString()
-    }));
+    return reply.send(
+      success({
+        status: 'ok' as const,
+        app: config.appName,
+        version: config.version,
+        database: databaseHealth,
+        timestamp: new Date().toISOString()
+      })
+    );
   });
 }

@@ -98,9 +98,16 @@ function validatedStoreData(input: Partial<StoreWriteInput>, requireName: boolea
     data.name = name;
   }
   const textFields = [
-    ['imagePath', '图片路径'], ['address', '地址'], ['storeType', '店铺类型'], ['cuisine', '菜系'],
-    ['contact', '联系方式'], ['businessHours', '营业时间'], ['recommendedDishes', '推荐菜品'],
-    ['avoidDishes', '不推荐菜品'], ['tagsText', '标签'], ['notes', '备注']
+    ['imagePath', '图片路径'],
+    ['address', '地址'],
+    ['storeType', '店铺类型'],
+    ['cuisine', '菜系'],
+    ['contact', '联系方式'],
+    ['businessHours', '营业时间'],
+    ['recommendedDishes', '推荐菜品'],
+    ['avoidDishes', '不推荐菜品'],
+    ['tagsText', '标签'],
+    ['notes', '备注']
   ] as const;
   for (const [key, label] of textFields) {
     if (input[key] !== undefined) data[key] = cleanedText(input[key], label);
@@ -143,9 +150,15 @@ function activeRecordWhere(since?: string): Prisma.MealRecordItemWhereInput {
 }
 
 function baseStoreWhere(query: StoreListQuery): Prisma.StoreWhereInput {
-  if (query.minAverageCost !== undefined && query.minAverageCost < 0) throw new StoreRequestError('最低人均消费不能为负数');
-  if (query.maxAverageCost !== undefined && query.maxAverageCost < 0) throw new StoreRequestError('最高人均消费不能为负数');
-  if (query.minAverageCost !== undefined && query.maxAverageCost !== undefined && query.minAverageCost > query.maxAverageCost) {
+  if (query.minAverageCost !== undefined && query.minAverageCost < 0)
+    throw new StoreRequestError('最低人均消费不能为负数');
+  if (query.maxAverageCost !== undefined && query.maxAverageCost < 0)
+    throw new StoreRequestError('最高人均消费不能为负数');
+  if (
+    query.minAverageCost !== undefined &&
+    query.maxAverageCost !== undefined &&
+    query.minAverageCost > query.maxAverageCost
+  ) {
     throw new StoreRequestError('最低人均消费不能高于最高人均消费');
   }
   if (query.minRating !== undefined && (query.minRating < 0 || query.minRating > 5)) {
@@ -161,18 +174,26 @@ function baseStoreWhere(query: StoreListQuery): Prisma.StoreWhereInput {
     ...(query.storeType ? { storeType: { contains: query.storeType.trim() } } : {}),
     ...(query.cuisine ? { cuisine: { contains: query.cuisine.trim() } } : {}),
     ...(query.favorite !== undefined ? { favorite: query.favorite } : {}),
-    ...(query.minAverageCost !== undefined || query.maxAverageCost !== undefined ? {
-      averageCost: { gte: query.minAverageCost, lte: query.maxAverageCost }
-    } : {}),
+    ...(query.minAverageCost !== undefined || query.maxAverageCost !== undefined
+      ? {
+          averageCost: { gte: query.minAverageCost, lte: query.maxAverageCost }
+        }
+      : {}),
     ...(query.minRating !== undefined ? { rating: { gte: query.minRating } } : {}),
     ...(mealTypes.length ? { mealTypes: { some: { mealType: { in: mealTypes } } } } : {}),
     ...(tags.length ? { AND: tags.map((tag) => ({ tagsText: { contains: tag } })) } : {}),
-    ...(search ? {
-      OR: [
-        { name: { contains: search } }, { storeType: { contains: search } }, { cuisine: { contains: search } },
-        { recommendedDishes: { contains: search } }, { avoidDishes: { contains: search } }, { tagsText: { contains: search } }
-      ]
-    } : {})
+    ...(search
+      ? {
+          OR: [
+            { name: { contains: search } },
+            { storeType: { contains: search } },
+            { cuisine: { contains: search } },
+            { recommendedDishes: { contains: search } },
+            { avoidDishes: { contains: search } },
+            { tagsText: { contains: search } }
+          ]
+        }
+      : {})
   };
   if (query.recentlyEaten !== undefined) {
     const relation = activeRecordWhere(startBusinessDate(query.recentDays ?? RECENT_DAYS_DEFAULT));
@@ -189,10 +210,18 @@ const storeInclude = {
   }
 } satisfies Prisma.StoreInclude;
 
-function mapStore<T extends { mealTypes: Array<{ mealType: MealType }>; recordItems: Array<{ mealRecord: { id: string; recordDate: string } }> }>(store: T) {
-  const recordDates = store.recordItems.map((item) => item.mealRecord.recordDate).sort().reverse();
+function mapStore<
+  T extends {
+    mealTypes: Array<{ mealType: MealType }>;
+    recordItems: Array<{ mealRecord: { id: string; recordDate: string } }>;
+  }
+>(store: T) {
+  const recordDates = store.recordItems
+    .map((item) => item.mealRecord.recordDate)
+    .sort()
+    .reverse();
   const recordIds = new Set(store.recordItems.map((item) => item.mealRecord.id));
-  const { recordItems, ...rest } = store;
+  const { recordItems: _recordItems, ...rest } = store;
   return {
     ...rest,
     mealTypes: store.mealTypes.map(({ mealType }) => mealType),
@@ -227,9 +256,10 @@ export async function listStores(database: PrismaClient, query: StoreListQuery =
   const where = baseStoreWhere(query);
   const sortBy = query.sortBy ?? 'updatedAt';
   const sortOrder = query.sortOrder ?? 'desc';
-  const orderBy = sortBy === 'lastEaten'
-    ? { updatedAt: sortOrder }
-    : { [sortBy]: sortOrder } as Prisma.StoreOrderByWithRelationInput;
+  const orderBy =
+    sortBy === 'lastEaten'
+      ? { updatedAt: sortOrder }
+      : ({ [sortBy]: sortOrder } as Prisma.StoreOrderByWithRelationInput);
   if (sortBy === 'lastEaten') {
     const stores = await database.store.findMany({ where, include: storeInclude });
     const mapped = stores.map(mapStore).sort((a, b) => {
@@ -257,7 +287,15 @@ export async function getStore(database: PrismaClient, id: string) {
   const relatedRecords = await database.mealRecord.findMany({
     where: { deletedAt: null, status: 'CONFIRMED', items: { some: { storeId: id } } },
     orderBy: [{ recordDate: 'desc' }, { recordTime: 'desc' }],
-    select: { id: true, recordDate: true, recordTime: true, mealType: true, sourceType: true, rating: true, notes: true }
+    select: {
+      id: true,
+      recordDate: true,
+      recordTime: true,
+      mealType: true,
+      sourceType: true,
+      rating: true,
+      notes: true
+    }
   });
   return { ...mapStore(store), relatedRecords };
 }
@@ -269,18 +307,30 @@ export async function updateStore(database: PrismaClient, id: string, input: Sto
   return database.$transaction(async (transaction) => {
     const current = await activeStoreOrThrow(transaction, id);
     if (current.version !== input.version) {
-      throw new VersionConflictError({ entity: 'Store', id, expectedVersion: input.version, actualVersion: current.version });
+      throw new VersionConflictError({
+        entity: 'Store',
+        id,
+        expectedVersion: input.version,
+        actualVersion: current.version
+      });
     }
     const result = await transaction.store.updateMany({
-      where: { id, deletedAt: null, version: input.version }, data: { ...data, version: { increment: 1 } }
+      where: { id, deletedAt: null, version: input.version },
+      data: { ...data, version: { increment: 1 } }
     });
     if (result.count !== 1) {
       const latest = await activeStoreOrThrow(transaction, id);
-      throw new VersionConflictError({ entity: 'Store', id, expectedVersion: input.version, actualVersion: latest.version });
+      throw new VersionConflictError({
+        entity: 'Store',
+        id,
+        expectedVersion: input.version,
+        actualVersion: latest.version
+      });
     }
     if (mealTypes !== undefined) {
       await transaction.storeMealType.deleteMany({ where: { storeId: id } });
-      if (mealTypes.length) await transaction.storeMealType.createMany({ data: mealTypes.map((mealType) => ({ storeId: id, mealType })) });
+      if (mealTypes.length)
+        await transaction.storeMealType.createMany({ data: mealTypes.map((mealType) => ({ storeId: id, mealType })) });
     }
     const updated = await transaction.store.findUniqueOrThrow({ where: { id }, include: storeInclude });
     return mapStore(updated);
@@ -303,7 +353,8 @@ export async function deleteStore(database: PrismaClient, id: string, version: n
     const expiresAt = new Date(deletedAt);
     expiresAt.setDate(expiresAt.getDate() + 30);
     const result = await transaction.store.updateMany({
-      where: { id, deletedAt: null, version }, data: { deletedAt, version: { increment: 1 } }
+      where: { id, deletedAt: null, version },
+      data: { deletedAt, version: { increment: 1 } }
     });
     if (result.count !== 1) {
       const latest = await activeStoreOrThrow(transaction, id);
@@ -315,13 +366,17 @@ export async function deleteStore(database: PrismaClient, id: string, version: n
 }
 
 function keywordList(values: Array<string | null | undefined>): string {
-  return values.filter((value): value is string => Boolean(value)).join(' ').toLocaleLowerCase('zh-CN');
+  return values
+    .filter((value): value is string => Boolean(value))
+    .join(' ')
+    .toLocaleLowerCase('zh-CN');
 }
 
 export async function listStoreCandidates(database: PrismaClient, query: StoreCandidateQuery = {}) {
   const mealTypes = validateMealTypes(query.mealTypes);
   const acquisitionModes = [...new Set(query.acquisitionModes ?? [])];
-  if (acquisitionModes.some((mode) => mode !== 'DINE_IN' && mode !== 'TAKEOUT')) throw new StoreRequestError('获取方式无效');
+  if (acquisitionModes.some((mode) => mode !== 'DINE_IN' && mode !== 'TAKEOUT'))
+    throw new StoreRequestError('获取方式无效');
   if (query.repeatDays !== undefined && (!Number.isInteger(query.repeatDays) || query.repeatDays < 0)) {
     throw new StoreRequestError('不重复天数必须是非负整数');
   }
@@ -329,37 +384,58 @@ export async function listStoreCandidates(database: PrismaClient, query: StoreCa
   const diners = query.dinerIds?.length
     ? await database.diner.findMany({ where: { id: { in: query.dinerIds }, active: true } })
     : [];
-  const dinerBlocked = diners.flatMap((diner) => [diner.dislikesText, diner.tabooText, diner.allergyText])
+  const dinerBlocked = diners
+    .flatMap((diner) => [diner.dislikesText, diner.tabooText, diner.allergyText])
     .filter((value): value is string => Boolean(value))
     .flatMap((value) => value.split(/[,，;；\n]/))
     .map((value) => value.trim().toLocaleLowerCase('zh-CN'))
     .filter(Boolean);
   const blocked = [...(query.unwantedKeywords ?? []), ...dinerBlocked]
-    .map((value) => value.trim().toLocaleLowerCase('zh-CN')).filter(Boolean);
+    .map((value) => value.trim().toLocaleLowerCase('zh-CN'))
+    .filter(Boolean);
   const wanted = (query.wantedKeywords ?? []).map((value) => value.trim().toLocaleLowerCase('zh-CN')).filter(Boolean);
   const where: Prisma.StoreWhereInput = {
     deletedAt: null,
     ...(query.favoriteOnly ? { favorite: true } : {}),
     ...(mealTypes.length ? { mealTypes: { some: { mealType: { in: mealTypes } } } } : {}),
-    ...(acquisitionModes.length ? {
-      OR: acquisitionModes.map((mode) => mode === 'DINE_IN' ? { supportsDineIn: true } : { supportsTakeout: true })
-    } : {}),
+    ...(acquisitionModes.length
+      ? {
+          OR: acquisitionModes.map((mode) =>
+            mode === 'DINE_IN' ? { supportsDineIn: true } : { supportsTakeout: true }
+          )
+        }
+      : {}),
     ...(repeatSince ? { recordItems: { none: activeRecordWhere(repeatSince) } } : {})
   };
   const stores = await database.store.findMany({ where, include: storeInclude });
-  return stores.map(mapStore).flatMap((store) => {
-    const haystack = keywordList([
-      store.name, store.storeType, store.cuisine, store.recommendedDishes, store.tagsText
-    ]);
-    if (blocked.some((keyword) => haystack.includes(keyword))) return [];
-    const matchedWantedKeywords = wanted.filter((keyword) => haystack.includes(keyword));
-    let score = (store.rating ?? 0) * 4;
-    const reasons: string[] = [];
-    if (store.favorite) { score += 20; reasons.push('已收藏'); }
-    if (matchedWantedKeywords.length) { score += matchedWantedKeywords.length * 15; reasons.push('命中想吃关键词'); }
-    if (!store.lastEatenDate) { score += 10; reasons.push('还没吃过'); }
-    else reasons.push(`最近食用 ${store.lastEatenDate}`);
-    if (store.rating !== null) reasons.push(`个人评分 ${store.rating}`);
-    return [{ ...store, score, matchedWantedKeywords, reasons }];
-  }).sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'zh-CN'));
+  return stores
+    .map(mapStore)
+    .flatMap((store) => {
+      const haystack = keywordList([
+        store.name,
+        store.storeType,
+        store.cuisine,
+        store.recommendedDishes,
+        store.tagsText
+      ]);
+      if (blocked.some((keyword) => haystack.includes(keyword))) return [];
+      const matchedWantedKeywords = wanted.filter((keyword) => haystack.includes(keyword));
+      let score = (store.rating ?? 0) * 4;
+      const reasons: string[] = [];
+      if (store.favorite) {
+        score += 20;
+        reasons.push('已收藏');
+      }
+      if (matchedWantedKeywords.length) {
+        score += matchedWantedKeywords.length * 15;
+        reasons.push('命中想吃关键词');
+      }
+      if (!store.lastEatenDate) {
+        score += 10;
+        reasons.push('还没吃过');
+      } else reasons.push(`最近食用 ${store.lastEatenDate}`);
+      if (store.rating !== null) reasons.push(`个人评分 ${store.rating}`);
+      return [{ ...store, score, matchedWantedKeywords, reasons }];
+    })
+    .sort((a, b) => b.score - a.score || a.name.localeCompare(b.name, 'zh-CN'));
 }

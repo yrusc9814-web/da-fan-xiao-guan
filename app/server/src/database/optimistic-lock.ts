@@ -15,12 +15,7 @@ export class VersionConflictError extends Error {
   }
 }
 
-export function assertVersion(
-  entity: string,
-  id: string,
-  expectedVersion: number,
-  actualVersion: number
-): void {
+export function assertVersion(entity: string, id: string, expectedVersion: number, actualVersion: number): void {
   if (expectedVersion !== actualVersion) {
     throw new VersionConflictError({
       entity,

@@ -23,17 +23,23 @@ describe('食用者 API', () => {
 
   it('创建、读取、搜索和更新食用者', async () => {
     const createdResponse = await app.inject({
-      method: 'POST', url: '/api/v1/diners',
+      method: 'POST',
+      url: '/api/v1/diners',
       payload: { name: '节点B食用者甲', likesText: '清淡', tabooText: '香菜', portionNote: '小份' }
     });
     expect(createdResponse.statusCode).toBe(201);
     const created = createdResponse.json().data;
 
-    const list = await app.inject({ method: 'GET', url: '/api/v1/diners?search=%E8%8A%82%E7%82%B9B%E9%A3%9F%E7%94%A8%E8%80%85%E7%94%B2&active=true' });
+    const list = await app.inject({
+      method: 'GET',
+      url: '/api/v1/diners?search=%E8%8A%82%E7%82%B9B%E9%A3%9F%E7%94%A8%E8%80%85%E7%94%B2&active=true'
+    });
     expect(list.json().data.items.map((diner: { id: string }) => diner.id)).toContain(created.id);
 
     const update = await app.inject({
-      method: 'PUT', url: `/api/v1/diners/${created.id}`, payload: { allergyText: '花生', version: 1 }
+      method: 'PUT',
+      url: `/api/v1/diners/${created.id}`,
+      payload: { allergyText: '花生', version: 1 }
     });
     expect(update.statusCode).toBe(200);
     expect(update.json().data).toMatchObject({ allergyText: '花生', version: 2 });
@@ -45,7 +51,11 @@ describe('食用者 API', () => {
   it('过期版本更新返回 409', async () => {
     const diner = await database.diner.create({ data: { name: '节点B并发食用者' } });
     await app.inject({ method: 'PUT', url: `/api/v1/diners/${diner.id}`, payload: { notes: '第一次', version: 1 } });
-    const conflict = await app.inject({ method: 'PUT', url: `/api/v1/diners/${diner.id}`, payload: { notes: '过期', version: 1 } });
+    const conflict = await app.inject({
+      method: 'PUT',
+      url: `/api/v1/diners/${diner.id}`,
+      payload: { notes: '过期', version: 1 }
+    });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json().error.code).toBe('VERSION_CONFLICT');
   });

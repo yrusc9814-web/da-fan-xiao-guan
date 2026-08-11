@@ -1,10 +1,6 @@
 import type { PrismaClient } from '@prisma/client';
 
-import type {
-  DashboardCalendarDay,
-  DashboardDto,
-  DashboardMealSlot
-} from '../../../../shared/types/dashboard.js';
+import type { DashboardCalendarDay, DashboardDto, DashboardMealSlot } from '../../../../shared/types/dashboard.js';
 
 const mealSlots: Array<{ mealType: DashboardMealSlot['mealType']; label: string }> = [
   { mealType: 'BREAKFAST', label: '早餐' },
@@ -58,11 +54,7 @@ function toCalendarDays(
     const date = new Date(weekStart);
     date.setDate(weekStart.getDate() + index);
     const businessDate = toBusinessDate(date);
-    const status = recordedDates.has(businessDate)
-      ? 'recorded'
-      : plannedDates.has(businessDate)
-        ? 'planned'
-        : 'empty';
+    const status = recordedDates.has(businessDate) ? 'recorded' : plannedDates.has(businessDate) ? 'planned' : 'empty';
 
     return {
       date: businessDate,
@@ -117,7 +109,11 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
       select: { recordDate: true, rating: true }
     }),
     database.mealPlan.findMany({
-      where: { planDate: { gte: weekStartDate, lte: weekEndDate }, status: { in: ['PLANNED', 'COMPLETED'] }, deletedAt: null },
+      where: {
+        planDate: { gte: weekStartDate, lte: weekEndDate },
+        status: { in: ['PLANNED', 'COMPLETED'] },
+        deletedAt: null
+      },
       select: { planDate: true }
     }),
     database.ingredient.findMany({ where: { deletedAt: null }, orderBy: { expiryDate: 'asc' } }),
@@ -130,7 +126,11 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
   expiringLimit.setDate(expiringLimit.getDate() + 3);
   const expiringLimitDate = toBusinessDate(expiringLimit);
   const expiringIngredients = ingredients
-    .filter((ingredient) => Boolean(ingredient.expiryDate && ingredient.expiryDate >= currentDate && ingredient.expiryDate <= expiringLimitDate))
+    .filter((ingredient) =>
+      Boolean(
+        ingredient.expiryDate && ingredient.expiryDate >= currentDate && ingredient.expiryDate <= expiringLimitDate
+      )
+    )
     .slice(0, 5)
     .map((ingredient) => ({
       id: ingredient.id,
@@ -139,7 +139,9 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
       quantity: ingredient.quantity,
       unit: ingredient.unit
     }));
-  const insufficient = ingredients.filter((ingredient) => ingredient.minStock !== null && ingredient.quantity < ingredient.minStock).length;
+  const insufficient = ingredients.filter(
+    (ingredient) => ingredient.minStock !== null && ingredient.quantity < ingredient.minStock
+  ).length;
 
   const todayRecordMap = new Map(todayRecords.map((record) => [record.mealType, record]));
   const dashboardRecords = mealSlots.map(({ mealType, label }) => {
@@ -161,9 +163,10 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
   const ratedRecords = weekRecords.filter((record) => record.rating !== null);
   const recordedDates = new Set(weekRecords.map((record) => record.recordDate));
   const plannedDateSet = new Set(plannedDays.map((plan) => plan.planDate));
-  const averageRating = ratedRecords.length > 0
-    ? Number((ratedRecords.reduce((sum, record) => sum + (record.rating ?? 0), 0) / ratedRecords.length).toFixed(1))
-    : null;
+  const averageRating =
+    ratedRecords.length > 0
+      ? Number((ratedRecords.reduce((sum, record) => sum + (record.rating ?? 0), 0) / ratedRecords.length).toFixed(1))
+      : null;
 
   return {
     generatedAt: new Date().toISOString(),
@@ -180,9 +183,10 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
         .filter((item) => item.mealRecord.deletedAt === null)
         .map((item) => item.mealRecord.rating)
         .filter((rating): rating is number => rating !== null);
-      const rating = ratings.length > 0
-        ? Number((ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1))
-        : null;
+      const rating =
+        ratings.length > 0
+          ? Number((ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1))
+          : null;
 
       return {
         id: recipe.id,
@@ -207,8 +211,9 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
       consumedIngredientCount: consumedLogs
     },
     calendarDays: toCalendarDays(now, recordedDates, plannedDateSet),
-    tip: expiringIngredients.length > 0
-      ? '优先消耗即将到期的食材，让每一份新鲜都不被浪费。'
-      : '记得记录今天吃过的每一餐，慢慢找到适合自己的节奏。'
+    tip:
+      expiringIngredients.length > 0
+        ? '优先消耗即将到期的食材，让每一份新鲜都不被浪费。'
+        : '记得记录今天吃过的每一餐，慢慢找到适合自己的节奏。'
   };
 }

@@ -3,15 +3,25 @@ import type { ApiResponse, DashboardDto } from '../../../shared/types';
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL ?? '/api';
 const pinTokenKey = 'dafan-pin-token';
-export function setPinToken(token: string | null): void { if (token) localStorage.setItem(pinTokenKey, token); else localStorage.removeItem(pinTokenKey); }
-export function getPinToken(): string | null { return localStorage.getItem(pinTokenKey); }
+export function setPinToken(token: string | null): void {
+  if (token) localStorage.setItem(pinTokenKey, token);
+  else localStorage.removeItem(pinTokenKey);
+}
+export function getPinToken(): string | null {
+  return localStorage.getItem(pinTokenKey);
+}
 
 export class ApiRequestError extends Error {
   readonly status: number;
   readonly code: string;
   readonly details?: Record<string, string | number | boolean | null>;
 
-  constructor(status: number, code: string, message: string, details?: Record<string, string | number | boolean | null>) {
+  constructor(
+    status: number,
+    code: string,
+    message: string,
+    details?: Record<string, string | number | boolean | null>
+  ) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
@@ -39,7 +49,12 @@ export async function apiRequest<T>(
   const payload = (await response.json()) as ApiResponse<T>;
   if (!response.ok || !payload.success) {
     const error = payload.success ? null : payload.error;
-    throw new ApiRequestError(response.status, error?.code ?? 'INTERNAL_ERROR', error?.message ?? '请求失败', error?.details);
+    throw new ApiRequestError(
+      response.status,
+      error?.code ?? 'INTERNAL_ERROR',
+      error?.message ?? '请求失败',
+      error?.details
+    );
   }
   return payload.data;
 }
@@ -58,4 +73,18 @@ export async function fetchHealth(): Promise<HealthResponse['data']> {
 
 export async function fetchDashboard(): Promise<DashboardDto> {
   return apiRequest<DashboardDto>('/dashboard');
+}
+
+export interface CalendarDayDto {
+  date: string;
+  hasPlans: boolean;
+  hasRecords: boolean;
+  hasDrafts: boolean;
+}
+
+export async function fetchCalendar(
+  start: string,
+  end: string
+): Promise<{ start: string; end: string; days: CalendarDayDto[] }> {
+  return apiRequest('/calendar', { query: { start, end } });
 }

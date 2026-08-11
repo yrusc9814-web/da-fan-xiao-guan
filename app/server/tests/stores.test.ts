@@ -25,11 +25,20 @@ describe('店铺与觅食 API', () => {
 
   it('创建完整店铺并映射餐次，支持到店/外卖、搜索、筛选和分页', async () => {
     const createResponse = await app.inject({
-      method: 'POST', url: '/api/v1/stores',
+      method: 'POST',
+      url: '/api/v1/stores',
       payload: {
-        name: '节点B川味小馆', storeType: '餐馆', cuisine: '川菜', averageCost: 68,
-        supportsDineIn: true, supportsTakeout: true, rating: 4.7, recommendedDishes: '水煮鱼',
-        tagsText: '辣,下饭', favorite: true, mealTypes: [MealType.LUNCH, MealType.DINNER]
+        name: '节点B川味小馆',
+        storeType: '餐馆',
+        cuisine: '川菜',
+        averageCost: 68,
+        supportsDineIn: true,
+        supportsTakeout: true,
+        rating: 4.7,
+        recommendedDishes: '水煮鱼',
+        tagsText: '辣,下饭',
+        favorite: true,
+        mealTypes: [MealType.LUNCH, MealType.DINNER]
       }
     });
     expect(createResponse.statusCode).toBe(201);
@@ -52,13 +61,17 @@ describe('店铺与觅食 API', () => {
     const store = await database.store.create({ data: { name: '节点B历史店' } });
     await database.mealRecord.create({
       data: {
-        recordDate: '2026-08-09', mealType: MealType.DINNER, sourceType: RecordSourceType.DINE_IN,
+        recordDate: '2026-08-09',
+        mealType: MealType.DINNER,
+        sourceType: RecordSourceType.DINE_IN,
         items: { create: { itemType: RecordItemType.STORE, storeId: store.id } }
       }
     });
     await database.mealRecord.create({
       data: {
-        recordDate: '2026-08-10', mealType: MealType.LUNCH, sourceType: RecordSourceType.TAKEOUT,
+        recordDate: '2026-08-10',
+        mealType: MealType.LUNCH,
+        sourceType: RecordSourceType.TAKEOUT,
         items: { create: { itemType: RecordItemType.STORE, storeId: store.id } }
       }
     });
@@ -72,13 +85,17 @@ describe('店铺与觅食 API', () => {
   it('收藏和更新使用乐观锁，旧版本返回 409', async () => {
     const store = await database.store.create({ data: { name: '节点B收藏店' } });
     const favorite = await app.inject({
-      method: 'POST', url: `/api/v1/stores/${store.id}/favorite`, payload: { favorite: true, version: 1 }
+      method: 'POST',
+      url: `/api/v1/stores/${store.id}/favorite`,
+      payload: { favorite: true, version: 1 }
     });
     expect(favorite.statusCode).toBe(200);
     expect(favorite.json().data).toMatchObject({ favorite: true, version: 2 });
 
     const conflict = await app.inject({
-      method: 'PUT', url: `/api/v1/stores/${store.id}`, payload: { name: '被过期更新', version: 1 }
+      method: 'PUT',
+      url: `/api/v1/stores/${store.id}`,
+      payload: { name: '被过期更新', version: 1 }
     });
     expect(conflict.statusCode).toBe(409);
     expect(conflict.json().error.code).toBe('VERSION_CONFLICT');
@@ -92,7 +109,9 @@ describe('店铺与觅食 API', () => {
     expect(response.json().data.version).toBe(2);
 
     const persisted = await database.store.findUniqueOrThrow({ where: { id: store.id } });
-    const deletedItem = await database.deletedItem.findFirstOrThrow({ where: { entityType: 'Store', entityId: store.id } });
+    const deletedItem = await database.deletedItem.findFirstOrThrow({
+      where: { entityType: 'Store', entityId: store.id }
+    });
     expect(persisted.deletedAt).not.toBeNull();
     expect(Math.round((deletedItem.expiresAt!.getTime() - deletedItem.deletedAt.getTime()) / 86_400_000)).toBe(30);
     expect((await app.inject({ method: 'GET', url: `/api/v1/stores/${store.id}` })).statusCode).toBe(404);
@@ -102,31 +121,43 @@ describe('店铺与觅食 API', () => {
     const diner = await database.diner.create({ data: { name: '节点B过敏用户', allergyText: '花生' } });
     const eligible = await database.store.create({
       data: {
-        name: '节点B清淡粥店', cuisine: '粤菜', supportsTakeout: true, favorite: true, rating: 4.5,
+        name: '节点B清淡粥店',
+        cuisine: '粤菜',
+        supportsTakeout: true,
+        favorite: true,
+        rating: 4.5,
         mealTypes: { create: { mealType: MealType.BREAKFAST } }
       }
     });
     await database.store.create({
       data: {
-        name: '节点B花生面店', recommendedDishes: '花生拌面', supportsTakeout: true,
+        name: '节点B花生面店',
+        recommendedDishes: '花生拌面',
+        supportsTakeout: true,
         mealTypes: { create: { mealType: MealType.BREAKFAST } }
       }
     });
     const recent = await database.store.create({
       data: {
-        name: '节点B最近吃过店', supportsTakeout: true,
+        name: '节点B最近吃过店',
+        supportsTakeout: true,
         mealTypes: { create: { mealType: MealType.BREAKFAST } }
       }
     });
     await database.mealRecord.create({
       data: {
-        recordDate: '2026-08-11', mealType: MealType.BREAKFAST, sourceType: RecordSourceType.TAKEOUT,
+        recordDate: '2026-08-11',
+        mealType: MealType.BREAKFAST,
+        sourceType: RecordSourceType.TAKEOUT,
         items: { create: { itemType: RecordItemType.STORE, storeId: recent.id } }
       }
     });
 
     const candidates = await listStoreCandidates(database, {
-      acquisitionModes: ['TAKEOUT'], mealTypes: [MealType.BREAKFAST], dinerIds: [diner.id], repeatDays: 3,
+      acquisitionModes: ['TAKEOUT'],
+      mealTypes: [MealType.BREAKFAST],
+      dinerIds: [diner.id],
+      repeatDays: 3,
       wantedKeywords: ['粤菜']
     });
     expect(candidates.map((candidate) => candidate.id)).toContain(eligible.id);
@@ -137,7 +168,9 @@ describe('店铺与觅食 API', () => {
 
   it('拒绝非法评分和人均消费', async () => {
     const response = await app.inject({
-      method: 'POST', url: '/api/v1/stores', payload: { name: '节点B非法店', rating: 6, averageCost: -1 }
+      method: 'POST',
+      url: '/api/v1/stores',
+      payload: { name: '节点B非法店', rating: 6, averageCost: -1 }
     });
     expect(response.statusCode).toBe(400);
     expect(response.json().error.code).toBe('VALIDATION_ERROR');

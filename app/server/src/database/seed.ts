@@ -11,12 +11,42 @@ function addDays(date: Date, days: number): Date {
 }
 
 const recipeSeeds = [
-  { id: 'dev-recipe-tomato-eggs', name: '番茄炒蛋', imagePath: 'tomato-eggs.png', cookingTimeMinutes: 15, tags: ['家常菜', '快手菜'] },
-  { id: 'dev-recipe-steamed-fish', name: '清蒸鲈鱼', imagePath: 'steamed-fish.png', cookingTimeMinutes: 25, tags: ['低脂', '高蛋白'] },
-  { id: 'dev-recipe-broccoli', name: '蒜蓉西兰花', imagePath: 'broccoli.png', cookingTimeMinutes: 10, tags: ['素食', '减脂'] },
-  { id: 'dev-recipe-braised-ribs', name: '红烧排骨', imagePath: 'braised-ribs.png', cookingTimeMinutes: 40, tags: ['下饭菜', '家常菜'] },
+  {
+    id: 'dev-recipe-tomato-eggs',
+    name: '番茄炒蛋',
+    imagePath: 'tomato-eggs.png',
+    cookingTimeMinutes: 15,
+    tags: ['家常菜', '快手菜']
+  },
+  {
+    id: 'dev-recipe-steamed-fish',
+    name: '清蒸鲈鱼',
+    imagePath: 'steamed-fish.png',
+    cookingTimeMinutes: 25,
+    tags: ['低脂', '高蛋白']
+  },
+  {
+    id: 'dev-recipe-broccoli',
+    name: '蒜蓉西兰花',
+    imagePath: 'broccoli.png',
+    cookingTimeMinutes: 10,
+    tags: ['素食', '减脂']
+  },
+  {
+    id: 'dev-recipe-braised-ribs',
+    name: '红烧排骨',
+    imagePath: 'braised-ribs.png',
+    cookingTimeMinutes: 40,
+    tags: ['下饭菜', '家常菜']
+  },
   { id: 'dev-recipe-tofu', name: '麻婆豆腐', imagePath: 'tofu.png', cookingTimeMinutes: 20, tags: ['川菜', '下饭菜'] },
-  { id: 'dev-recipe-shrimp', name: '虾仁炒时蔬', imagePath: 'shrimp.png', cookingTimeMinutes: 15, tags: ['低脂', '高蛋白'] }
+  {
+    id: 'dev-recipe-shrimp',
+    name: '虾仁炒时蔬',
+    imagePath: 'shrimp.png',
+    cookingTimeMinutes: 15,
+    tags: ['低脂', '高蛋白']
+  }
 ] as const;
 
 export async function seedDevelopmentData(database: PrismaClient): Promise<void> {
@@ -69,12 +99,36 @@ export async function seedDevelopmentData(database: PrismaClient): Promise<void>
     { id: 'dev-ingredient-tomato', name: '番茄', quantity: 1, minStock: 3, expiryDate: businessDate(expiryDates[3]) },
     { id: 'dev-ingredient-tofu', name: '豆腐', quantity: 1, minStock: 2, expiryDate: businessDate(expiryDates[4]) },
     { id: 'dev-ingredient-rice', name: '大米', quantity: 1, minStock: 2, expiryDate: businessDate(addDays(today, 5)) },
-    { id: 'dev-ingredient-carrot', name: '胡萝卜', quantity: 1, minStock: 2, expiryDate: businessDate(addDays(today, 6)) },
-    { id: 'dev-ingredient-mushroom', name: '香菇', quantity: 1, minStock: 2, expiryDate: businessDate(addDays(today, 7)) },
-    { id: 'dev-ingredient-cucumber', name: '黄瓜', quantity: 2, minStock: 2, expiryDate: businessDate(addDays(today, 8)) },
+    {
+      id: 'dev-ingredient-carrot',
+      name: '胡萝卜',
+      quantity: 1,
+      minStock: 2,
+      expiryDate: businessDate(addDays(today, 6))
+    },
+    {
+      id: 'dev-ingredient-mushroom',
+      name: '香菇',
+      quantity: 1,
+      minStock: 2,
+      expiryDate: businessDate(addDays(today, 7))
+    },
+    {
+      id: 'dev-ingredient-cucumber',
+      name: '黄瓜',
+      quantity: 2,
+      minStock: 2,
+      expiryDate: businessDate(addDays(today, 8))
+    },
     { id: 'dev-ingredient-corn', name: '玉米', quantity: 2, minStock: 2, expiryDate: businessDate(addDays(today, 9)) },
     { id: 'dev-ingredient-pork', name: '排骨', quantity: 2, minStock: 2, expiryDate: businessDate(addDays(today, 10)) },
-    { id: 'dev-ingredient-shrimp', name: '虾仁', quantity: 3, minStock: 3, expiryDate: businessDate(addDays(today, 11)) }
+    {
+      id: 'dev-ingredient-shrimp',
+      name: '虾仁',
+      quantity: 3,
+      minStock: 3,
+      expiryDate: businessDate(addDays(today, 11))
+    }
   ] as const;
 
   for (const ingredient of ingredientSeeds) {
@@ -100,18 +154,114 @@ export async function seedDevelopmentData(database: PrismaClient): Promise<void>
   }
 
   const recordSeeds = [
-    { id: 'dev-record-breakfast', dayOffset: 0, mealType: 'BREAKFAST' as const, recordTime: '08:00', recipeId: 'dev-recipe-tomato-eggs', title: '燕麦粥、水煮蛋、苹果', rating: 4.6 },
-    { id: 'dev-record-lunch', dayOffset: 0, mealType: 'LUNCH' as const, recordTime: '12:30', recipeId: 'dev-recipe-braised-ribs', title: '红烧排骨、米饭、清炒时蔬', rating: 4.8 },
-    { id: 'dev-record-yesterday-breakfast', dayOffset: 1, mealType: 'BREAKFAST' as const, recordTime: '08:10', recipeId: 'dev-recipe-tomato-eggs', title: '番茄炒蛋', rating: 4.6 },
-    { id: 'dev-record-yesterday-lunch', dayOffset: 1, mealType: 'LUNCH' as const, recordTime: '12:20', recipeId: 'dev-recipe-broccoli', title: '蒜蓉西兰花', rating: 4.5 },
-    { id: 'dev-record-yesterday-dinner', dayOffset: 1, mealType: 'DINNER' as const, recordTime: '18:40', recipeId: 'dev-recipe-tofu', title: '麻婆豆腐', rating: 4.6 },
-    { id: 'dev-record-two-days-breakfast', dayOffset: 2, mealType: 'BREAKFAST' as const, recordTime: '08:00', recipeId: 'dev-recipe-steamed-fish', title: '清蒸鲈鱼', rating: 4.6 },
-    { id: 'dev-record-two-days-dinner', dayOffset: 2, mealType: 'DINNER' as const, recordTime: '18:30', recipeId: 'dev-recipe-shrimp', title: '虾仁炒时蔬', rating: 4.6 },
-    { id: 'dev-record-three-days-lunch', dayOffset: 3, mealType: 'LUNCH' as const, recordTime: '12:00', recipeId: 'dev-recipe-braised-ribs', title: '红烧排骨', rating: 4.8 },
-    { id: 'dev-record-three-days-dinner', dayOffset: 3, mealType: 'DINNER' as const, recordTime: '19:00', recipeId: 'dev-recipe-tofu', title: '麻婆豆腐', rating: 4.6 },
-    { id: 'dev-record-four-days-breakfast', dayOffset: 4, mealType: 'BREAKFAST' as const, recordTime: '08:20', recipeId: 'dev-recipe-tomato-eggs', title: '番茄炒蛋', rating: 4.6 },
-    { id: 'dev-record-four-days-lunch', dayOffset: 4, mealType: 'LUNCH' as const, recordTime: '12:40', recipeId: 'dev-recipe-broccoli', title: '蒜蓉西兰花', rating: 4.5 },
-    { id: 'dev-record-four-days-dinner', dayOffset: 4, mealType: 'DINNER' as const, recordTime: '18:50', recipeId: 'dev-recipe-steamed-fish', title: '清蒸鲈鱼', rating: 4.6 }
+    {
+      id: 'dev-record-breakfast',
+      dayOffset: 0,
+      mealType: 'BREAKFAST' as const,
+      recordTime: '08:00',
+      recipeId: 'dev-recipe-tomato-eggs',
+      title: '燕麦粥、水煮蛋、苹果',
+      rating: 4.6
+    },
+    {
+      id: 'dev-record-lunch',
+      dayOffset: 0,
+      mealType: 'LUNCH' as const,
+      recordTime: '12:30',
+      recipeId: 'dev-recipe-braised-ribs',
+      title: '红烧排骨、米饭、清炒时蔬',
+      rating: 4.8
+    },
+    {
+      id: 'dev-record-yesterday-breakfast',
+      dayOffset: 1,
+      mealType: 'BREAKFAST' as const,
+      recordTime: '08:10',
+      recipeId: 'dev-recipe-tomato-eggs',
+      title: '番茄炒蛋',
+      rating: 4.6
+    },
+    {
+      id: 'dev-record-yesterday-lunch',
+      dayOffset: 1,
+      mealType: 'LUNCH' as const,
+      recordTime: '12:20',
+      recipeId: 'dev-recipe-broccoli',
+      title: '蒜蓉西兰花',
+      rating: 4.5
+    },
+    {
+      id: 'dev-record-yesterday-dinner',
+      dayOffset: 1,
+      mealType: 'DINNER' as const,
+      recordTime: '18:40',
+      recipeId: 'dev-recipe-tofu',
+      title: '麻婆豆腐',
+      rating: 4.6
+    },
+    {
+      id: 'dev-record-two-days-breakfast',
+      dayOffset: 2,
+      mealType: 'BREAKFAST' as const,
+      recordTime: '08:00',
+      recipeId: 'dev-recipe-steamed-fish',
+      title: '清蒸鲈鱼',
+      rating: 4.6
+    },
+    {
+      id: 'dev-record-two-days-dinner',
+      dayOffset: 2,
+      mealType: 'DINNER' as const,
+      recordTime: '18:30',
+      recipeId: 'dev-recipe-shrimp',
+      title: '虾仁炒时蔬',
+      rating: 4.6
+    },
+    {
+      id: 'dev-record-three-days-lunch',
+      dayOffset: 3,
+      mealType: 'LUNCH' as const,
+      recordTime: '12:00',
+      recipeId: 'dev-recipe-braised-ribs',
+      title: '红烧排骨',
+      rating: 4.8
+    },
+    {
+      id: 'dev-record-three-days-dinner',
+      dayOffset: 3,
+      mealType: 'DINNER' as const,
+      recordTime: '19:00',
+      recipeId: 'dev-recipe-tofu',
+      title: '麻婆豆腐',
+      rating: 4.6
+    },
+    {
+      id: 'dev-record-four-days-breakfast',
+      dayOffset: 4,
+      mealType: 'BREAKFAST' as const,
+      recordTime: '08:20',
+      recipeId: 'dev-recipe-tomato-eggs',
+      title: '番茄炒蛋',
+      rating: 4.6
+    },
+    {
+      id: 'dev-record-four-days-lunch',
+      dayOffset: 4,
+      mealType: 'LUNCH' as const,
+      recordTime: '12:40',
+      recipeId: 'dev-recipe-broccoli',
+      title: '蒜蓉西兰花',
+      rating: 4.5
+    },
+    {
+      id: 'dev-record-four-days-dinner',
+      dayOffset: 4,
+      mealType: 'DINNER' as const,
+      recordTime: '18:50',
+      recipeId: 'dev-recipe-steamed-fish',
+      title: '清蒸鲈鱼',
+      rating: 4.6
+    }
   ];
 
   for (const record of recordSeeds) {

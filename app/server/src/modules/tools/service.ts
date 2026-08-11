@@ -34,36 +34,73 @@ export async function getTool(database: PrismaClient, id: string) {
 
 export async function createTool(database: PrismaClient, input: ToolWriteInput) {
   validate(input);
-  return database.kitchenTool.create({ data: {
-    name: input.name.trim(), imagePath: input.imagePath ?? null, category: input.category ?? null,
-    quantity: input.quantity ?? 1, status: input.status ?? null, notes: input.notes ?? null
-  } });
+  return database.kitchenTool.create({
+    data: {
+      name: input.name.trim(),
+      imagePath: input.imagePath ?? null,
+      category: input.category ?? null,
+      quantity: input.quantity ?? 1,
+      status: input.status ?? null,
+      notes: input.notes ?? null
+    }
+  });
 }
 
 export async function updateTool(database: PrismaClient, id: string, version: number, input: ToolWriteInput) {
-  if (!Number.isInteger(version) || version < 1) throw Object.assign(new Error('version 必须是正整数'), { statusCode: 400 });
+  if (!Number.isInteger(version) || version < 1)
+    throw Object.assign(new Error('version 必须是正整数'), { statusCode: 400 });
   validate(input);
-  const result = await database.kitchenTool.updateMany({ where: { id, version, deletedAt: null }, data: {
-    name: input.name.trim(), imagePath: input.imagePath ?? null, category: input.category ?? null,
-    quantity: input.quantity ?? 1, status: input.status ?? null, notes: input.notes ?? null,
-    version: { increment: 1 }
-  } });
+  const result = await database.kitchenTool.updateMany({
+    where: { id, version, deletedAt: null },
+    data: {
+      name: input.name.trim(),
+      imagePath: input.imagePath ?? null,
+      category: input.category ?? null,
+      quantity: input.quantity ?? 1,
+      status: input.status ?? null,
+      notes: input.notes ?? null,
+      version: { increment: 1 }
+    }
+  });
   if (!result.count) {
-    const current = await database.kitchenTool.findUnique({ where: { id }, select: { version: true, deletedAt: true } });
+    const current = await database.kitchenTool.findUnique({
+      where: { id },
+      select: { version: true, deletedAt: true }
+    });
     if (!current || current.deletedAt) throw Object.assign(new Error('厨房工具不存在'), { statusCode: 404 });
-    throw new VersionConflictError({ entity: 'KitchenTool', id, expectedVersion: version, actualVersion: current.version });
+    throw new VersionConflictError({
+      entity: 'KitchenTool',
+      id,
+      expectedVersion: version,
+      actualVersion: current.version
+    });
   }
   return getTool(database, id);
 }
 
 export async function deleteTool(database: PrismaClient, id: string, version: number) {
-  if (!Number.isInteger(version) || version < 1) throw Object.assign(new Error('version 必须是正整数'), { statusCode: 400 });
-  return database.$transaction(async transaction=>{const deletedAt=new Date();const result = await transaction.kitchenTool.updateMany({ where: { id, version, deletedAt: null }, data: { deletedAt, version: { increment: 1 } } });
-  if (!result.count) {
-    const current = await transaction.kitchenTool.findUnique({ where: { id }, select: { version: true, deletedAt: true } });
-    if (!current || current.deletedAt) throw Object.assign(new Error('厨房工具不存在'), { statusCode: 404 });
-    throw new VersionConflictError({ entity: 'KitchenTool', id, expectedVersion: version, actualVersion: current.version });
-  }
-  await recordDeletedItem(transaction,'KitchenTool',id,deletedAt);return { id, deleted: true };
+  if (!Number.isInteger(version) || version < 1)
+    throw Object.assign(new Error('version 必须是正整数'), { statusCode: 400 });
+  return database.$transaction(async (transaction) => {
+    const deletedAt = new Date();
+    const result = await transaction.kitchenTool.updateMany({
+      where: { id, version, deletedAt: null },
+      data: { deletedAt, version: { increment: 1 } }
+    });
+    if (!result.count) {
+      const current = await transaction.kitchenTool.findUnique({
+        where: { id },
+        select: { version: true, deletedAt: true }
+      });
+      if (!current || current.deletedAt) throw Object.assign(new Error('厨房工具不存在'), { statusCode: 404 });
+      throw new VersionConflictError({
+        entity: 'KitchenTool',
+        id,
+        expectedVersion: version,
+        actualVersion: current.version
+      });
+    }
+    await recordDeletedItem(transaction, 'KitchenTool', id, deletedAt);
+    return { id, deleted: true };
   });
 }

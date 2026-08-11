@@ -6,10 +6,23 @@ import { getResponsiveMode } from '../src/utils/responsive';
 describe('node 3 routing and responsive boundaries', () => {
   it('registers all framework placeholder routes', () => {
     const paths = router.getRoutes().map((route) => route.path);
-    expect(paths).toEqual(expect.arrayContaining([
-      '/', '/recommendations', '/records', '/inventory', '/calendar', '/statistics',
-      '/favorites', '/shopping', '/settings', '/chef', '/discovery', '/journal'
-    ]));
+    expect(paths).toEqual(
+      expect.arrayContaining([
+        '/',
+        '/recommendations',
+        '/records',
+        '/inventory',
+        '/calendar',
+        '/statistics',
+        '/favorites',
+        '/shopping',
+        '/settings',
+        '/chef',
+        '/discovery',
+        '/journal',
+        '/recipes/:id'
+      ])
+    );
   });
 
   it('switches layout mode at the specified boundaries', () => {

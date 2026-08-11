@@ -28,8 +28,19 @@ export async function getStatistics(database: PrismaClient, query: { start?: str
       },
       include: { items: { include: { recipe: true, store: true } }, diners: true }
     }),
-    database.inventoryLog.findMany({ where: { changeType: 'COOK_DEDUCT', createdAt: { gte: new Date(`${start}T00:00:00`), lte: new Date(`${end}T23:59:59.999`) } } }),
-    database.shoppingListItem.findMany({ where: { shoppingList: { deletedAt: null }, createdAt: { gte: new Date(`${start}T00:00:00`), lte: new Date(`${end}T23:59:59.999`) } }, select: { completed: true } })
+    database.inventoryLog.findMany({
+      where: {
+        changeType: 'COOK_DEDUCT',
+        createdAt: { gte: new Date(`${start}T00:00:00`), lte: new Date(`${end}T23:59:59.999`) }
+      }
+    }),
+    database.shoppingListItem.findMany({
+      where: {
+        shoppingList: { deletedAt: null },
+        createdAt: { gte: new Date(`${start}T00:00:00`), lte: new Date(`${end}T23:59:59.999`) }
+      },
+      select: { completed: true }
+    })
   ]);
 
   const sourceBreakdown: Record<string, number> = {};
@@ -55,11 +66,20 @@ export async function getStatistics(database: PrismaClient, query: { start?: str
     }
   }
   const rated = records.filter((record) => record.rating !== null);
-  const rank = (values: Map<string, { id: string; name: string; count: number }>) => [...values.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 10);
-  const consumedByIngredient: Record<string, { ingredientId: string | null; name: string; quantity: number; unit: string }> = {};
+  const rank = (values: Map<string, { id: string; name: string; count: number }>) =>
+    [...values.values()].sort((a, b) => b.count - a.count || a.name.localeCompare(b.name)).slice(0, 10);
+  const consumedByIngredient: Record<
+    string,
+    { ingredientId: string | null; name: string; quantity: number; unit: string }
+  > = {};
   for (const log of consumptionLogs) {
     const key = `${log.ingredientId ?? log.ingredientNameSnapshot}:${log.unit}`;
-    const value = consumedByIngredient[key] ?? { ingredientId: log.ingredientId, name: log.ingredientNameSnapshot, quantity: 0, unit: log.unit };
+    const value = consumedByIngredient[key] ?? {
+      ingredientId: log.ingredientId,
+      name: log.ingredientNameSnapshot,
+      quantity: 0,
+      unit: log.unit
+    };
     value.quantity += Math.abs(log.changeQuantity);
     consumedByIngredient[key] = value;
   }
@@ -72,11 +92,17 @@ export async function getStatistics(database: PrismaClient, query: { start?: str
     mealTypeDistribution,
     newTryCount: records.filter((record) => record.isNewTry).length,
     favoriteCount: records.filter((record) => record.favorite).length,
-    averageRating: rated.length ? Number((rated.reduce((sum, record) => sum + (record.rating ?? 0), 0) / rated.length).toFixed(2)) : null,
+    averageRating: rated.length
+      ? Number((rated.reduce((sum, record) => sum + (record.rating ?? 0), 0) / rated.length).toFixed(2))
+      : null,
     topRecipes: rank(recipes),
     topStores: rank(stores),
-    trend: Object.entries(trend).sort(([a], [b]) => a.localeCompare(b)).map(([date, count]) => ({ date, count })),
+    trend: Object.entries(trend)
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, count]) => ({ date, count })),
     ingredientConsumption: Object.values(consumedByIngredient),
-    shoppingCompletionRate: shoppingItems.length ? shoppingItems.filter((item) => item.completed).length / shoppingItems.length : null
+    shoppingCompletionRate: shoppingItems.length
+      ? shoppingItems.filter((item) => item.completed).length / shoppingItems.length
+      : null
   };
 }

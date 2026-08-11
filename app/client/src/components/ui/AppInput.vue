@@ -1,18 +1,21 @@
 <script setup lang="ts">
-withDefaults(defineProps<{
-  modelValue?: string;
-  label: string;
-  placeholder?: string;
-  type?: 'text' | 'search' | 'email' | 'password' | 'date' | 'number';
-  error?: string;
-  disabled?: boolean;
-}>(), {
-  modelValue: '',
-  placeholder: '',
-  type: 'text',
-  error: '',
-  disabled: false
-});
+withDefaults(
+  defineProps<{
+    modelValue?: string;
+    label: string;
+    placeholder?: string;
+    type?: 'text' | 'search' | 'email' | 'password' | 'date' | 'number';
+    error?: string;
+    disabled?: boolean;
+  }>(),
+  {
+    modelValue: '',
+    placeholder: '',
+    type: 'text',
+    error: '',
+    disabled: false
+  }
+);
 
 const emit = defineEmits<{ 'update:modelValue': [value: string] }>();
 </script>
