@@ -19,7 +19,7 @@ export default tseslint.config(
       '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-unused-vars': ['error', { argsIgnorePattern: '^_', varsIgnorePattern: '^_' }],
       'vue/multi-word-component-names': 'off',
-      'vue/no-v-html': 'off',
+      'vue/no-v-html': 'error',
       'vue/no-required-prop-with-default': 'off',
       'vue/no-lone-template': 'off',
       'no-undef': 'off'

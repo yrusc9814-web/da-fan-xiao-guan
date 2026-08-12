@@ -16,7 +16,8 @@ export function filePathFromDatabaseUrl(databaseUrl: string): string | null {
 }
 
 export function resolveDatabaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  const rawUrl = env.TEST_DATABASE_URL ?? env.DATABASE_URL ?? defaultDatabaseUrl;
+  const rawUrl =
+    (env.NODE_ENV === 'test' ? env.TEST_DATABASE_URL : undefined) ?? env.DATABASE_URL ?? defaultDatabaseUrl;
 
   if (!rawUrl.startsWith('file:')) {
     return rawUrl;

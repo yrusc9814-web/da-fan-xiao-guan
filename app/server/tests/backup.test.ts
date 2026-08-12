@@ -11,7 +11,7 @@ import { backupResourceLimits, createBackup, restoreBackup } from '../src/module
 import { setPin } from '../src/modules/settings/service.js';
 
 const database = createTestPrismaClient();
-let app: Awaited<ReturnType<typeof buildApp>>;
+let app: Awaited<ReturnType<typeof buildApp>> | undefined;
 
 function multipartPayload(boundary: string, filename: string, content: Buffer): Buffer {
   return Buffer.concat([
@@ -38,14 +38,22 @@ async function createZip(path: string, entries: Array<{ name: string; content: B
 describe('备份恢复', () => {
   beforeAll(async () => {
     await database.$connect();
+    await database.settings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
     app = await buildApp({ database, logger: false });
   });
   afterAll(async () => {
-    await database.settings.update({
-      where: { id: 1 },
-      data: { pinEnabled: false, pinHash: null, version: { increment: 1 } }
-    });
-    await app.close();
+    try {
+      await database.settings.updateMany({
+        where: { id: 1 },
+        data: { pinEnabled: false, pinHash: null, version: { increment: 1 } }
+      });
+    } finally {
+      try {
+        await app?.close();
+      } finally {
+        await database.$disconnect();
+      }
+    }
   });
 
   it('真实备份后可恢复旧数据，损坏 ZIP 不破坏当前数据', async () => {
@@ -74,13 +82,13 @@ describe('备份恢复', () => {
     const current = await database.settings.findUniqueOrThrow({ where: { id: 1 } });
     await setPin(database, current.version, '8642', true);
     const verified = (
-      await app.inject({ method: 'POST', url: '/api/v1/settings/pin/verify', payload: { pin: '8642' } })
+      await app!.inject({ method: 'POST', url: '/api/v1/settings/pin/verify', payload: { pin: '8642' } })
     ).json().data;
     const backup = await createBackup(database);
     try {
       const boundary = '----dafan-backup-test';
       const body = multipartPayload(boundary, 'backup.zip', await readFile(backup.zipPath));
-      const ordinary = await app.inject({
+      const ordinary = await app!.inject({
         method: 'POST',
         url: '/api/v1/backups/restore',
         headers: { 'x-app-pin-token': verified.token, 'content-type': `multipart/form-data; boundary=${boundary}` },
@@ -89,14 +97,14 @@ describe('备份恢复', () => {
       expect(ordinary.statusCode).toBe(401);
       expect(ordinary.json().error.code).toBe('HIGH_RISK_AUTHORIZATION_REQUIRED');
 
-      const authorization = await app.inject({
+      const authorization = await app!.inject({
         method: 'POST',
         url: '/api/v1/settings/high-risk/authorize',
         headers: { 'x-app-pin-token': verified.token },
         payload: { action: 'RESTORE', pin: '8642' }
       });
       expect(authorization.statusCode).toBe(200);
-      const restored = await app.inject({
+      const restored = await app!.inject({
         method: 'POST',
         url: '/api/v1/backups/restore',
         headers: {

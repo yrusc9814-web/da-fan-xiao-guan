@@ -1,3 +1,7 @@
+import { randomUUID } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join, normalize, resolve } from 'node:path';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   MealType,
@@ -29,6 +33,9 @@ import { createPrismaClient } from '../src/database/client.js';
 import { createTestPrismaClient, testDatabaseUrl } from '../src/database/test-database.js';
 
 const database = createTestPrismaClient();
+const projectRoot = resolve(import.meta.dirname, '../../..');
+const applicationDatabasePath = resolve(projectRoot, 'data/app.db');
+const testDatabasePath = resolve(projectRoot, 'data/test.db');
 
 describe('节点 2 数据库底座', () => {
   beforeAll(async () => {
@@ -43,9 +50,24 @@ describe('节点 2 数据库底座', () => {
     const result = await database.$queryRaw<Array<{ value: bigint }>>`SELECT 1 AS value`;
 
     expect(result[0]?.value).toBe(1n);
-    expect(filePathFromDatabaseUrl(testDatabaseUrl)).not.toBe(filePathFromDatabaseUrl('file:../../../data/app.db'));
-    expect(resolveDatabaseUrl({ DATABASE_URL: 'file:../../../data/app.db' })).toContain('/data/app.db');
-    expect(resolveDatabaseUrl({ TEST_DATABASE_URL: 'file:../../../data/test.db' })).toContain('/data/test.db');
+    const developmentUrl = resolveDatabaseUrl({ DATABASE_URL: 'file:../../../data/app.db' });
+    const isolatedTestUrl = resolveDatabaseUrl({
+      NODE_ENV: 'test',
+      TEST_DATABASE_URL: 'file:../../../data/test.db',
+      DATABASE_URL: 'file:../../../data/app.db'
+    });
+    const developmentUrlWithTestVariable = resolveDatabaseUrl({
+      TEST_DATABASE_URL: 'file:../../../data/test.db',
+      DATABASE_URL: 'file:../../../data/app.db'
+    });
+
+    expect(normalize(filePathFromDatabaseUrl(testDatabaseUrl)!)).toBe(normalize(testDatabasePath));
+    expect(normalize(filePathFromDatabaseUrl(developmentUrl)!)).toBe(normalize(applicationDatabasePath));
+    expect(normalize(filePathFromDatabaseUrl(isolatedTestUrl)!)).toBe(normalize(testDatabasePath));
+    expect(normalize(filePathFromDatabaseUrl(developmentUrlWithTestVariable)!)).toBe(
+      normalize(applicationDatabasePath)
+    );
+    expect(filePathFromDatabaseUrl(isolatedTestUrl)).not.toBe(filePathFromDatabaseUrl(developmentUrl));
   });
 
   it('正式 Migration 已在测试数据库中执行', async () => {
@@ -58,25 +80,35 @@ describe('节点 2 数据库底座', () => {
   });
 
   it('数据库不可用时健康接口返回明确错误', async () => {
-    const unavailableDatabase = createPrismaClient('file:/private/tmp/dafan-node2-missing-health-db/health.db');
-    const app = await buildApp({ logger: false, database: unavailableDatabase });
-    const response = await app.inject({ method: 'GET', url: '/api/v1/health' });
-    const payload = response.json() as {
-      success: boolean;
-      data: null;
-      error: { code: string; message: string };
-    };
+    const temporary = await mkdtemp(join(tmpdir(), 'dafan-health-unavailable-'));
+    const unavailableParent = join(temporary, randomUUID());
+    const unavailableDatabase = createPrismaClient(`file:${join(unavailableParent, 'health.db')}`);
+    let app: Awaited<ReturnType<typeof buildApp>> | undefined;
 
-    await app.close();
-    expect(response.statusCode).toBe(503);
-    expect(payload).toEqual({
-      success: false,
-      data: null,
-      error: {
-        code: 'DATABASE_ERROR',
-        message: '数据库不可用'
-      }
-    });
+    try {
+      await writeFile(unavailableParent, 'not a directory');
+      app = await buildApp({ logger: false, database: unavailableDatabase });
+      const response = await app.inject({ method: 'GET', url: '/api/v1/health' });
+      const payload = response.json() as {
+        success: boolean;
+        data: null;
+        error: { code: string; message: string };
+      };
+
+      expect(response.statusCode).toBe(503);
+      expect(payload).toEqual({
+        success: false,
+        data: null,
+        error: {
+          code: 'DATABASE_ERROR',
+          message: '数据库不可用'
+        }
+      });
+    } finally {
+      await app?.close();
+      await unavailableDatabase.$disconnect();
+      await rm(temporary, { recursive: true, force: true });
+    }
   });
 
   it('保存结构化菜谱食材关系', async () => {
