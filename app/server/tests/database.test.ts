@@ -73,7 +73,7 @@ describe('节点 2 数据库底座', () => {
     expect(normalize(filePathFromDatabaseUrl(developmentUrlWithTestVariable)!)).toBe(
       normalize(applicationDatabasePath)
     );
-    expect(filePathFromDatabaseUrl(isolatedTestUrl)).not.toBe(filePathFromDatabaseUrl(developmentUrl));
+    expect(normalize(expectedTestDatabasePath)).not.toBe(normalize(applicationDatabasePath));
   });
 
   it('正式 Migration 已在测试数据库中执行', async () => {
