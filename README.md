@@ -58,6 +58,17 @@ npm run build
 
 正式分发包应包含 `runtime/node.exe`、生产依赖、Prisma CLI、Prisma Windows engine、schema、Migration、前后端构建结果及启动脚本。用户双击 `start.bat`；脚本固定使用 8787 端口，自动创建数据库、执行 `migrate deploy`、轮询 API 与首页后打开浏览器。`stop.bat` 仅停止 PID 文件指向且命令行匹配本应用的进程。
 
+源码仓库不会提交 `runtime/`、`node_modules/` 或构建输出；它不是正式分发包。请通过 GitHub Actions 的 **Windows Release Artifact** workflow 生成并下载 `搭饭小馆-windows-x64.zip`。该 workflow 固定使用 Node `v22.23.2`，从 Node.js 官方 Windows x64 ZIP 下载并校验 `runtime/node.exe`，随后在 Windows runner 内重新安装生产依赖、生成 Prisma Windows engine、校验结构，并用包内 runtime 执行迁移与服务 smoke test。
+
+如需在 Windows 开发机本地生成，准备好 Node `v22.23.2` 与 npm 后只运行：
+
+```powershell
+npm ci
+npm run release:windows
+```
+
+构建产物位于 `release/搭饭小馆/`，可用 `npm run release:windows:verify -- release/搭饭小馆` 复核必需文件。正式 `start.bat` 只使用 `runtime/node.exe`，缺失时会失败，不会回退到系统 PATH。此构建命令仅支持 Windows x64，macOS/Linux 不会生成或伪造 Windows runtime。
+
 ## 数据位置
 
 - 数据库：`data/app.db`

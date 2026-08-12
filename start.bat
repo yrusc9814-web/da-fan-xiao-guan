@@ -13,12 +13,13 @@ set "ERROR_LOG=%APP_ROOT%\logs\app-error.log"
 set "SERVER_ENTRY=%APP_ROOT%\dist-server\server\src\server.js"
 set "SERVICE_TAG=--app-id=dafan-xiaoguan"
 
-if exist "%APP_ROOT%\runtime\node.exe" (set "NODE_EXE=%APP_ROOT%\runtime\node.exe") else (for %%I in (node.exe) do set "NODE_EXE=%%~$PATH:I")
-if not defined NODE_EXE (
-  echo [ERROR] Node.js runtime not found. Put node.exe in runtime\ or install Node.js 22+.
+if not exist "%APP_ROOT%\runtime\node.exe" (
+  echo [ERROR] 正式发行包不完整：缺少 runtime\node.exe。
+  echo [ERROR] 为避免使用系统 Node.js 冒充正式包，启动已停止。
   pause
   exit /b 1
 )
+set "NODE_EXE=%APP_ROOT%\runtime\node.exe"
 if not exist "%APP_ROOT%\data" mkdir "%APP_ROOT%\data"
 if not exist "%APP_ROOT%\data\uploads" mkdir "%APP_ROOT%\data\uploads"
 if not exist "%APP_ROOT%\data\backups" mkdir "%APP_ROOT%\data\backups"

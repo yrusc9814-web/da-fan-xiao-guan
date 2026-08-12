@@ -17,6 +17,7 @@ dist-server/
 dist-ssr/
 .vite/
 coverage/
+release/
 *.tsbuildinfo
 
 # Local environment files
