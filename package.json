@@ -26,7 +26,7 @@
     "prisma:migrate": "node scripts/ensure-sqlite-file.mjs && prisma migrate dev --name init",
     "prisma:migrate:deploy": "node scripts/ensure-sqlite-file.mjs && prisma migrate deploy",
     "prisma:migrate:status": "prisma migrate status",
-    "prisma:validate": "prisma validate",
+    "prisma:validate": "node scripts/run-prisma-validate.mjs",
     "prisma:test:setup": "node scripts/setup-test-database.mjs",
     "seed:dev": "node scripts/ensure-sqlite-file.mjs && prisma migrate deploy && node --import tsx/esm scripts/seed-dev.mjs"
   },

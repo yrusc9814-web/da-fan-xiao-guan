@@ -35,7 +35,13 @@ import { createTestPrismaClient, testDatabaseUrl } from '../src/database/test-da
 const database = createTestPrismaClient();
 const projectRoot = resolve(import.meta.dirname, '../../..');
 const applicationDatabasePath = resolve(projectRoot, 'data/app.db');
-const testDatabasePath = resolve(projectRoot, 'data/test.db');
+const expectedTestDatabaseUrl = process.env.TEST_DATABASE_URL ?? 'file:../../../data/test.db';
+const expectedTestDatabasePath = filePathFromDatabaseUrl(expectedTestDatabaseUrl);
+const defaultTestDatabasePath = resolve(projectRoot, 'data/test.db');
+
+if (!expectedTestDatabasePath) {
+  throw new Error('测试数据库必须使用 file: SQLite URL');
+}
 
 describe('节点 2 数据库底座', () => {
   beforeAll(async () => {
@@ -61,9 +67,9 @@ describe('节点 2 数据库底座', () => {
       DATABASE_URL: 'file:../../../data/app.db'
     });
 
-    expect(normalize(filePathFromDatabaseUrl(testDatabaseUrl)!)).toBe(normalize(testDatabasePath));
+    expect(normalize(filePathFromDatabaseUrl(testDatabaseUrl)!)).toBe(normalize(expectedTestDatabasePath));
     expect(normalize(filePathFromDatabaseUrl(developmentUrl)!)).toBe(normalize(applicationDatabasePath));
-    expect(normalize(filePathFromDatabaseUrl(isolatedTestUrl)!)).toBe(normalize(testDatabasePath));
+    expect(normalize(filePathFromDatabaseUrl(isolatedTestUrl)!)).toBe(normalize(defaultTestDatabasePath));
     expect(normalize(filePathFromDatabaseUrl(developmentUrlWithTestVariable)!)).toBe(
       normalize(applicationDatabasePath)
     );
