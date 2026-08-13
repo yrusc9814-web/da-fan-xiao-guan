@@ -54,6 +54,22 @@ function run(command, argumentsList, options = {}) {
   }
 }
 
+function npmCliPath() {
+  const executableDirectory = dirname(process.execPath);
+  const candidates = [
+    process.env.npm_execpath,
+    resolve(executableDirectory, 'node_modules/npm/bin/npm-cli.js'),
+    resolve(executableDirectory, '../lib/node_modules/npm/bin/npm-cli.js')
+  ];
+  const npmCli = candidates.find((candidate) => candidate && existsSync(candidate));
+
+  if (!npmCli) {
+    fail('找不到 npm-cli.js，无法以跨平台方式运行发行包依赖命令');
+  }
+
+  return npmCli;
+}
+
 function assertSourceExists(relativePath) {
   const source = resolve(projectRoot, relativePath);
   if (!existsSync(source)) {
@@ -208,10 +224,11 @@ async function main() {
     fail(`runtime/node.exe 身份校验失败：${runtimeIdentity.stderr || runtimeIdentity.stdout || '无输出'}`);
   }
 
-  run('npm.cmd', ['ci', '--omit=dev', '--no-audit', '--fund=false'], {
+  const npmCli = npmCliPath();
+  run(process.execPath, [npmCli, 'ci', '--omit=dev', '--no-audit', '--fund=false'], {
     env: { ...process.env, NODE_ENV: 'production' }
   });
-  run('npm.cmd', ['ls', '--omit=dev', '--all', 'prisma', '@prisma/client', 'sharp'], {
+  run(process.execPath, [npmCli, 'ls', '--omit=dev', '--all', 'prisma', '@prisma/client', 'sharp'], {
     env: { ...process.env, NODE_ENV: 'production' }
   });
   run(runtimeNode, [
