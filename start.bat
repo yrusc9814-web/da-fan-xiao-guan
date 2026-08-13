@@ -49,8 +49,16 @@ if not exist "%APP_ROOT%\dist-server\server\src\server.js" (
   pause
   exit /b 1
 )
-if not exist "%APP_ROOT%\node_modules\prisma\build\index.js" (
-  echo [ERROR] 缺少本地 Prisma CLI，正式包不完整。
+set "PRISMA_CLI_REL="
+for /f "usebackq delims=" %%I in (`"%NODE_EXE%" -e "const fs=require('node:fs');const m=JSON.parse(fs.readFileSync('release-manifest.json','utf8'));process.stdout.write(m.prisma.cli.path)"`) do set "PRISMA_CLI_REL=%%I"
+if not defined PRISMA_CLI_REL (
+  echo [ERROR] release-manifest.json 未声明 Prisma CLI，正式包不完整。
+  pause
+  exit /b 1
+)
+set "PRISMA_CLI=%APP_ROOT%\%PRISMA_CLI_REL:/=\%"
+if not exist "%PRISMA_CLI%" (
+  echo [ERROR] release-manifest.json 指向的 Prisma CLI 不存在，正式包不完整。
   pause
   exit /b 1
 )
@@ -60,7 +68,7 @@ if !errorlevel! neq 0 (
   pause
   exit /b 1
 )
-"%NODE_EXE%" "%APP_ROOT%\node_modules\prisma\build\index.js" migrate deploy --schema "%APP_ROOT%\app\server\prisma\schema.prisma"
+"%NODE_EXE%" "%PRISMA_CLI%" migrate deploy --schema "%APP_ROOT%\app\server\prisma\schema.prisma"
 if !errorlevel! neq 0 (
   echo [ERROR] 数据库迁移失败，服务未启动。
   pause

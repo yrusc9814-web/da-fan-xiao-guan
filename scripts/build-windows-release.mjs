@@ -1,7 +1,8 @@
 import { createHash } from 'node:crypto';
-import { existsSync } from 'node:fs';
+import { createRequire } from 'node:module';
+import { existsSync, readFileSync } from 'node:fs';
 import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
-import { basename, dirname, relative, resolve } from 'node:path';
+import { basename, dirname, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -22,11 +23,6 @@ const manifestFilePaths = [
   'app/server/src/database/paths.ts',
   'prisma.config.ts',
   'scripts/ensure-sqlite-file.mjs',
-  'node_modules/prisma/build/index.js',
-  'node_modules/@prisma/client/default.js',
-  'node_modules/.prisma/client/query_engine-windows.dll.node',
-  'node_modules/@prisma/engines/schema-engine-windows.exe',
-  'node_modules/@img/sharp-win32-x64/lib/sharp-win32-x64.node',
   'start.bat',
   'stop.bat',
   'README.txt',
@@ -70,6 +66,177 @@ function npmCliPath() {
   return npmCli;
 }
 
+function packageInfo(requireFromServer, packageName) {
+  let entry;
+  for (const specifier of [packageName, `${packageName}/package`]) {
+    try {
+      entry = requireFromServer.resolve(specifier);
+      break;
+    } catch {}
+  }
+  if (!entry) {
+    fail(`无法从 @dafan/server 上下文解析 npm 包：${packageName}`);
+  }
+
+  let directory = dirname(entry);
+  for (let depth = 0; depth < 8; depth += 1) {
+    const directoryFromRelease = relative(releaseRoot, directory);
+    if (directoryFromRelease.startsWith('..') || directoryFromRelease === '') {
+      break;
+    }
+    const packageJson = resolve(directory, 'package.json');
+    if (existsSync(packageJson)) {
+      const metadata = JSON.parse(readFileSync(packageJson, 'utf8'));
+      if (metadata.name === packageName) {
+        return { entry, metadata, packageJson, root: directory };
+      }
+    }
+    const parent = dirname(directory);
+    if (parent === directory) break;
+    directory = parent;
+  }
+
+  fail(`无法定位 npm 包根目录：${packageName}`);
+}
+
+function packageVersion(metadata, packageName, dependencyGroups) {
+  for (const dependencyGroup of dependencyGroups) {
+    const version = metadata[dependencyGroup]?.[packageName];
+    if (typeof version === 'string' && version.length > 0) return version;
+  }
+  fail(`Sharp 元数据未声明 ${packageName} 的可用版本`);
+}
+
+function packagePath(relativePath, packageRoot) {
+  const path = resolve(packageRoot, relativePath);
+  const pathFromPackage = relative(packageRoot, path);
+  if (pathFromPackage.startsWith('..') || pathFromPackage === '' || pathFromPackage.includes('..')) {
+    fail(`拒绝读取 npm 包目录外的文件：${relativePath}`);
+  }
+  return path;
+}
+
+async function ensurePackage(requireFromServer, npmCli, packageName, version) {
+  try {
+    const installed = packageInfo(requireFromServer, packageName);
+    if (installed.metadata.version === version) return installed;
+    console.log(
+      `Replacing mismatched Windows native package ${packageName}@${installed.metadata.version} with ${version}`
+    );
+  } catch (error) {
+    if (
+      !(error instanceof Error) ||
+      !error.message.includes(`无法从 @dafan/server 上下文解析 npm 包：${packageName}`)
+    ) {
+      throw error;
+    }
+  }
+
+  console.log(`Installing missing Windows native package ${packageName}@${version}`);
+  run(
+    process.execPath,
+    [
+      npmCli,
+      'install',
+      '--no-save',
+      '--package-lock=false',
+      '--ignore-scripts',
+      '--include=optional',
+      `${packageName}@${version}`
+    ],
+    {
+      env: { ...process.env, NODE_ENV: 'production' }
+    }
+  );
+  const installed = packageInfo(requireFromServer, packageName);
+  if (installed.metadata.version !== version) {
+    fail(`安装后的 ${packageName} 版本不匹配 Sharp 声明：需要 ${version}，实际 ${installed.metadata.version}`);
+  }
+  return installed;
+}
+
+async function sharpArtifacts(requireFromServer, npmCli) {
+  const sharp = packageInfo(requireFromServer, 'sharp');
+  const sharpRequire = createRequire(sharp.entry);
+  const platformKey = `${process.platform}-${process.arch}`;
+  const addonName = `@img/sharp-${platformKey}`;
+  const addonVersion = packageVersion(sharp.metadata, addonName, ['optionalDependencies']);
+  const addon = await ensurePackage(sharpRequire, npmCli, addonName, addonVersion);
+  try {
+    sharpRequire.resolve(`${addonName}/sharp.node`);
+  } catch {
+    fail(`Sharp loader 无法解析 native addon：${addonName}/sharp.node`);
+  }
+
+  const libvipsName = `@img/sharp-libvips-${platformKey}`;
+  const libvipsVersion = packageVersion(sharp.metadata, libvipsName, ['optionalDependencies', 'devDependencies']);
+  const libvips = await ensurePackage(sharpRequire, npmCli, libvipsName, libvipsVersion);
+
+  const addonLib = packagePath('lib', addon.root);
+  const addonFiles = (await readdir(addonLib, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && /\.(?:node|dll)$/i.test(entry.name))
+    .map((entry) => packagePath(`lib/${entry.name}`, addon.root));
+  const nativeAddon = addonFiles.find((path) => path.toLowerCase().endsWith('.node'));
+  const bundledLibvips = addonFiles.filter((path) => path.toLowerCase().endsWith('.dll'));
+  if (!nativeAddon) fail(`Sharp Windows 包缺少 native addon：${addonName}`);
+  if (bundledLibvips.length === 0) fail(`Sharp Windows 包缺少随附 libvips DLL：${addonName}`);
+
+  const libvipsLib = packagePath('lib', libvips.root);
+  const libvipsFiles = (await readdir(libvipsLib, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && entry.name.toLowerCase().endsWith('.dll'))
+    .map((entry) => packagePath(`lib/${entry.name}`, libvips.root));
+  if (libvipsFiles.length === 0) fail(`Sharp Windows libvips 包缺少 DLL：${libvipsName}`);
+
+  return {
+    package: { name: sharp.metadata.name, version: sharp.metadata.version, path: sharp.packageJson },
+    nativePackage: { name: addon.metadata.name, version: addon.metadata.version, packageJson: addon.packageJson },
+    nativeAddon,
+    bundledLibvips,
+    libvipsPackage: {
+      name: libvips.metadata.name,
+      version: libvips.metadata.version,
+      packageJson: libvips.packageJson,
+      files: libvipsFiles
+    }
+  };
+}
+
+function prismaQueryEngine(requireFromServer) {
+  const clientEntry = requireFromServer.resolve('@prisma/client');
+  const clientRequire = createRequire(clientEntry);
+  const generatedClient = clientRequire.resolve('.prisma/client/index.js');
+  const generatedClientRoot = dirname(generatedClient);
+  const source = readFileSync(generatedClient, 'utf8');
+  const engineName = source.match(/(?:lib)?query_engine-[A-Za-z0-9._-]+\.node/)?.[0];
+  if (!engineName) fail('Prisma 生成客户端未声明 query engine 文件');
+  const engine = resolve(generatedClientRoot, engineName);
+  if (!existsSync(engine)) fail(`Prisma query engine 不存在：${engineName}`);
+  return engine;
+}
+
+function prismaSchemaEngine(requireFromServer) {
+  const prismaCli = requireFromServer.resolve('prisma/build/index.js');
+  const prismaRequire = createRequire(prismaCli);
+  const schemaEnginePackage = packageInfo(prismaRequire, '@prisma/engines');
+  const schemaEngineName =
+    process.platform === 'win32' ? 'schema-engine-windows.exe' : `schema-engine-${process.platform}`;
+  try {
+    return prismaRequire.resolve(`@prisma/engines/${schemaEngineName}`);
+  } catch {
+    const fallback = resolve(schemaEnginePackage.root, schemaEngineName);
+    if (existsSync(fallback)) return fallback;
+    fail(`Prisma engines 包缺少 ${schemaEngineName}`);
+  }
+}
+
+function manifestPath(path) {
+  const pathFromRelease = relative(releaseRoot, path);
+  if (pathFromRelease.startsWith('..') || pathFromRelease === '' || pathFromRelease.includes(`..${sep}`)) {
+    fail(`拒绝将发行目录外文件写入 manifest：${path}`);
+  }
+  return pathFromRelease.split(sep).join('/');
+}
+
 function assertSourceExists(relativePath) {
   const source = resolve(projectRoot, relativePath);
   if (!existsSync(source)) {
@@ -109,13 +276,15 @@ async function migrationNames() {
   return names;
 }
 
-async function criticalFileHashes(migrations) {
+async function criticalFileHashes(migrations, artifactPaths) {
   const relativePaths = [
     ...manifestFilePaths,
-    ...migrations.map((migrationName) => `app/server/prisma/migrations/${migrationName}/migration.sql`)
+    ...migrations.map((migrationName) => `app/server/prisma/migrations/${migrationName}/migration.sql`),
+    ...artifactPaths.map(manifestPath)
   ];
+  const uniquePaths = [...new Set(relativePaths)];
   const entries = await Promise.all(
-    relativePaths.map(async (relativePath) => {
+    uniquePaths.map(async (relativePath) => {
       const path = resolve(releaseRoot, relativePath);
       if (!existsSync(path)) {
         fail(`无法写入发行清单，缺少关键文件：${relativePath}`);
@@ -225,27 +394,65 @@ async function main() {
   }
 
   const npmCli = npmCliPath();
-  run(process.execPath, [npmCli, 'ci', '--omit=dev', '--no-audit', '--fund=false'], {
+  run(process.execPath, [npmCli, 'ci', '--include=optional', '--omit=dev', '--no-audit', '--fund=false'], {
     env: { ...process.env, NODE_ENV: 'production' }
   });
-  run(process.execPath, [npmCli, 'ls', '--omit=dev', '--all', 'prisma', '@prisma/client', 'sharp'], {
-    env: { ...process.env, NODE_ENV: 'production' }
-  });
+
+  const serverRequire = createRequire(resolve(releaseRoot, 'app', 'server', 'package.json'));
+  const prismaCli = serverRequire.resolve('prisma/build/index.js');
+  const sharp = await sharpArtifacts(serverRequire, npmCli);
+
+  run(
+    process.execPath,
+    [
+      npmCli,
+      'ls',
+      '--include=optional',
+      '--omit=dev',
+      '--all',
+      'prisma',
+      '@prisma/client',
+      'sharp',
+      '@img/sharp-win32-x64',
+      '@img/sharp-libvips-win32-x64'
+    ],
+    {
+      env: { ...process.env, NODE_ENV: 'production' }
+    }
+  );
   run(runtimeNode, [
-    resolve(releaseRoot, 'node_modules', 'prisma', 'build', 'index.js'),
+    prismaCli,
     'generate',
     '--schema',
     resolve(releaseRoot, 'app', 'server', 'prisma', 'schema.prisma')
   ]);
 
   const migrations = await migrationNames();
-  const files = await criticalFileHashes(migrations);
+  const prismaQuery = prismaQueryEngine(serverRequire);
+  const prismaSchema = prismaSchemaEngine(serverRequire);
+  const serverEntry = resolve(releaseRoot, 'dist-server', 'server', 'src', 'server.js');
+  const clientEntry = resolve(releaseRoot, 'app', 'client', 'dist', 'index.html');
+  const artifactPaths = [
+    serverEntry,
+    clientEntry,
+    prismaCli,
+    prismaQuery,
+    prismaSchema,
+    sharp.package.path,
+    sharp.nativePackage.packageJson,
+    sharp.nativeAddon,
+    ...sharp.bundledLibvips,
+    sharp.libvipsPackage.packageJson,
+    ...sharp.libvipsPackage.files
+  ];
+  const files = await criticalFileHashes(migrations, artifactPaths);
+  const descriptor = (path) => ({ path: manifestPath(path), sha256: files[manifestPath(path)] });
 
   await writeFile(
     resolve(releaseRoot, 'release-manifest.json'),
     `${JSON.stringify(
       {
-        formatVersion: 1,
+        formatVersion: 2,
         target: { platform: 'win32', arch: 'x64' },
         node: {
           version: nodeVersion,
@@ -253,7 +460,36 @@ async function main() {
           archiveSha256: nodeArchiveSha256,
           executableSha256: nodeExecutableSha256
         },
-        prisma: { migrations },
+        prisma: {
+          cli: descriptor(prismaCli),
+          queryEngine: descriptor(prismaQuery),
+          schemaEngine: descriptor(prismaSchema),
+          migrations
+        },
+        entrypoints: {
+          server: descriptor(serverEntry),
+          client: descriptor(clientEntry)
+        },
+        sharp: {
+          package: {
+            name: sharp.package.name,
+            version: sharp.package.version,
+            packageJson: descriptor(sharp.package.path)
+          },
+          nativePackage: {
+            name: sharp.nativePackage.name,
+            version: sharp.nativePackage.version,
+            packageJson: descriptor(sharp.nativePackage.packageJson)
+          },
+          nativeAddon: descriptor(sharp.nativeAddon),
+          bundledLibvips: sharp.bundledLibvips.map(descriptor),
+          libvipsPackage: {
+            name: sharp.libvipsPackage.name,
+            version: sharp.libvipsPackage.version,
+            packageJson: descriptor(sharp.libvipsPackage.packageJson),
+            files: sharp.libvipsPackage.files.map(descriptor)
+          }
+        },
         files
       },
       null,

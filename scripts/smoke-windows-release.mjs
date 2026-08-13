@@ -1,6 +1,6 @@
-import { rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { rm, readFile } from 'node:fs/promises';
+import { isAbsolute, relative, resolve } from 'node:path';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
@@ -10,6 +10,18 @@ const port = 18787;
 
 function fail(message) {
   throw new Error(`[Windows release smoke] ${message}`);
+}
+
+function manifestPath(relativePath, label) {
+  if (typeof relativePath !== 'string' || relativePath.length === 0 || isAbsolute(relativePath)) {
+    fail(`${label} 必须是发行目录内的相对路径`);
+  }
+  const path = resolve(releaseRoot, relativePath);
+  const pathFromRelease = relative(releaseRoot, path);
+  if (pathFromRelease === '' || pathFromRelease.startsWith('..') || isAbsolute(pathFromRelease)) {
+    fail(`${label} 指向发行目录外：${relativePath}`);
+  }
+  return path;
 }
 
 function run(command, argumentsList, environment) {
@@ -30,7 +42,7 @@ async function fetchWhenReady(url, expectedContentType) {
   while (Date.now() < deadline) {
     try {
       const response = await fetch(url);
-      if (response.ok && response.headers.get('content-type')?.includes(expectedContentType)) {
+      if (response.status === 200 && response.headers.get('content-type')?.includes(expectedContentType)) {
         return response;
       }
       lastError = new Error(`${response.status} ${response.headers.get('content-type') ?? ''}`);
@@ -59,10 +71,13 @@ if (process.platform !== 'win32') {
   fail('只能在 Windows 上执行正式包 smoke；当前平台不模拟 Windows runtime。');
 }
 
-const runtimeNode = resolve(releaseRoot, 'runtime', 'node.exe');
-const prismaCli = resolve(releaseRoot, 'node_modules', 'prisma', 'build', 'index.js');
-const serverEntry = resolve(releaseRoot, 'dist-server', 'server', 'src', 'server.js');
-if (![runtimeNode, prismaCli, serverEntry].every(existsSync)) {
+const manifest = JSON.parse(await readFile(manifestPath('release-manifest.json', 'release-manifest.json'), 'utf8'));
+const runtimeNode = manifestPath('runtime/node.exe', 'runtime/node.exe');
+const prismaCli = manifestPath(manifest?.prisma?.cli?.path, 'prisma.cli');
+const prismaSchema = manifestPath('app/server/prisma/schema.prisma', 'Prisma schema');
+const serverEntry = manifestPath(manifest?.entrypoints?.server?.path, 'entrypoints.server');
+const clientEntry = manifestPath(manifest?.entrypoints?.client?.path, 'entrypoints.client');
+if (![runtimeNode, prismaCli, prismaSchema, serverEntry, clientEntry].every(existsSync)) {
   fail('正式包不完整，无法执行 smoke。');
 }
 
@@ -80,16 +95,24 @@ try {
     runtimeNode,
     [
       '-e',
-      "import('sharp').then(({ default: sharp }) => sharp({ create: { width: 1, height: 1, channels: 4, background: { r: 244, g: 127, b: 159, alpha: 1 } } }).png().toBuffer()).then((image) => { if (image.length === 0) throw new Error('sharp native image operation returned an empty buffer'); })"
+      `(async()=>{const {createRequire}=require('node:module');const {resolve}=require('node:path');const req=createRequire(resolve(process.cwd(),'app/server/package.json'));const sharp=req('sharp');const image=await sharp({create:{width:1,height:1,channels:4,background:{r:244,g:127,b:159,alpha:1}}}).png().toBuffer();const signature=Buffer.from([137,80,78,71,13,10,26,10]);if(image.length===0||!image.subarray(0,8).equals(signature))throw new Error('sharp native PNG operation failed');console.log('Sharp native smoke passed');})().catch(error=>{console.error(error);process.exit(1)})`
     ],
     environment
   );
-  run(runtimeNode, [prismaCli, 'migrate', 'deploy', '--schema', 'app/server/prisma/schema.prisma'], environment);
+  run(runtimeNode, [prismaCli, 'migrate', 'deploy', '--schema', prismaSchema], environment);
+  run(
+    runtimeNode,
+    [
+      '-e',
+      `(async()=>{const {createRequire}=require('node:module');const {resolve}=require('node:path');const req=createRequire(resolve(process.cwd(),'app/server/package.json'));const {PrismaClient}=req('@prisma/client');const prisma=new PrismaClient();await prisma.$queryRawUnsafe('SELECT 1');await prisma.$disconnect();console.log('Prisma SQLite connection smoke passed')})().catch(async error=>{console.error(error);process.exit(1)})`
+    ],
+    environment
+  );
 
   server = spawn(runtimeNode, [serverEntry, '--app-id=dafan-xiaoguan-release-smoke'], {
     cwd: releaseRoot,
     env: environment,
-    stdio: ['ignore', 'pipe', 'pipe']
+    stdio: 'ignore'
   });
   await fetchWhenReady(`http://127.0.0.1:${port}/api/v1/health`, 'application/json');
   await fetchWhenReady(`http://127.0.0.1:${port}/`, 'text/html');

@@ -16,16 +16,28 @@ jobs:
         with:
           node-version: 22.23.2
           cache: npm
-      - run: npm ci
+      - run: npm ci --include=optional
+      - run: npm ls --include=optional --all sharp @img/sharp-win32-x64
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
       - run: npm run release:windows
       - run: npm run release:windows:verify -- release/搭饭小馆
       - run: node scripts/smoke-windows-release.mjs release/搭饭小馆
       - shell: pwsh
         run: Compress-Archive -Path 'release\搭饭小馆' -DestinationPath 'release\搭饭小馆-windows-x64.zip' -Force
       - shell: pwsh
-        run: Expand-Archive -LiteralPath 'release\搭饭小馆-windows-x64.zip' -DestinationPath 'release\zip-smoke' -Force
-      - run: node scripts/verify-windows-release.mjs release/zip-smoke/搭饭小馆
-      - run: node scripts/smoke-windows-release.mjs release/zip-smoke/搭饭小馆
+        run: |
+          $zipSmoke = Join-Path $env:RUNNER_TEMP 'dafan-xiaoguan-zip-smoke'
+          if (Test-Path $zipSmoke) { Remove-Item $zipSmoke -Recurse -Force }
+          New-Item -ItemType Directory -Path $zipSmoke | Out-Null
+          Expand-Archive -LiteralPath 'release\搭饭小馆-windows-x64.zip' -DestinationPath $zipSmoke -Force
+          "ZIP smoke directory: $zipSmoke"
+      - shell: pwsh
+        run: |
+          $zipSmoke = Join-Path $env:RUNNER_TEMP 'dafan-xiaoguan-zip-smoke\搭饭小馆'
+          node scripts/verify-windows-release.mjs $zipSmoke
+          node scripts/smoke-windows-release.mjs $zipSmoke
       - uses: actions/upload-artifact@v4
         with:
           name: 搭饭小馆-windows-x64
