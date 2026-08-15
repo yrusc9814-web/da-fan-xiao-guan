@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import { MealType, RecordItemType, RecordSourceType } from '@prisma/client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
 import { createTestPrismaClient } from '../src/database/test-database.js';
 import { registerStoreRoutes } from '../src/modules/stores/routes.js';
@@ -118,52 +118,62 @@ describe('店铺与觅食 API', () => {
   });
 
   it('推荐候选执行获取方式、餐次、忌口和重复周期硬过滤', async () => {
-    const diner = await database.diner.create({ data: { name: '节点B过敏用户', allergyText: '花生' } });
-    const eligible = await database.store.create({
-      data: {
-        name: '节点B清淡粥店',
-        cuisine: '粤菜',
-        supportsTakeout: true,
-        favorite: true,
-        rating: 4.5,
-        mealTypes: { create: { mealType: MealType.BREAKFAST } }
-      }
-    });
-    await database.store.create({
-      data: {
-        name: '节点B花生面店',
-        recommendedDishes: '花生拌面',
-        supportsTakeout: true,
-        mealTypes: { create: { mealType: MealType.BREAKFAST } }
-      }
-    });
-    const recent = await database.store.create({
-      data: {
-        name: '节点B最近吃过店',
-        supportsTakeout: true,
-        mealTypes: { create: { mealType: MealType.BREAKFAST } }
-      }
-    });
-    await database.mealRecord.create({
-      data: {
-        recordDate: '2026-08-11',
-        mealType: MealType.BREAKFAST,
-        sourceType: RecordSourceType.TAKEOUT,
-        items: { create: { itemType: RecordItemType.STORE, storeId: recent.id } }
-      }
-    });
+    // 该断言依赖「系统当前日期 - repeatDays」与固定 recordDate='2026-08-11' 的先后关系：
+    // recordDate 必须落在重复周期内（>= since）才会被硬过滤排除。若不固定系统时间，
+    // 运行日在 2026-08-15 之后 since 会越过 2026-08-11，recent 错误进入候选而失败。
+    // 用 Vitest fake timers 固定系统时间（仅伪造 Date，不干扰 Prisma 的定时器），结束即恢复。
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-08-12T12:00:00Z'));
+    try {
+      const diner = await database.diner.create({ data: { name: '节点B过敏用户', allergyText: '花生' } });
+      const eligible = await database.store.create({
+        data: {
+          name: '节点B清淡粥店',
+          cuisine: '粤菜',
+          supportsTakeout: true,
+          favorite: true,
+          rating: 4.5,
+          mealTypes: { create: { mealType: MealType.BREAKFAST } }
+        }
+      });
+      await database.store.create({
+        data: {
+          name: '节点B花生面店',
+          recommendedDishes: '花生拌面',
+          supportsTakeout: true,
+          mealTypes: { create: { mealType: MealType.BREAKFAST } }
+        }
+      });
+      const recent = await database.store.create({
+        data: {
+          name: '节点B最近吃过店',
+          supportsTakeout: true,
+          mealTypes: { create: { mealType: MealType.BREAKFAST } }
+        }
+      });
+      await database.mealRecord.create({
+        data: {
+          recordDate: '2026-08-11',
+          mealType: MealType.BREAKFAST,
+          sourceType: RecordSourceType.TAKEOUT,
+          items: { create: { itemType: RecordItemType.STORE, storeId: recent.id } }
+        }
+      });
 
-    const candidates = await listStoreCandidates(database, {
-      acquisitionModes: ['TAKEOUT'],
-      mealTypes: [MealType.BREAKFAST],
-      dinerIds: [diner.id],
-      repeatDays: 3,
-      wantedKeywords: ['粤菜']
-    });
-    expect(candidates.map((candidate) => candidate.id)).toContain(eligible.id);
-    expect(candidates.map((candidate) => candidate.id)).not.toContain(recent.id);
-    expect(candidates.some((candidate) => candidate.name === '节点B花生面店')).toBe(false);
-    expect(candidates.find((candidate) => candidate.id === eligible.id)?.reasons).toContain('已收藏');
+      const candidates = await listStoreCandidates(database, {
+        acquisitionModes: ['TAKEOUT'],
+        mealTypes: [MealType.BREAKFAST],
+        dinerIds: [diner.id],
+        repeatDays: 3,
+        wantedKeywords: ['粤菜']
+      });
+      expect(candidates.map((candidate) => candidate.id)).toContain(eligible.id);
+      expect(candidates.map((candidate) => candidate.id)).not.toContain(recent.id);
+      expect(candidates.some((candidate) => candidate.name === '节点B花生面店')).toBe(false);
+      expect(candidates.find((candidate) => candidate.id === eligible.id)?.reasons).toContain('已收藏');
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('拒绝非法评分和人均消费', async () => {
