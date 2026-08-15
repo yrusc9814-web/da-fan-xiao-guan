@@ -20,7 +20,7 @@ if not defined APP_STARTED (
   echo [ERROR] PID 文件内容无效，未停止任何进程。
   exit /b 1
 )
-powershell -NoProfile -Command "$p=Get-CimInstance Win32_Process -Filter 'ProcessId=%APP_PID%' -ErrorAction SilentlyContinue; if(-not $p){exit 2}; if($p.CommandLine -notlike '*%SERVICE_TAG%*' -or $p.CommandLine -notlike '*%SERVER_ENTRY:\=\\%*' -or $p.CreationDate.ToUniversalTime().ToString('o') -ne '%APP_STARTED%'){exit 3}; Stop-Process -Id %APP_PID% -Force; exit 0"
+powershell -NoProfile -Command "$p=Get-CimInstance Win32_Process -Filter 'ProcessId=%APP_PID%' -ErrorAction SilentlyContinue; if(-not $p){exit 2}; if($p.CommandLine -notlike '*%SERVICE_TAG%*' -or $p.CommandLine -notlike '*--launch-token=%APP_STARTED%*'){exit 3}; Stop-Process -Id %APP_PID% -Force; exit 0"
 set "STOP_CODE=!errorlevel!"
 if "%STOP_CODE%"=="2" (
   echo PID %APP_PID% 已不存在，清理旧 PID 文件。

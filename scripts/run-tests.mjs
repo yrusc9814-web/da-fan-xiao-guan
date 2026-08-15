@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const testDatabaseUrl = process.env.TEST_DATABASE_URL ?? 'file:../../../data/test.db';
+const prismaCli = resolve(projectRoot, 'node_modules/prisma/build/index.js');
 const environment = {
   ...process.env,
   DATABASE_URL: testDatabaseUrl,
@@ -58,7 +59,15 @@ const applicationDatabase = resolve(projectRoot, 'data/app.db');
 const applicationDatabaseBefore = await fingerprint(applicationDatabase);
 let testFailure;
 
+if (!existsSync(prismaCli)) {
+  throw new Error('找不到本地 Prisma CLI，请先运行 npm ci 或 npm install');
+}
+
 try {
+  // 干净 npm ci 后 @prisma/client 尚未生成（schema 不在默认位置，postinstall 不会自动 generate），
+  // 必须显式 prisma generate，否则任何依赖 Prisma Client 的测试都会报
+  // "@prisma/client did not initialize yet"。让 npm test 自足运行，不依赖调用方先执行 prisma:generate。
+  run(process.execPath, [prismaCli, 'generate']);
   const npmCli = npmCliPath();
   run(process.execPath, ['scripts/setup-test-database.mjs']);
   run(process.execPath, [npmCli, 'run', 'test:client']);

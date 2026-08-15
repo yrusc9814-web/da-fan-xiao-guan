@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync } from 'node:fs';
-import { cp, mkdir, readdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { basename, dirname, relative, resolve, sep } from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +23,7 @@ const manifestFilePaths = [
   'app/server/src/database/paths.ts',
   'prisma.config.ts',
   'scripts/ensure-sqlite-file.mjs',
+  'scripts/launch-server.mjs',
   'start.bat',
   'stop.bat',
   'README.txt',
@@ -296,25 +297,47 @@ async function criticalFileHashes(migrations, artifactPaths) {
 }
 
 async function downloadOfficialNodeArchive(destination) {
-  const response = await fetch(nodeArchiveUrl);
-  if (!response.ok || !response.body) {
-    fail(`无法下载 Node 官方 runtime：${response.status} ${response.statusText}`);
+  // 根因（已在真机用 AB 测试确认）：本机 Node 24 的 fetch/https 默认不读 HTTP_PROXY/HTTPS_PROXY
+  // （需 NODE_USE_ENV_PROXY=1 才会走代理），因此走直连；而本机到 nodejs.org（Cloudflare IPv6）的
+  // 直连路径在 bulk 传输时极慢（约 312KB/s）且会停滞，导致 await fetch/arrayBuffer 永久挂起。
+  // curl.exe 会读取 HTTPS_PROXY 走本地 Clash 代理（约 6.5MB/s、5.5s 完成）。
+  // 因此下载改用 curl.exe（自带 connect/总时长/低速超时 + 重试），并以固定 SHA-256 校验完整性。
+  const temporary = `${destination}.tmp`;
+  const curlArgs = [
+    '--fail',
+    '--location',
+    '--retry', '3',
+    '--retry-all-errors',
+    '--connect-timeout', '15',
+    '--max-time', '600',
+    '--speed-time', '30',
+    '--speed-limit', '1024',
+    '--output', temporary,
+    nodeArchiveUrl
+  ];
+  // spawnSync 自身也带超时（略大于 curl --max-time），确保即使 curl 异常也不会拖死构建。
+  const result = spawnSync('curl.exe', curlArgs, {
+    cwd: releaseRoot,
+    encoding: 'utf8',
+    stdio: 'inherit',
+    timeout: 620_000
+  });
+  if (result.error || result.status !== 0) {
+    fail(
+      `无法下载 Node 官方 runtime（curl 退出码 ${result.status ?? 'n/a'}${result.error ? `，${result.error.message}` : ''}）`
+    );
   }
 
-  const contentLength = Number(response.headers.get('content-length'));
-  if (Number.isFinite(contentLength) && contentLength > maximumArchiveSize) {
-    fail(`Node runtime ZIP 超过允许大小：${contentLength}`);
+  const size = (await stat(temporary)).size;
+  if (size > maximumArchiveSize) {
+    await rm(temporary, { force: true });
+    fail(`Node runtime ZIP 超过允许大小：${size}`);
   }
-
-  const archive = Buffer.from(await response.arrayBuffer());
-  if (archive.byteLength > maximumArchiveSize) {
-    fail(`Node runtime ZIP 超过允许大小：${archive.byteLength}`);
-  }
-  await writeFile(destination, archive);
-
-  if ((await sha256(destination)) !== nodeArchiveSha256) {
+  if ((await sha256(temporary)) !== nodeArchiveSha256) {
+    await rm(temporary, { force: true });
     fail(`Node 官方 ZIP 的 SHA-256 不匹配 ${nodeVersion} Windows x64 发布清单`);
   }
+  await rename(temporary, destination);
 }
 
 function assertWindowsX64() {
@@ -356,7 +379,8 @@ async function main() {
     'app/server/prisma',
     'app/server/src/database/paths.ts',
     'dist-server',
-    'scripts/ensure-sqlite-file.mjs'
+    'scripts/ensure-sqlite-file.mjs',
+    'scripts/launch-server.mjs'
   ]) {
     await copyIntoRelease(relativePath);
   }

@@ -13,7 +13,7 @@
     "build": "npm run build:client && npm run build:server",
     "build:client": "npm --workspace @dafan/client run build",
     "build:server": "npm --workspace @dafan/server run build",
-    "release:windows": "npm run prisma:generate && npm run prisma:validate && npm run build && node scripts/build-windows-release.mjs",
+    "release:windows": "node scripts/run-release-windows.mjs",
     "release:windows:verify": "node scripts/verify-windows-release.mjs",
     "start:prod": "node dist-server/server/src/server.js",
     "typecheck": "npm run typecheck:client && npm run typecheck:server",

@@ -18,6 +18,7 @@ const manifestFilePaths = [
   'app/server/src/database/paths.ts',
   'prisma.config.ts',
   'scripts/ensure-sqlite-file.mjs',
+  'scripts/launch-server.mjs',
   'start.bat',
   'stop.bat',
   'README.txt',

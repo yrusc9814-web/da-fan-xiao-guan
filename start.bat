@@ -50,7 +50,7 @@ if not exist "%APP_ROOT%\dist-server\server\src\server.js" (
   exit /b 1
 )
 set "PRISMA_CLI_REL="
-for /f "usebackq delims=" %%I in (`"%NODE_EXE%" -e "const fs=require('node:fs');const m=JSON.parse(fs.readFileSync('release-manifest.json','utf8'));process.stdout.write(m.prisma.cli.path)"`) do set "PRISMA_CLI_REL=%%I"
+for /f "usebackq delims=" %%I in (`call "%NODE_EXE%" -e "const fs=require('node:fs');const m=JSON.parse(fs.readFileSync('release-manifest.json','utf8'));process.stdout.write(m.prisma.cli.path)"`) do set "PRISMA_CLI_REL=%%I"
 if not defined PRISMA_CLI_REL (
   echo [ERROR] release-manifest.json 未声明 Prisma CLI，正式包不完整。
   pause
@@ -75,33 +75,44 @@ if !errorlevel! neq 0 (
   exit /b 1
 )
 
-for /f "tokens=1,2 delims=|" %%P in ('powershell -NoProfile -Command "$arguments='^"' + $env:SERVER_ENTRY + '^" ' + $env:SERVICE_TAG; $p=Start-Process -FilePath $env:NODE_EXE -ArgumentList $arguments -WorkingDirectory $env:APP_ROOT -RedirectStandardOutput $env:LOG_FILE -RedirectStandardError $env:ERROR_LOG -PassThru; $c=Get-CimInstance Win32_Process -Filter ('ProcessId=' + $p.Id); Write-Output ($p.Id.ToString() + '^|' + $c.CreationDate.ToUniversalTime().ToString('o'))"') do (set "APP_PID=%%P"& set "APP_STARTED=%%Q")
-if not defined APP_PID (
+"%NODE_EXE%" "%APP_ROOT%\scripts\launch-server.mjs"
+if !errorlevel! neq 0 (
   echo [ERROR] 服务进程启动失败，请查看 logs\app-error.log。
+  pause
+  exit /b 1
+)
+if not exist "%PID_FILE%" (
+  echo [ERROR] 服务进程启动失败，未生成 PID 文件。
+  pause
+  exit /b 1
+)
+set /p APP_METADATA=<"%PID_FILE%"
+for /f "tokens=1,2 delims=|" %%A in ("%APP_METADATA%") do (set "APP_PID=%%A"& set "APP_STARTED=%%B")
+if not defined APP_PID (
+  echo [ERROR] 服务进程启动失败，PID 文件内容无效。
   pause
   exit /b 1
 )
 if not defined APP_STARTED (
-  echo [ERROR] 服务进程启动失败，请查看 logs\app-error.log。
+  echo [ERROR] 服务进程启动失败，PID 文件内容无效。
   pause
   exit /b 1
 )
->"%PID_FILE%" echo %APP_PID%^|%APP_STARTED%
-powershell -NoProfile -Command "$deadline=(Get-Date).AddSeconds(30); do { try { $r=Invoke-WebRequest -UseBasicParsing -Uri ('http://127.0.0.1:' + $env:APP_PORT + '/api/v1/health') -TimeoutSec 2; if($r.StatusCode -eq 200){exit 0} } catch {}; Start-Sleep -Seconds 1 } while((Get-Date) -lt $deadline); exit 1"
+"%NODE_EXE%" -e "const d=Date.now()+30000;(async()=>{while(Date.now()<d){try{const r=await fetch('http://127.0.0.1:'+process.env.APP_PORT+'/api/v1/health');if(r.status===200)process.exit(0)}catch(e){};await new Promise(s=>setTimeout(s,1000))}process.exit(1)})()"
 if !errorlevel! neq 0 (
   echo [ERROR] 服务健康检查失败，请查看日志。
   call "%APP_ROOT%\stop.bat"
   pause
   exit /b 1
 )
-powershell -NoProfile -Command "$r=Invoke-WebRequest -UseBasicParsing -Uri 'http://127.0.0.1:%APP_PORT%/' -TimeoutSec 10; if($r.StatusCode -ne 200 -or $r.Headers['Content-Type'] -notlike 'text/html*' -or $r.Content -notmatch '(?i)<!doctype html|<html'){exit 1}"
+"%NODE_EXE%" -e "const d=Date.now()+15000;(async()=>{while(Date.now()<d){try{const r=await fetch('http://127.0.0.1:'+process.env.APP_PORT+'/');if(r.status===200){const c=r.headers.get('content-type')||'';const t=await r.text();if(c.includes('text/html')&&(t.includes('<!doctype html')||t.includes('<html')))process.exit(0)}}catch(e){};await new Promise(s=>setTimeout(s,1000))}process.exit(1)})()"
 if !errorlevel! neq 0 (
   echo [ERROR] 前端页面检查失败，生产静态资源未正确挂载。
   call "%APP_ROOT%\stop.bat"
   pause
   exit /b 1
 )
-for /f %%I in ('powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 ^| Where-Object {$_.IPAddress -notlike '127.*' -and $_.PrefixOrigin -ne 'WellKnown'} ^| Select-Object -First 1 -ExpandProperty IPAddress)"') do set "LAN_IP=%%I"
+for /f "usebackq delims=" %%I in (`powershell -NoProfile -Command "(Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.IPAddress -notlike '127.*' -and $_.PrefixOrigin -ne 'WellKnown'} | Select-Object -First 1 -ExpandProperty IPAddress)"`) do set "LAN_IP=%%I"
 echo 搭饭小馆已启动，PID %APP_PID%
 echo 电脑访问：http://127.0.0.1:%APP_PORT%
 if defined LAN_IP echo 手机访问：http://%LAN_IP%:%APP_PORT%
