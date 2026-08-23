@@ -73,7 +73,9 @@ function packageInfo(requireFromServer, packageName) {
     try {
       entry = requireFromServer.resolve(specifier);
       break;
-    } catch {}
+    } catch {
+      // 解析失败时尝试下一个 specifier，全部失败由下方 fail() 兜底
+    }
   }
   if (!entry) {
     fail(`无法从 @dafan/server 上下文解析 npm 包：${packageName}`);
