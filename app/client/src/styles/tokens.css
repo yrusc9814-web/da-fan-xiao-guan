@@ -19,6 +19,7 @@
   --color-success: #4e9a68;
   --color-success-soft: #effaf2;
   --color-focus: #8d4c64;
+  --color-overlay: rgba(47, 40, 43, 0.32);
 
   --font-family-sans: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', 'Segoe UI', Arial, sans-serif;
   --font-family-display: 'PingFang SC', 'Microsoft YaHei', 'Noto Sans CJK SC', sans-serif;
@@ -58,5 +59,4 @@
   --z-sidebar: 10;
   --z-header: 20;
   --z-overlay: 100;
-  --z-toast: 200;
 }

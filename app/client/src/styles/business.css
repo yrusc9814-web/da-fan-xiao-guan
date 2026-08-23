@@ -78,12 +78,12 @@
   color: var(--color-text-muted);
   font-size: 12px;
 }
-.business-card__actions button,
-.business-conflict button {
-  color: var(--color-primary-hover);
-  font-weight: 700;
-}
 .business-favorite {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  margin: -9px;
   font-size: 26px;
   line-height: 1;
   color: var(--color-primary);
@@ -130,13 +130,16 @@
   inset: 0;
   display: grid;
   place-items: center;
-  padding: 20px;
-  background: rgba(47, 40, 43, 0.32);
+  padding: var(--space-6);
+  background: var(--color-overlay);
 }
 .business-modal__panel {
   display: grid;
   gap: 16px;
-  width: min(100%, 480px);
+  width: min(100%, 520px);
+  border-radius: var(--radius-dialog);
+  box-shadow: var(--shadow-dialog);
+  border: 0;
 }
 .business-modal__panel h2,
 .business-modal__panel p {

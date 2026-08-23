@@ -402,7 +402,7 @@ watch(
       >
     </div>
     <div v-if="conflict" class="business-conflict" role="alert">
-      {{ conflict }}，列表已保留，请刷新后重新操作。 <button type="button" @click="load">重新加载</button>
+      {{ conflict }}，列表已保留，请刷新后重新操作。 <button class="text-button" type="button" @click="load">重新加载</button>
     </div>
     <AppErrorState v-if="error" title="暂时无法读取数据" :description="error" @retry="load" />
     <div v-else-if="loading" class="business-grid"><AppSkeleton v-for="index in 6" :key="index" height="150px" /></div>
@@ -439,9 +439,9 @@ watch(
           </button>
         </div>
         <div class="business-card__actions">
-          <RouterLink v-if="kind === 'recipes'" :to="`/recipes/${item.id}`">查看详情</RouterLink
-          ><button type="button" @click="editItem(item)">编辑</button
-          ><button type="button" @click="removeItem(item)">{{ kind === 'diners' ? '停用' : '删除' }}</button>
+          <RouterLink v-if="kind === 'recipes'" class="text-button" :to="`/recipes/${item.id}`">查看详情</RouterLink
+          ><button class="text-button" type="button" @click="editItem(item)">编辑</button
+          ><button class="text-button" type="button" @click="removeItem(item)">{{ kind === 'diners' ? '停用' : '删除' }}</button>
         </div>
       </article>
     </div>
@@ -473,14 +473,20 @@ watch(
   overflow: hidden;
 }
 .catalog-card__image {
-  width: calc(100% + 40px);
+  width: calc(100% + var(--space-6) * 2);
   height: 170px;
-  margin: -20px -20px 0;
+  margin: calc(var(--space-6) * -1) calc(var(--space-6) * -1) 0;
   object-fit: cover;
 }
 .catalog-card a {
   color: var(--color-primary-hover);
   font-weight: 700;
+}
+@media (max-width: 767px) {
+  .catalog-card__image {
+    width: calc(100% + var(--space-5) * 2);
+    margin: calc(var(--space-5) * -1) calc(var(--space-5) * -1) 0;
+  }
 }
 @media (max-width: 640px) {
   .catalog-fields {

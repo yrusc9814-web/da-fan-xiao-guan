@@ -256,7 +256,7 @@ onMounted(async () => {
       >
     </div>
     <div v-if="conflict" class="business-conflict" role="alert">
-      {{ conflict }}，请重新加载库存后再调整。 <button type="button" @click="load">重新加载</button>
+      {{ conflict }}，请重新加载库存后再调整。 <button class="text-button" type="button" @click="load">重新加载</button>
     </div>
     <AppErrorState v-if="error" title="库存读取失败" :description="error" @retry="load" />
     <div v-else-if="loading" class="business-grid"><AppSkeleton v-for="index in 6" :key="index" height="190px" /></div>
@@ -292,7 +292,7 @@ onMounted(async () => {
           </button>
         </div>
         <div class="business-card__actions">
-          <button type="button" @click="removeIngredient(ingredient)">删除</button>
+          <button class="text-button" type="button" @click="removeIngredient(ingredient)">删除</button>
         </div>
       </article>
     </div>

@@ -210,6 +210,7 @@ async function addMissingToShopping() {
             <p v-if="result.missingIngredients.length">缺少：{{ result.missingIngredients.join('、') }}</p>
           </div>
           <RouterLink
+            class="text-button"
             :to="
               result.resultType === 'RECIPE'
                 ? `/recipes/${result.resultId}`

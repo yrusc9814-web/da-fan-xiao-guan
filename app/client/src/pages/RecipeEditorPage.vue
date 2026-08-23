@@ -294,7 +294,7 @@ onMounted(async () => {
               </option>
             </select></label
           ><label><input v-model="row.optional" type="checkbox" />可选</label
-          ><button type="button" @click="ingredients.splice(index, 1)">移除</button>
+          ><button class="text-button" type="button" @click="ingredients.splice(index, 1)">移除</button>
         </div>
       </section>
       <section class="app-card editor-section">
@@ -307,6 +307,7 @@ onMounted(async () => {
         <div v-for="(step, index) in steps" :key="index" class="step-row">
           <strong>{{ index + 1 }}</strong
           ><AppTextarea v-model="step.content" :label="`步骤 ${index + 1}`" /><button
+            class="text-button"
             type="button"
             @click="steps.splice(index, 1)"
           >
@@ -376,7 +377,7 @@ onMounted(async () => {
 @media (max-width: 760px) {
   .business-hero {
     position: sticky;
-    z-index: 20;
+    z-index: var(--z-header);
     top: 0;
     align-items: center;
     padding: 12px 14px;

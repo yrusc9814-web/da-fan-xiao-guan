@@ -138,7 +138,7 @@ onMounted(() => load());
         >创建</AppButton
       >
     </form>
-    <div v-if="conflict" class="business-conflict">{{ conflict }} <button @click="load()">重新加载</button></div>
+    <div v-if="conflict" class="business-conflict">{{ conflict }} <button class="text-button" @click="load()">重新加载</button></div>
     <AppErrorState v-if="error" title="购物清单读取失败" :description="error" @retry="load()" />
     <p v-else-if="loading">正在读取购物清单…</p>
     <AppEmptyState

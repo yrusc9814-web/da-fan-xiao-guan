@@ -86,6 +86,29 @@
   background: var(--color-danger);
 }
 
+.text-button {
+  display: inline-flex;
+  align-items: center;
+  min-height: 36px;
+  padding: 0 12px;
+  border-radius: var(--radius-tag);
+  color: var(--color-primary-hover);
+  font-weight: 700;
+  font-size: var(--font-size-sm);
+  line-height: 1;
+  transition:
+    color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
+}
+
+.text-button:hover:not(:disabled) {
+  background: var(--color-primary-soft);
+}
+
+.text-button:disabled {
+  opacity: 0.55;
+}
+
 .app-button__spinner {
   width: 14px;
   height: 14px;
@@ -205,7 +228,7 @@
   display: grid;
   place-items: center;
   padding: var(--space-6);
-  background: rgba(47, 40, 43, 0.32);
+  background: var(--color-overlay);
 }
 
 .app-dialog {
