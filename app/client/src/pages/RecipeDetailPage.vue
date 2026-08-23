@@ -7,6 +7,7 @@ import AppEmptyState from '../components/ui/AppEmptyState.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
 import { apiRequest } from '../services/api';
+import { displayLabel } from '../utils/display';
 
 interface RecipeDetail {
   id: string;
@@ -90,7 +91,7 @@ onMounted(() => {
           <h2>食材</h2>
           <ul v-if="recipe.ingredients.length">
             <li v-for="item in recipe.ingredients" :key="item.id">
-              {{ item.ingredientNameSnapshot }} {{ item.quantity ?? '' }} {{ item.unit ?? ''
+              {{ item.ingredientNameSnapshot }} {{ item.quantity ?? '' }} {{ item.unit ? displayLabel(item.unit) : ''
               }}{{ item.optional ? '（可选）' : '' }}
             </li>
           </ul>

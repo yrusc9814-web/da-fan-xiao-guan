@@ -59,7 +59,7 @@ onMounted(load);
         <p>支持的业务数据保留 30 天；恢复会原子清除删除标记并递增版本。</p>
       </div>
     </header>
-    <p v-if="message" class="business-conflict">{{ message }}</p>
+    <p v-if="message" class="business-success">{{ message }}</p>
     <AppErrorState v-if="error" title="回收站读取失败" :description="error" @retry="load" />
     <p v-else-if="loading">正在读取最近删除…</p>
     <AppEmptyState

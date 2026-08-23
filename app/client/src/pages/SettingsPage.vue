@@ -119,7 +119,7 @@ onMounted(load);
       <AppButton :loading="saving" @click="save">保存设置</AppButton>
     </header>
     <AppErrorState v-if="error" title="设置操作失败" :description="error" @retry="load" />
-    <p v-if="message" class="business-conflict">{{ message }}</p>
+    <p v-if="message" class="business-success">{{ message }}</p>
     <div v-if="loading" class="settings-grid"><AppSkeleton v-for="index in 4" :key="index" height="160px" /></div>
     <template v-else-if="data"
       ><div class="business-form app-card">

@@ -246,7 +246,8 @@ export async function deleteIngredient(database: PrismaClient, id: string, versi
 }
 
 export async function adjustInventory(database: PrismaClient, ingredientId: string, input: BatchAdjustmentInput) {
-  if (!Number.isFinite(input.quantity) || input.quantity === 0) throw badRequest('调整数量不能为 0');
+  if (!Number.isFinite(input.quantity) || (input.quantity === 0 && !input.batchId))
+    throw badRequest('调整数量不能为 0');
   return database.$transaction(async (transaction) => {
     const ingredient = await transaction.ingredient.findFirst({ where: { id: ingredientId, deletedAt: null } });
     if (!ingredient) throw Object.assign(new Error('食材不存在'), { statusCode: 404 });
@@ -306,7 +307,8 @@ export async function adjustInventory(database: PrismaClient, ingredientId: stri
           version: { increment: 1 },
           opened: input.opened ?? current.opened,
           consumePriority: input.consumePriority ?? current.consumePriority,
-          notes: input.notes ?? current.notes
+          notes: input.notes ?? current.notes,
+          expiryDate: input.expiryDate === undefined ? current.expiryDate : input.expiryDate
         }
       });
       if (!updated.count)

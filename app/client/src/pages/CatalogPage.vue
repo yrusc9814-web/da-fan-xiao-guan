@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { DinerDto, KitchenToolDto, RecipeDto, StoreDto } from '../../../shared/types';
 import AppButton from '../components/ui/AppButton.vue';
@@ -55,6 +55,7 @@ const error = ref(''),
 const showForm = ref(false),
   editingId = ref<string | null>(null);
 const pendingDelete = ref<CatalogItem | null>(null);
+const favoriteBusyIds = ref(new Set<string>());
 const emptyForm = () => ({
   name: '',
   note: '',
@@ -252,6 +253,9 @@ async function confirmRemove() {
   }
 }
 async function toggleFavorite(item: RecipeDto | StoreDto) {
+  // C-02：行级 busy 锁——请求进行中的条目忽略再次点击，避免重复提交携带相同 version 触发 409 误报
+  if (favoriteBusyIds.value.has(item.id)) return;
+  favoriteBusyIds.value.add(item.id);
   conflict.value = '';
   try {
     await apiRequest(`/${props.kind}/${item.id}/favorite`, {
@@ -262,6 +266,8 @@ async function toggleFavorite(item: RecipeDto | StoreDto) {
   } catch (reason) {
     if (reason instanceof ApiRequestError && reason.status === 409) conflict.value = reason.message;
     else error.value = reason instanceof Error ? reason.message : '更新失败';
+  } finally {
+    favoriteBusyIds.value.delete(item.id);
   }
 }
 function detail(item: CatalogItem): string {
@@ -300,6 +306,16 @@ onMounted(async () => {
     document.getElementById(`catalog-${focus}`)?.scrollIntoView({ block: 'center' });
   }
 });
+watch(
+  () => props.kind,
+  async () => {
+    query.value = '';
+    conflict.value = '';
+    pendingDelete.value = null;
+    closeForm();
+    await load();
+  }
+);
 </script>
 
 <template>
@@ -416,6 +432,7 @@ onMounted(async () => {
             v-if="kind === 'recipes' || kind === 'stores'"
             class="business-favorite"
             type="button"
+            :disabled="favoriteBusyIds.has(item.id)"
             @click="toggleFavorite(item as RecipeDto | StoreDto)"
           >
             {{ (item as RecipeDto | StoreDto).favorite ? '♥' : '♡' }}

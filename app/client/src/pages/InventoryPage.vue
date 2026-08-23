@@ -21,9 +21,10 @@ const error = ref(''),
   conflict = ref(''),
   query = ref('');
 const showCreate = ref(false),
-  form = ref({ name: '', category: '', quantity: '0', unit: 'GRAM', minStock: '' });
+  form = ref({ name: '', category: '', quantity: '0', unit: 'GRAM', minStock: '', expiryDate: '' });
 const adjustTarget = ref<{ ingredient: IngredientDto; batch: InventoryBatchDto } | null>(null),
-  adjustQuantity = ref('');
+  adjustQuantity = ref(''),
+  adjustExpiryDate = ref('');
 const panel = ref<'logs' | 'recommend' | null>(null),
   logs = ref<Array<any>>([]),
   recommendations = ref<Array<any>>([]),
@@ -68,10 +69,10 @@ async function createIngredient() {
         category: form.value.category || null,
         unit: form.value.unit,
         minStock: form.value.minStock ? Number(form.value.minStock) : null,
-        batches: [{ quantity: Number(form.value.quantity), unit: form.value.unit }]
+        batches: [{ quantity: Number(form.value.quantity), unit: form.value.unit, expiryDate: form.value.expiryDate || null }]
       })
     });
-    form.value = { name: '', category: '', quantity: '0', unit: 'GRAM', minStock: '' };
+    form.value = { name: '', category: '', quantity: '0', unit: 'GRAM', minStock: '', expiryDate: '' };
     showCreate.value = false;
     await load();
   } catch (reason) {
@@ -80,13 +81,14 @@ async function createIngredient() {
     saving.value = false;
   }
 }
+function openAdjust(ingredient: IngredientDto, batch: InventoryBatchDto) {
+  adjustTarget.value = { ingredient, batch };
+  adjustExpiryDate.value = batch.expiryDate ?? '';
+}
 async function confirmAdjust() {
-  if (
-    !adjustTarget.value ||
-    !finiteInRange(adjustQuantity.value, -Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER) ||
-    Number(adjustQuantity.value) === 0
-  ) {
-    error.value = '变化数量必须是非 0 的有效数字';
+  const quantity = adjustQuantity.value.trim() === '' ? 0 : Number(adjustQuantity.value);
+  if (!adjustTarget.value || !finiteInRange(quantity, -Number.MAX_SAFE_INTEGER, Number.MAX_SAFE_INTEGER)) {
+    error.value = '变化数量必须是有效数字，留空表示仅修改到期日';
     return;
   }
   saving.value = true;
@@ -98,13 +100,15 @@ async function confirmAdjust() {
       body: JSON.stringify({
         batchId: batch.id,
         batchVersion: batch.version,
-        quantity: Number(adjustQuantity.value),
+        quantity,
         unit: batch.unit,
-        changeType: Number(adjustQuantity.value) >= 0 ? 'MANUAL_ADD' : 'MANUAL_DEDUCT'
+        changeType: quantity > 0 ? 'MANUAL_ADD' : quantity < 0 ? 'MANUAL_DEDUCT' : 'ADJUST',
+        expiryDate: adjustExpiryDate.value || null
       })
     });
     adjustTarget.value = null;
     adjustQuantity.value = '';
+    adjustExpiryDate.value = '';
     await load();
   } catch (reason) {
     if (reason instanceof ApiRequestError && reason.status === 409) conflict.value = reason.message;
@@ -240,7 +244,11 @@ onMounted(async () => {
             {{ displayLabel(unit) }}
           </option>
         </select></label
-      ><AppInput v-model="form.minStock" label="最低库存" /><AppButton type="submit" :loading="saving">保存</AppButton>
+      ><AppInput v-model="form.minStock" label="最低库存" /><AppInput
+        v-model="form.expiryDate"
+        type="date"
+        label="到期日（可留空）"
+      /><AppButton type="submit" :loading="saving">保存</AppButton>
     </form>
     <div class="business-toolbar app-card">
       <AppInput v-model="query" label="搜索库存" @keyup.enter="load" /><AppButton variant="secondary" @click="load"
@@ -277,7 +285,7 @@ onMounted(async () => {
             v-for="batch in ingredient.batches"
             :key="batch.id"
             type="button"
-            @click="adjustTarget = { ingredient, batch }"
+            @click="openAdjust(ingredient, batch)"
           >
             <span>{{ batch.quantity }} {{ displayLabel(batch.unit) }}</span
             ><small>{{ batch.expiryDate || '无到期日' }} · 点击调整</small>
@@ -292,7 +300,13 @@ onMounted(async () => {
       <form class="business-modal__panel app-card" @submit.prevent="confirmAdjust">
         <h2>调整 {{ adjustTarget.ingredient.name }}</h2>
         <p>当前 {{ adjustTarget.batch.quantity }} {{ displayLabel(adjustTarget.batch.unit) }}，负数表示扣减。</p>
-        <AppInput v-model="adjustQuantity" label="变化数量" placeholder="例如 200 或 -100" />
+        <AppInput v-model="adjustQuantity" label="变化数量" placeholder="例如 200 或 -100；留空表示只改到期日" />
+        <AppInput
+          v-model="adjustExpiryDate"
+          type="date"
+          label="到期日"
+          placeholder="清空并保存即移除到期日"
+        />
         <div class="business-card__actions">
           <AppButton variant="ghost" @click="adjustTarget = null">取消</AppButton
           ><AppButton type="submit" :loading="saving">确认调整</AppButton>

@@ -80,14 +80,26 @@ async function addItem() {
     saving.value = false;
   }
 }
-async function toggle(row: Item) {
-  if (!selected.value) return;
+let toggleChain: Promise<void> = Promise.resolve();
+function toggle(row: Item) {
+  const listId = selected.value?.id;
+  if (!listId) return;
+  // C-01：连续快速勾选时串行发送，后一个 PUT 总是基于前一个响应的最新 version，避免过期 version 触发 409
+  toggleChain = toggleChain.then(() => doToggle(listId, row));
+}
+async function doToggle(listId: string, row: Item) {
+  const list = lists.value.find((entry) => entry.id === listId);
+  const target = list?.items.find((entry) => entry.id === row.id);
+  if (!list || !target) return;
   try {
-    await apiRequest(`/shopping-list-items/${row.id}`, {
+    const updated = await apiRequest<List>(`/shopping-list-items/${target.id}`, {
       method: 'PUT',
-      body: JSON.stringify({ version: selected.value.version, completed: !row.completed })
+      body: JSON.stringify({ version: list.version, completed: !target.completed })
     });
-    await load(selected.value.id);
+    // 服务端返回更新后的整张清单，局部替换即可，避免整页 load 导致勾选状态回滚闪烁
+    const index = lists.value.findIndex((entry) => entry.id === updated.id);
+    if (index >= 0) lists.value[index] = updated;
+    if (selected.value?.id === updated.id) selected.value = updated;
   } catch (e) {
     handle(e);
   }

@@ -175,7 +175,7 @@ async function addMissingToShopping() {
         </select></label
       ><AppInput v-model="planDate" type="date" label="加入计划日期" /><AppInput v-model="dinerCount" label="人数" />
     </div>
-    <p v-if="message" class="business-conflict">{{ message }}</p>
+    <p v-if="message" class="business-success">{{ message }}</p>
     <AppErrorState v-if="error" title="暂时无法推荐" :description="error" @retry="generate" /><AppEmptyState
       v-else-if="!results.length && !loading"
       title="准备好摇一摇了吗"

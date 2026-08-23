@@ -288,6 +288,7 @@ onMounted(async () => {
                   'OTHER'
                 ]"
                 :key="unit"
+                :value="unit"
               >
                 {{ displayLabel(unit) }}
               </option>
@@ -315,7 +316,7 @@ onMounted(async () => {
       </section>
     </div>
     <p v-if="conflict" class="business-conflict">{{ conflict }}，请复制当前内容后重新加载最新版本。</p>
-    <p v-if="error" class="business-conflict">{{ error }}</p>
+    <p v-if="error" class="business-error">{{ error }}</p>
   </section>
 </template>
 <style scoped>
