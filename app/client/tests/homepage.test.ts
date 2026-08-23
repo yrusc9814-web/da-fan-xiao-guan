@@ -130,8 +130,7 @@ describe('正式首页结构', () => {
       'quick-actions',
       'homepage-section homepage-section--recommendations',
       'dashboard-info-grid',
-      'homepage-section calendar-section',
-      'app-card app-card--flat homepage-tip'
+      'homepage-section calendar-section'
     ]);
     expect(wrapper.findAll('.today-records-card')).toHaveLength(1);
   });

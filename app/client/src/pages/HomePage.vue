@@ -454,11 +454,6 @@ onMounted(() => {
         </div>
         <AppEmptyState v-else title="日历暂无内容" description="有计划或记录后会显示在这里。" />
       </section>
-
-      <AppCard class="homepage-tip" :elevated="false">
-        <AppIcon name="sparkle" :size="20" />
-        <span>{{ dashboard.tip }}</span>
-      </AppCard>
     </template>
   </section>
 </template>

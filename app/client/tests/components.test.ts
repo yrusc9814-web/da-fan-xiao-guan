@@ -5,7 +5,6 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 
 import AppButton from '../src/components/ui/AppButton.vue';
 import AppDialog from '../src/components/ui/AppDialog.vue';
-import AppDrawer from '../src/components/ui/AppDrawer.vue';
 import DesktopSidebar from '../src/layouts/DesktopSidebar.vue';
 import MobileBottomNav from '../src/layouts/MobileBottomNav.vue';
 import PinGate from '../src/components/PinGate.vue';
@@ -112,13 +111,4 @@ describe('public component states', () => {
     wrapper.unmount();
   });
 
-  it('closes a drawer with Escape', async () => {
-    const wrapper = mount(AppDrawer, { attachTo: document.body, props: { modelValue: true, title: '测试抽屉' } });
-    await wrapper.vm.$nextTick();
-
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
-    await wrapper.vm.$nextTick();
-    expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false]);
-    wrapper.unmount();
-  });
 });
