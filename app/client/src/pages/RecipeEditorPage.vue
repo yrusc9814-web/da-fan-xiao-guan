@@ -357,7 +357,7 @@ onMounted(async () => {
   object-fit: cover;
   border-radius: 14px;
 }
-@media (max-width: 760px) {
+@media (max-width: 1023px) {
   .editor-row,
   .ingredient-row {
     grid-template-columns: 1fr 1fr;
@@ -374,7 +374,7 @@ onMounted(async () => {
 }
 </style>
 <style scoped>
-@media (max-width: 760px) {
+@media (max-width: 1023px) {
   .business-hero {
     position: sticky;
     z-index: var(--z-header);

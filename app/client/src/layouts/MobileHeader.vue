@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import AppIconButton from '../components/ui/AppIconButton.vue';
+import AppIcon from '../components/AppIcon.vue';
 import MascotPlaceholder from '../components/mascot/MascotPlaceholder.vue';
 </script>
 
@@ -12,8 +12,8 @@ import MascotPlaceholder from '../components/mascot/MascotPlaceholder.vue';
         <small>让每一餐都更美好</small>
       </span>
     </RouterLink>
-    <RouterLink class="mobile-settings" to="/settings" aria-label="设置">
-      <AppIconButton icon="settings" label="设置" />
+    <RouterLink class="mobile-settings app-icon-button app-icon-button--md" to="/settings" aria-label="设置">
+      <AppIcon name="settings" />
     </RouterLink>
   </header>
 </template>

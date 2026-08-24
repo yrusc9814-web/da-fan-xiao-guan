@@ -136,7 +136,7 @@ onMounted(load);
 .calendar-agenda {
   display: none;
 }
-@media (max-width: 760px) {
+@media (max-width: 1023px) {
   .calendar-nav {
     justify-content: space-between;
   }

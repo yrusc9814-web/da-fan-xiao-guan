@@ -3,6 +3,7 @@ import { nextTick, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { ConsumptionPreviewDto } from '../../../shared/types';
 import AppButton from '../components/ui/AppButton.vue';
+import AppDialog from '../components/ui/AppDialog.vue';
 import AppEmptyState from '../components/ui/AppEmptyState.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppInput from '../components/ui/AppInput.vue';
@@ -178,6 +179,11 @@ function toggleBatch(recipeIngredientId: string, batchId: string) {
     [recipeIngredientId]: current.includes(batchId) ? current.filter((id) => id !== batchId) : [...current, batchId]
   };
 }
+function closePreview() {
+  preview.value = null;
+  previewRecord.value = null;
+  selections.value = {};
+}
 async function applyBatchSelections() {
   if (previewRecord.value) await openPreview(previewRecord.value, selections.value);
 }
@@ -194,8 +200,7 @@ async function confirmConsumption() {
         selections: selections.value
       })
     });
-    preview.value = null;
-    previewRecord.value = null;
+    closePreview();
     await load();
   } catch (e) {
     handle(e);
@@ -336,9 +341,17 @@ onMounted(async () => {
         </div>
       </article>
     </div>
-    <div v-if="preview" class="business-modal" @click.self="preview = null">
-      <section class="business-modal__panel consumption-panel app-card">
-        <h2>库存扣减预览</h2>
+    <AppDialog
+      :model-value="Boolean(preview)"
+      title="库存扣减预览"
+      dialog-class="consumption-panel"
+      @update:model-value="
+        (value) => {
+          if (!value) closePreview();
+        }
+      "
+    >
+      <section v-if="preview" class="consumption-content">
         <p>预览不会修改库存；确认后库存、日志、缺料购物与日记状态会在同一事务更新。</p>
         <div class="consumption-items">
           <article v-for="row in preview.items" :key="row.recipeIngredientId">
@@ -361,7 +374,7 @@ onMounted(async () => {
           </article>
         </div>
         <div class="business-card__actions">
-          <AppButton variant="ghost" @click="preview = null">取消</AppButton
+          <AppButton variant="ghost" @click="closePreview">取消</AppButton
           ><AppButton
             v-if="preview.items.some((x) => x.requiresManualSelection)"
             variant="secondary"
@@ -380,7 +393,7 @@ onMounted(async () => {
           >
         </div>
       </section>
-    </div>
+    </AppDialog>
     <ConfirmDeleteDialog
       :model-value="Boolean(pendingDelete)"
       item-name="这条饮食记录"
@@ -395,6 +408,13 @@ onMounted(async () => {
   </section>
 </template>
 <style scoped>
+.consumption-content {
+  display: grid;
+  gap: 16px;
+}
+.consumption-content p {
+  margin: 0;
+}
 .record-options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -409,11 +429,6 @@ onMounted(async () => {
 }
 .record-options label {
   font-size: 13px;
-}
-.consumption-panel {
-  width: min(100%, 720px);
-  max-height: 88vh;
-  overflow: auto;
 }
 .consumption-items {
   display: grid;
@@ -443,7 +458,7 @@ onMounted(async () => {
 .batch-choices label {
   font-size: 13px;
 }
-@media (max-width: 760px) {
+@media (max-width: 1023px) {
   .record-options {
     grid-template-columns: 1fr;
   }

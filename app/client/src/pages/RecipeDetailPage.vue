@@ -2,7 +2,6 @@
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
-import AppButton from '../components/ui/AppButton.vue';
 import AppEmptyState from '../components/ui/AppEmptyState.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
@@ -76,7 +75,9 @@ onMounted(() => {
             {{ recipe.favorite ? '已收藏' : '未收藏' }}
           </p>
         </div>
-        <RouterLink :to="`/recipes/${recipe.id}/edit`"><AppButton>编辑菜谱</AppButton></RouterLink>
+        <RouterLink :to="`/recipes/${recipe.id}/edit`" class="app-button app-button--primary app-button--md"
+          >编辑菜谱</RouterLink
+        >
       </header>
       <img
         v-if="imageUrl(recipe.imagePath)"

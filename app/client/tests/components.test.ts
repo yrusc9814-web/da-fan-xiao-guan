@@ -104,7 +104,9 @@ describe('public component states', () => {
     const wrapper = mount(AppDialog, { attachTo: document.body, props: { modelValue: true, title: '测试弹窗' } });
     await wrapper.vm.$nextTick();
 
-    expect(document.body.querySelector('[role="dialog"]')).not.toBeNull();
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog?.getAttribute('aria-modal')).toBe('true');
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
     await wrapper.vm.$nextTick();
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false]);

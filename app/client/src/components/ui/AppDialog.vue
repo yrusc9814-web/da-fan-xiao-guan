@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref, watch } from 'vue';
 
-const props = withDefaults(defineProps<{ modelValue: boolean; title: string }>(), {
+const props = withDefaults(defineProps<{ modelValue: boolean; title: string; dialogClass?: string }>(), {
   modelValue: false
 });
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
@@ -41,7 +41,15 @@ onBeforeUnmount(() => document.removeEventListener('keydown', handleKeydown));
 <template>
   <Teleport to="body">
     <div v-if="modelValue" class="app-overlay" role="presentation" @click.self="close">
-      <section ref="dialogRef" class="app-dialog" role="dialog" aria-modal="true" :aria-label="title" tabindex="-1">
+      <section
+        ref="dialogRef"
+        class="app-dialog"
+        :class="dialogClass"
+        role="dialog"
+        aria-modal="true"
+        :aria-label="title"
+        tabindex="-1"
+      >
         <header class="app-dialog__header">
           <h2>{{ title }}</h2>
           <button type="button" class="app-dialog__close" aria-label="关闭弹窗" @click="close">

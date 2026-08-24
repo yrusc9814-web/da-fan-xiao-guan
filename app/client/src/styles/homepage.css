@@ -819,7 +819,7 @@ html::-webkit-scrollbar {
     font-weight: 400;
     line-height: 1.2;
   }
-  .mobile-settings .app-icon-button {
+  .mobile-settings.app-icon-button {
     min-width: 44px;
     min-height: 44px;
   }

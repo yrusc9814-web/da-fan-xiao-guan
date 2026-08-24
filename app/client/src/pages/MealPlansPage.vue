@@ -229,7 +229,7 @@ onMounted(load);
 .plan-options label {
   font-size: 13px;
 }
-@media (max-width: 760px) {
+@media (max-width: 1023px) {
   .plan-options {
     grid-template-columns: 1fr;
   }

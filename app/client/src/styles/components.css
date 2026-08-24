@@ -643,10 +643,9 @@
   display: block;
 }
 
-.mobile-settings .app-icon-button {
+.mobile-settings.app-icon-button {
   min-width: 42px;
   min-height: 42px;
-  pointer-events: none;
 }
 
 .mobile-bottom-nav {

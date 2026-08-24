@@ -19,7 +19,12 @@
   min-width: 0;
   flex: 1;
   flex-direction: column;
-  margin-left: var(--sidebar-width);
+}
+
+@media (min-width: 1024px) {
+  .app-main {
+    margin-left: var(--sidebar-width);
+  }
 }
 
 .main-content {
@@ -82,10 +87,6 @@
 }
 
 @media (max-width: 767px) {
-  .app-main {
-    margin-left: 0;
-  }
-
   .main-content {
     padding: 20px 16px calc(var(--mobile-nav-height) + 24px + env(safe-area-inset-bottom));
   }

@@ -3,6 +3,7 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { IngredientDto, InventoryBatchDto, PaginationResponse } from '../../../shared/types';
 import AppButton from '../components/ui/AppButton.vue';
+import AppDialog from '../components/ui/AppDialog.vue';
 import AppEmptyState from '../components/ui/AppEmptyState.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppInput from '../components/ui/AppInput.vue';
@@ -296,9 +297,16 @@ onMounted(async () => {
         </div>
       </article>
     </div>
-    <div v-if="adjustTarget" class="business-modal" @click.self="adjustTarget = null">
-      <form class="business-modal__panel app-card" @submit.prevent="confirmAdjust">
-        <h2>调整 {{ adjustTarget.ingredient.name }}</h2>
+    <AppDialog
+      :model-value="Boolean(adjustTarget)"
+      :title="adjustTarget ? `调整 ${adjustTarget.ingredient.name}` : '调整库存'"
+      @update:model-value="
+        (value) => {
+          if (!value) adjustTarget = null;
+        }
+      "
+    >
+      <form v-if="adjustTarget" class="adjust-form" @submit.prevent="confirmAdjust">
         <p>当前 {{ adjustTarget.batch.quantity }} {{ displayLabel(adjustTarget.batch.unit) }}，负数表示扣减。</p>
         <AppInput v-model="adjustQuantity" label="变化数量" placeholder="例如 200 或 -100；留空表示只改到期日" />
         <AppInput
@@ -312,7 +320,7 @@ onMounted(async () => {
           ><AppButton type="submit" :loading="saving">确认调整</AppButton>
         </div>
       </form>
-    </div>
+    </AppDialog>
     <ConfirmDeleteDialog
       :model-value="Boolean(pendingDelete)"
       :item-name="pendingDelete?.name ?? ''"
@@ -326,3 +334,13 @@ onMounted(async () => {
     />
   </section>
 </template>
+
+<style scoped>
+.adjust-form {
+  display: grid;
+  gap: 16px;
+}
+.adjust-form p {
+  margin: 0;
+}
+</style>
