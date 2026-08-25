@@ -27,8 +27,6 @@
   --font-size-sm: 14px;
   --font-size-md: 16px;
   --font-size-lg: 20px;
-  --font-size-xl: 28px;
-  --font-size-2xl: 36px;
   --font-weight-normal: 400;
   --font-weight-medium: 500;
   --font-weight-semibold: 600;
@@ -43,9 +41,6 @@
   --space-4: 16px;
   --space-5: 20px;
   --space-6: 24px;
-  --space-8: 32px;
-  --space-10: 40px;
-  --space-12: 48px;
 
   --radius-tag: 999px;
   --radius-input: 14px;
@@ -59,8 +54,6 @@
   --sidebar-width: 210px;
   --mobile-nav-height: 68px;
   --motion-fast: 140ms;
-  --motion-normal: 220ms;
-  --z-content: 1;
   --z-sidebar: 10;
   --z-header: 20;
   --z-overlay: 100;

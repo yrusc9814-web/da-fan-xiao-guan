@@ -87,6 +87,10 @@
   background: var(--color-danger);
 }
 
+.app-button--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--color-danger) 88%, var(--color-text-primary));
+}
+
 .text-button {
   display: inline-flex;
   align-items: center;
