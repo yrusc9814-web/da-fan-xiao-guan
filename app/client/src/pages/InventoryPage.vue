@@ -70,7 +70,9 @@ async function createIngredient() {
         category: form.value.category || null,
         unit: form.value.unit,
         minStock: form.value.minStock ? Number(form.value.minStock) : null,
-        batches: [{ quantity: Number(form.value.quantity), unit: form.value.unit, expiryDate: form.value.expiryDate || null }]
+        batches: [
+          { quantity: Number(form.value.quantity), unit: form.value.unit, expiryDate: form.value.expiryDate || null }
+        ]
       })
     });
     form.value = { name: '', category: '', quantity: '0', unit: 'GRAM', minStock: '', expiryDate: '' };
@@ -309,12 +311,7 @@ onMounted(async () => {
       <form v-if="adjustTarget" class="adjust-form" @submit.prevent="confirmAdjust">
         <p>当前 {{ adjustTarget.batch.quantity }} {{ displayLabel(adjustTarget.batch.unit) }}，负数表示扣减。</p>
         <AppInput v-model="adjustQuantity" label="变化数量" placeholder="例如 200 或 -100；留空表示只改到期日" />
-        <AppInput
-          v-model="adjustExpiryDate"
-          type="date"
-          label="到期日"
-          placeholder="清空并保存即移除到期日"
-        />
+        <AppInput v-model="adjustExpiryDate" type="date" label="到期日" placeholder="清空并保存即移除到期日" />
         <div class="business-card__actions">
           <AppButton variant="ghost" @click="adjustTarget = null">取消</AppButton
           ><AppButton type="submit" :loading="saving">确认调整</AppButton>

@@ -299,7 +299,9 @@ onMounted(async () => {
         </select></label
       >
     </div>
-    <div v-if="conflict" class="business-conflict" role="alert">{{ conflict }} <button class="text-button" @click="load">重新加载</button></div>
+    <div v-if="conflict" class="business-conflict" role="alert">
+      {{ conflict }} <button class="text-button" @click="load">重新加载</button>
+    </div>
     <AppErrorState v-if="error" title="记录读取失败" :description="error" @retry="load" />
     <div v-else-if="loading" class="business-grid"><AppSkeleton v-for="index in 6" :key="index" height="170px" /></div>
     <AppEmptyState v-else-if="!records.length" title="还没有饮食记录" description="完成计划或手动记录一餐。" />

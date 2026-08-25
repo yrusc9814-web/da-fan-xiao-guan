@@ -181,7 +181,9 @@ onMounted(load);
       </div>
       <AppInput v-model="form.notes" label="备注" /><AppButton type="submit" :loading="saving">保存计划</AppButton>
     </form>
-    <div v-if="conflict" class="business-conflict" role="alert">{{ conflict }} <button class="text-button" @click="load">重新加载</button></div>
+    <div v-if="conflict" class="business-conflict" role="alert">
+      {{ conflict }} <button class="text-button" @click="load">重新加载</button>
+    </div>
     <AppErrorState v-if="error" title="计划读取失败" :description="error" @retry="load" />
     <div v-else-if="loading" class="business-grid">
       <AppSkeleton v-for="index in 6" :key="index" height="160px" />

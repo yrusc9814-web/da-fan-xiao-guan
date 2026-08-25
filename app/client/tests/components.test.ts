@@ -112,5 +112,4 @@ describe('public component states', () => {
     expect(wrapper.emitted('update:modelValue')?.at(-1)).toEqual([false]);
     wrapper.unmount();
   });
-
 });

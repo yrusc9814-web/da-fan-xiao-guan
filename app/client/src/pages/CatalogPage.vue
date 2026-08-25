@@ -402,7 +402,8 @@ watch(
       >
     </div>
     <div v-if="conflict" class="business-conflict" role="alert">
-      {{ conflict }}，列表已保留，请刷新后重新操作。 <button class="text-button" type="button" @click="load">重新加载</button>
+      {{ conflict }}，列表已保留，请刷新后重新操作。
+      <button class="text-button" type="button" @click="load">重新加载</button>
     </div>
     <AppErrorState v-if="error" title="暂时无法读取数据" :description="error" @retry="load" />
     <div v-else-if="loading" class="business-grid"><AppSkeleton v-for="index in 6" :key="index" height="150px" /></div>
@@ -444,7 +445,9 @@ watch(
         <div class="business-card__actions">
           <RouterLink v-if="kind === 'recipes'" class="text-button" :to="`/recipes/${item.id}`">查看详情</RouterLink
           ><button class="text-button" type="button" @click="editItem(item)">编辑</button
-          ><button class="text-button" type="button" @click="removeItem(item)">{{ kind === 'diners' ? '停用' : '删除' }}</button>
+          ><button class="text-button" type="button" @click="removeItem(item)">
+            {{ kind === 'diners' ? '停用' : '删除' }}
+          </button>
         </div>
       </article>
     </div>

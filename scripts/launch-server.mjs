@@ -6,15 +6,7 @@ import { open, writeFile } from 'node:fs/promises';
 // 由 start.bat 调用；所有路径/参数通过环境变量传入，避免 cmd.exe 引号解析问题。
 // 身份令牌（launch token）随进程命令行传入，stop.bat 据此精确确认要终止的是本服务进程。
 
-const {
-  APP_ROOT,
-  NODE_EXE,
-  SERVER_ENTRY,
-  LOG_FILE,
-  ERROR_LOG,
-  PID_FILE,
-  SERVICE_TAG
-} = process.env;
+const { APP_ROOT, NODE_EXE, SERVER_ENTRY, LOG_FILE, ERROR_LOG, PID_FILE, SERVICE_TAG } = process.env;
 
 function fail(message) {
   console.error(`[launch-server] ${message}`);
@@ -29,14 +21,18 @@ const launchToken = randomBytes(8).toString('hex');
 const stdout = await open(LOG_FILE, 'a');
 const stderr = await open(ERROR_LOG, 'a');
 
-const child = spawn(NODE_EXE, [SERVER_ENTRY, SERVICE_TAG ?? '--app-id=dafan-xiaoguan', `--launch-token=${launchToken}`], {
-  cwd: APP_ROOT,
-  // Windows 上 Node 22 的 detached:true 底层即 DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP：
-  // 服务进程不继承父控制台，彻底脱离调用方（cmd/PowerShell）的进程树等待语义。
-  detached: true,
-  stdio: ['ignore', stdout.fd, stderr.fd],
-  windowsHide: true
-});
+const child = spawn(
+  NODE_EXE,
+  [SERVER_ENTRY, SERVICE_TAG ?? '--app-id=dafan-xiaoguan', `--launch-token=${launchToken}`],
+  {
+    cwd: APP_ROOT,
+    // Windows 上 Node 22 的 detached:true 底层即 DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP：
+    // 服务进程不继承父控制台，彻底脱离调用方（cmd/PowerShell）的进程树等待语义。
+    detached: true,
+    stdio: ['ignore', stdout.fd, stderr.fd],
+    windowsHide: true
+  }
+);
 
 try {
   await new Promise((resolvePromise, rejectPromise) => {

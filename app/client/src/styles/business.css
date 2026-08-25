@@ -130,7 +130,9 @@
   text-align: left;
   border-radius: 12px;
   background: #fff7f9;
-  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+  transition:
+    border-color var(--motion-fast) ease,
+    background-color var(--motion-fast) ease;
 }
 
 .business-batches button:hover {

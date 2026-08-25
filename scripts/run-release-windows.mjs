@@ -86,7 +86,12 @@ async function main() {
     { name: 'prisma:generate', command: process.execPath, args: [npmCli, 'run', 'prisma:generate'], timeout: 120_000 },
     { name: 'prisma:validate', command: process.execPath, args: [npmCli, 'run', 'prisma:validate'], timeout: 120_000 },
     { name: 'build', command: process.execPath, args: [npmCli, 'run', 'build'], timeout: 600_000 },
-    { name: 'build-windows-release', command: process.execPath, args: ['scripts/build-windows-release.mjs'], timeout: 1_200_000 }
+    {
+      name: 'build-windows-release',
+      command: process.execPath,
+      args: ['scripts/build-windows-release.mjs'],
+      timeout: 1_200_000
+    }
   ];
 
   console.log('[run-release:windows] 开始编排执行（Node 顺序，逐步骤超时保护）');
@@ -94,7 +99,9 @@ async function main() {
     try {
       await runStep(step.name, step.command, step.args, step.timeout);
     } catch (error) {
-      console.error(`[run-release:windows] ✖ 步骤「${step.name}」失败：${error instanceof Error ? error.message : String(error)}`);
+      console.error(
+        `[run-release:windows] ✖ 步骤「${step.name}」失败：${error instanceof Error ? error.message : String(error)}`
+      );
       console.error('[run-release:windows] 发行构建中止（非 0 退出）');
       process.exit(1);
     }

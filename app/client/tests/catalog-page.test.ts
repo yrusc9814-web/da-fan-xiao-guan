@@ -28,9 +28,11 @@ async function mountCatalogAcrossKinds() {
     ]
   });
   await router.push('/recipes');
-  const fetchMock = vi.fn().mockImplementation((input: unknown) =>
-    Promise.resolve(jsonResponse(String(input).includes('/tools') ? toolItems : recipeItems))
-  );
+  const fetchMock = vi
+    .fn()
+    .mockImplementation((input: unknown) =>
+      Promise.resolve(jsonResponse(String(input).includes('/tools') ? toolItems : recipeItems))
+    );
   vi.stubGlobal('fetch', fetchMock);
   // 通过 RouterView 挂载，路由 props(kind) 才会注入，且跨 kind 导航时复用同一实例
   const wrapper = mount({ template: '<RouterView />' }, { global: { plugins: [router] } });

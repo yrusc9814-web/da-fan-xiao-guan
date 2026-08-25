@@ -95,7 +95,9 @@ describe('ShoppingPage 购物清单连续勾选（C-01）', () => {
       status: 'ACTIVE',
       notes: null,
       version: 5,
-      items: [{ id: 'item-a', ingredientNameSnapshot: '番茄', quantity: 2, unit: 'PIECE', completed: false, notes: null }]
+      items: [
+        { id: 'item-a', ingredientNameSnapshot: '番茄', quantity: 2, unit: 'PIECE', completed: false, notes: null }
+      ]
     };
     const fetchMock = vi.fn().mockImplementation((input: unknown, init?: { method?: string }) => {
       if (init?.method === 'PUT') return conflictResponse('数据已被其他设备修改');

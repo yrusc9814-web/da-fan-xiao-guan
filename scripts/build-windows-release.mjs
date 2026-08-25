@@ -308,13 +308,19 @@ async function downloadOfficialNodeArchive(destination) {
   const curlArgs = [
     '--fail',
     '--location',
-    '--retry', '3',
+    '--retry',
+    '3',
     '--retry-all-errors',
-    '--connect-timeout', '15',
-    '--max-time', '600',
-    '--speed-time', '30',
-    '--speed-limit', '1024',
-    '--output', temporary,
+    '--connect-timeout',
+    '15',
+    '--max-time',
+    '600',
+    '--speed-time',
+    '30',
+    '--speed-limit',
+    '1024',
+    '--output',
+    temporary,
     nodeArchiveUrl
   ];
   // spawnSync 自身也带超时（略大于 curl --max-time），确保即使 curl 异常也不会拖死构建。
