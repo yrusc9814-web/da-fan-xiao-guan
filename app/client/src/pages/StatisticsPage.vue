@@ -52,7 +52,7 @@ onMounted(load);
         <p>仅汇总已确认的饮食记录，草稿不会污染正式统计。</p>
       </div>
       <div class="calendar-nav">
-        <select v-model="range" class="stats-select" @change="load">
+        <select v-model="range" class="stats-select" aria-label="统计时间范围" @change="load">
           <option value="week">近 7 天</option>
           <option value="month">本月</option>
           <option value="three">近 3 个月</option></select
@@ -125,17 +125,17 @@ onMounted(load);
   min-height: 44px;
   padding: 0 14px;
   border: 1px solid var(--color-border);
-  border-radius: 14px;
-  background: #fff;
+  border-radius: var(--radius-input);
+  background: var(--color-card);
 }
 .stats-grid {
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 .stats-grid article {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .stats-grid span {
   color: var(--color-text-secondary);
@@ -147,8 +147,8 @@ onMounted(load);
 }
 ol {
   display: grid;
-  gap: 8px;
-  padding-left: 20px;
+  gap: var(--space-2);
+  padding-left: var(--space-5);
 }
 li strong {
   float: right;

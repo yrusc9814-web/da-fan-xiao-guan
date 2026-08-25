@@ -299,7 +299,7 @@ onMounted(async () => {
         </select></label
       >
     </div>
-    <div v-if="conflict" class="business-conflict">{{ conflict }} <button class="text-button" @click="load">重新加载</button></div>
+    <div v-if="conflict" class="business-conflict" role="alert">{{ conflict }} <button class="text-button" @click="load">重新加载</button></div>
     <AppErrorState v-if="error" title="记录读取失败" :description="error" @retry="load" />
     <div v-else-if="loading" class="business-grid"><AppSkeleton v-for="index in 6" :key="index" height="170px" /></div>
     <AppEmptyState v-else-if="!records.length" title="还没有饮食记录" description="完成计划或手动记录一餐。" />
@@ -410,7 +410,7 @@ onMounted(async () => {
 <style scoped>
 .consumption-content {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
 }
 .consumption-content p {
   margin: 0;
@@ -418,7 +418,7 @@ onMounted(async () => {
 .record-options {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 .record-options fieldset {
   display: grid;
@@ -432,13 +432,13 @@ onMounted(async () => {
 }
 .consumption-items {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .consumption-items article {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 4px 12px;
-  padding: 12px;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-3);
   border-radius: 12px;
   background: #fff7f9;
 }

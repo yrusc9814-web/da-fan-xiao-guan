@@ -6,13 +6,13 @@
 .desktop-sidebar {
   width: var(--sidebar-width);
   min-width: var(--sidebar-width);
-  gap: 20px;
-  padding: 20px 12px 18px;
+  gap: var(--space-5);
+  padding: var(--space-5) var(--space-3) 18px;
   overflow: hidden;
 }
 .brand-lockup {
   gap: 10px;
-  padding: 0 4px;
+  padding: 0 var(--space-1);
 }
 .brand-lockup .mascot-placeholder {
   width: 48px;
@@ -30,7 +30,7 @@
 }
 .desktop-sidebar__nav {
   gap: 6px;
-  margin-top: 12px;
+  margin-top: var(--space-3);
   overflow-y: auto;
   overscroll-behavior: contain;
 }
@@ -38,7 +38,7 @@
   min-height: 51px;
   margin-right: 10px;
   gap: 14px;
-  padding: 0 12px;
+  padding: 0 var(--space-3);
   border-radius: 13px;
   color: #6b676a;
   font-size: 16px;
@@ -105,14 +105,14 @@
   transform: none;
 }
 .desktop-nav-link--active .desktop-nav-link__icon {
-  color: #fff;
+  color: var(--color-card);
   background: var(--color-primary-hover);
   transform: none;
 }
 .desktop-sidebar__tip {
   min-height: 272px;
-  gap: 8px;
-  padding: 12px 5px 0;
+  gap: var(--space-2);
+  padding: var(--space-3) 5px 0;
 }
 .desktop-sidebar__tip::before {
   top: 16px;
@@ -139,14 +139,14 @@
 }
 .desktop-topbar {
   min-height: 76px;
-  padding: 16px 18px 10px;
+  padding: var(--space-4) 18px 10px;
 }
 .desktop-topbar > .app-field {
   width: 310px;
 }
 .desktop-topbar .app-field input {
   min-height: 42px;
-  border-radius: 14px;
+  border-radius: var(--radius-input);
   font-size: 13px;
 }
 .desktop-topbar > .app-field::after {
@@ -172,8 +172,8 @@
 }
 @media (max-height: 760px) and (min-width: 1024px) {
   .desktop-sidebar {
-    gap: 8px;
-    padding-top: 12px;
+    gap: var(--space-2);
+    padding-top: var(--space-3);
   }
   .desktop-sidebar__nav {
     margin-top: 2px;
@@ -204,7 +204,7 @@
   }
   .mobile-header {
     min-height: 58px;
-    padding: 7px 16px;
+    padding: 7px var(--space-4);
     border-bottom: 0;
   }
   .mobile-bottom-nav {

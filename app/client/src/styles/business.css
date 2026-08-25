@@ -1,32 +1,33 @@
 .business-page {
   display: grid;
-  gap: 20px;
+  gap: var(--space-5);
 }
 .business-hero {
   display: flex;
   align-items: flex-end;
   justify-content: space-between;
-  gap: 20px;
+  gap: var(--space-5);
   padding: 28px;
   border: 1px solid var(--color-border);
-  border-radius: 24px;
-  background: linear-gradient(135deg, #fff 0%, #fff1f5 100%);
+  border-radius: var(--radius-dialog);
+  background: linear-gradient(135deg, var(--color-card) 0%, #fff1f5 100%);
   box-shadow: var(--shadow-card);
 }
 .business-hero h1 {
-  margin: 4px 0 6px;
+  margin: var(--space-1) 0 6px;
   font-size: clamp(26px, 3vw, 38px);
+  line-height: var(--line-height-tight);
 }
 .business-hero p {
   margin: 0;
   color: var(--color-text-secondary);
 }
 .business-eyebrow {
-  font-size: 12px !important;
-  font-weight: 800;
+  font-size: var(--font-size-xs);
+  font-weight: var(--font-weight-heavy);
   letter-spacing: 0.12em;
   text-transform: uppercase;
-  color: var(--color-primary-hover) !important;
+  color: var(--color-primary-hover);
 }
 .business-toolbar,
 .business-form {
@@ -47,23 +48,24 @@
 .business-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
 }
 .business-card {
   display: grid;
   align-content: space-between;
-  gap: 20px;
+  gap: var(--space-5);
   min-height: 150px;
 }
 .business-card__head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .business-card h2 {
   margin: 0 0 7px;
   font-size: 18px;
+  line-height: var(--line-height-tight);
 }
 .business-card p {
   margin: 0;
@@ -74,7 +76,7 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   color: var(--color-text-muted);
   font-size: 12px;
 }
@@ -88,38 +90,56 @@
   line-height: 1;
   color: var(--color-primary);
 }
+.business-favorite:hover:not(:disabled) {
+  color: var(--color-primary-hover);
+  background: var(--color-primary-soft);
+  border-radius: var(--radius-input);
+}
+.business-favorite:disabled {
+  opacity: 0.5;
+}
 .business-conflict {
   padding: 14px 18px;
   border: 1px solid #efb9c4;
-  border-radius: 14px;
+  border-radius: var(--radius-input);
   color: var(--color-danger);
   background: var(--color-danger-soft);
 }
 .business-success {
   padding: 14px 18px;
   border: 1px solid #c1dcca;
-  border-radius: 14px;
+  border-radius: var(--radius-input);
   color: var(--color-success);
   background: var(--color-success-soft);
 }
 .business-error {
   padding: 14px 18px;
   border: 1px solid var(--color-border);
-  border-radius: 14px;
+  border-radius: var(--radius-input);
   color: var(--color-danger);
   background: var(--color-card);
 }
 .business-batches {
   display: grid;
-  gap: 8px;
+  gap: var(--space-2);
 }
 .business-batches button {
   display: grid;
   gap: 2px;
-  padding: 10px 12px;
+  padding: 10px var(--space-3);
   text-align: left;
   border-radius: 12px;
   background: #fff7f9;
+  transition: border-color var(--motion-fast) ease, background-color var(--motion-fast) ease;
+}
+
+.business-batches button:hover {
+  background: var(--color-primary-soft);
+}
+
+.business-batches button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--color-primary-soft);
 }
 .business-batches small {
   color: var(--color-text-muted);
@@ -141,7 +161,7 @@
   .business-hero {
     align-items: stretch;
     flex-direction: column;
-    padding: 20px;
+    padding: var(--space-5);
   }
   .business-toolbar,
   .business-form {

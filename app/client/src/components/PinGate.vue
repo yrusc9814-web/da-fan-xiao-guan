@@ -164,12 +164,12 @@ onMounted(initialize);
   min-height: 100vh;
   display: grid;
   place-items: center;
-  padding: 20px;
+  padding: var(--space-5);
   background: var(--color-page-bg);
 }
 .pin-gate section {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   width: min(100%, 460px);
 }
 .pin-gate h1,

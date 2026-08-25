@@ -125,8 +125,8 @@ onMounted(() => {
 .recipe-detail-page ul,
 .recipe-detail-page ol {
   display: grid;
-  gap: 8px;
-  margin: 12px 0 0;
+  gap: var(--space-2);
+  margin: var(--space-3) 0 0;
   padding-left: 22px;
 }
 .recipe-detail-page h2,

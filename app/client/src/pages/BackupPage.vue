@@ -144,7 +144,7 @@ onMounted(() => {
 <style scoped>
 .backup-panel {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
   max-width: 760px;
 }
 .backup-panel h2,
@@ -163,6 +163,6 @@ onMounted(() => {
   gap: 10px;
 }
 .backup-confirmation input {
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 </style>

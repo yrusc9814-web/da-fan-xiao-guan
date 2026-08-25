@@ -229,13 +229,13 @@ async function addMissingToShopping() {
 }
 .recommendation-result__state {
   padding: 5px 9px;
-  border-radius: 999px;
+  border-radius: var(--radius-tag);
   color: #9a5c70;
   background: #fff0f4;
   font-size: 12px;
 }
 .recommendation-result > a {
   color: var(--color-primary-hover);
-  font-weight: 750;
+  font-weight: var(--font-weight-bold);
 }
 </style>

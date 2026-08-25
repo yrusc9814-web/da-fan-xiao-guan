@@ -91,7 +91,7 @@ onMounted(() => {
 .search-result {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 10px 0;
   border-bottom: 1px solid var(--color-border);
   color: inherit;

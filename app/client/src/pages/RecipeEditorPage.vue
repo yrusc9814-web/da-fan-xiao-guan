@@ -324,7 +324,7 @@ onMounted(async () => {
 .editor-layout,
 .editor-section {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
 }
 .editor-section h2 {
   margin: 0;
@@ -332,7 +332,7 @@ onMounted(async () => {
 .editor-row {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 12px;
+  gap: var(--space-3);
 }
 .editor-checks {
   display: flex;
@@ -349,13 +349,13 @@ onMounted(async () => {
   display: grid;
   grid-template-columns: auto 1fr auto;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .editor-image {
   max-width: 280px;
   max-height: 180px;
   object-fit: cover;
-  border-radius: 14px;
+  border-radius: var(--radius-input);
 }
 @media (max-width: 1023px) {
   .editor-row,
@@ -380,7 +380,7 @@ onMounted(async () => {
     z-index: var(--z-header);
     top: 0;
     align-items: center;
-    padding: 12px 14px;
+    padding: var(--space-3) 14px;
     background: rgba(255, 248, 250, 0.96);
     backdrop-filter: blur(12px);
   }
@@ -400,7 +400,7 @@ onMounted(async () => {
   .step-row {
     padding: 14px;
     border: 1px solid var(--color-border);
-    border-radius: 14px;
+    border-radius: var(--radius-input);
     background: #fffafb;
   }
   .editor-checks {

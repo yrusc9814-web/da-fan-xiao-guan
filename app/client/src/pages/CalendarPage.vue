@@ -125,10 +125,10 @@ onMounted(load);
 .calendar-marks {
   display: grid;
   gap: 5px;
-  margin-top: 12px;
+  margin-top: var(--space-3);
 }
 .calendar-marks span {
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border-radius: 99px;
   font-size: 11px;
   background: var(--color-primary-soft);
@@ -149,14 +149,14 @@ onMounted(load);
   }
   .agenda-day {
     display: grid;
-    gap: 8px;
+    gap: var(--space-2);
     color: inherit;
     text-decoration: none;
   }
   .agenda-day header {
     display: flex;
     align-items: baseline;
-    gap: 8px;
+    gap: var(--space-2);
   }
   .agenda-day header strong {
     font-size: 20px;
@@ -166,7 +166,7 @@ onMounted(load);
   }
   .agenda-day p {
     margin: 0;
-    padding: 8px 10px;
+    padding: var(--space-2) 10px;
     border-radius: 10px;
     background: #fff7f9;
   }

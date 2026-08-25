@@ -87,13 +87,13 @@ onMounted(load);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
+  gap: var(--space-3);
   padding: 10px 0;
   border-bottom: 1px solid var(--color-border);
 }
 .favorite-row a {
   color: inherit;
   text-decoration: none;
-  font-weight: 650;
+  font-weight: var(--font-weight-semibold);
 }
 </style>

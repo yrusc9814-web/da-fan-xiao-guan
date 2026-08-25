@@ -25,13 +25,13 @@ html::-webkit-scrollbar {
   position: relative;
   min-height: 126px;
   overflow: hidden;
-  padding: 24px 28px;
+  padding: var(--space-6) 28px;
   border: 1px solid #f5dce4;
   border-radius: 16px;
   background:
     radial-gradient(circle at 76% 52%, rgba(255, 228, 235, 0.72), transparent 22%),
     radial-gradient(circle at 58% 15%, rgba(255, 244, 247, 0.86), transparent 20%),
-    linear-gradient(110deg, #fff 0%, #fffafb 62%, #fff6f8 100%);
+    linear-gradient(110deg, var(--color-card) 0%, #fffafb 62%, #fff6f8 100%);
 }
 
 .home-hero::before,
@@ -129,7 +129,7 @@ html::-webkit-scrollbar {
   position: absolute;
   border: 2px solid #efb4c5;
   border-radius: 50%;
-  background: #fff;
+  background: var(--color-card);
   content: '';
 }
 
@@ -275,8 +275,8 @@ html::-webkit-scrollbar {
   min-height: 156px;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 20px 18px;
+  gap: var(--space-3);
+  padding: var(--space-5) 18px;
   overflow: hidden;
   border-radius: 16px;
 }
@@ -333,7 +333,7 @@ html::-webkit-scrollbar {
   min-width: 0;
   padding: 14px;
   border: 1px solid var(--color-border);
-  border-radius: 18px;
+  border-radius: var(--radius-card);
   background: var(--color-card);
   box-shadow: var(--shadow-card);
 }
@@ -341,7 +341,7 @@ html::-webkit-scrollbar {
 .homepage-section .app-section-header,
 .dashboard-card .app-section-header {
   align-items: center;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-3);
 }
 
 .homepage-section .app-section-header h2,
@@ -359,7 +359,7 @@ html::-webkit-scrollbar {
 .inline-action {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: var(--space-1);
   min-height: 30px;
   color: var(--color-text-secondary);
   font-size: 13px;
@@ -376,10 +376,10 @@ html::-webkit-scrollbar {
   display: grid;
   grid-auto-columns: minmax(0, 1fr);
   grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
   min-width: 0;
   overflow-x: auto;
-  padding: 1px 1px 4px;
+  padding: 1px 1px var(--space-1);
   scrollbar-color: var(--color-primary-soft) transparent;
   scrollbar-width: thin;
 }
@@ -421,7 +421,7 @@ html::-webkit-scrollbar {
   min-height: 88px;
   flex-direction: column;
   gap: 5px;
-  padding: 8px 10px 10px;
+  padding: var(--space-2) 10px 10px;
 }
 
 .recipe-card__body h3 {
@@ -435,7 +435,7 @@ html::-webkit-scrollbar {
 .recipe-card__tags {
   display: flex;
   min-height: 20px;
-  gap: 4px;
+  gap: var(--space-1);
   overflow: hidden;
 }
 
@@ -462,7 +462,7 @@ html::-webkit-scrollbar {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 4px;
+  gap: var(--space-1);
   margin-top: auto;
   color: var(--color-text-secondary);
   font-size: 12px;
@@ -491,7 +491,7 @@ html::-webkit-scrollbar {
   min-width: 0;
   min-height: 260px;
   flex-direction: column;
-  padding: 16px;
+  padding: var(--space-4);
 }
 
 .today-records-card {
@@ -513,7 +513,7 @@ html::-webkit-scrollbar {
   display: flex;
   flex: 0 0 auto;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .meal-slot {
@@ -568,7 +568,7 @@ html::-webkit-scrollbar {
 }
 .inline-action {
   align-self: flex-start;
-  margin-top: 4px;
+  margin-top: var(--space-1);
 }
 
 .stats-grid {
@@ -582,7 +582,7 @@ html::-webkit-scrollbar {
   display: grid;
   grid-template-columns: 30px 1fr;
   align-items: center;
-  column-gap: 8px;
+  column-gap: var(--space-2);
 }
 .stats-grid__icon {
   display: grid;
@@ -624,8 +624,8 @@ html::-webkit-scrollbar {
   display: grid;
   grid-template-columns: repeat(3, 76px);
   justify-content: space-around;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
 }
 
 .inventory-metric {
@@ -704,7 +704,7 @@ html::-webkit-scrollbar {
 
 .calendar-section {
   min-width: 0;
-  padding-bottom: 12px;
+  padding-bottom: var(--space-3);
 }
 .calendar-actions {
   display: flex;
@@ -826,9 +826,9 @@ html::-webkit-scrollbar {
 
   .home-hero {
     min-height: 126px;
-    padding: 21px 16px 14px;
+    padding: 21px var(--space-4) 14px;
     border-color: rgba(236, 207, 216, 0.78);
-    border-radius: 18px;
+    border-radius: var(--radius-card);
     box-shadow: 0 3px 14px rgba(116, 76, 91, 0.035);
   }
   .home-hero::before {
@@ -963,7 +963,7 @@ html::-webkit-scrollbar {
   .quick-action-card {
     position: relative;
     min-height: 92px;
-    padding: 10px 8px 9px 12px;
+    padding: 10px var(--space-2) 9px var(--space-3);
     gap: 0;
     border-color: rgba(235, 215, 221, 0.82);
     border-radius: 16px;
@@ -988,7 +988,7 @@ html::-webkit-scrollbar {
   }
   .quick-action-card .app-button--sm {
     min-height: 30px;
-    padding: 0 8px;
+    padding: 0 var(--space-2);
     border-color: rgba(244, 207, 218, 0.42);
     color: #d77d96;
     background: rgba(255, 255, 255, 0.82);
@@ -1078,7 +1078,7 @@ html::-webkit-scrollbar {
     grid-template-columns: none;
     gap: 7px;
     margin-right: -16px;
-    padding-right: 16px;
+    padding-right: var(--space-4);
     scrollbar-width: none;
   }
   .recipe-scroller::-webkit-scrollbar {
@@ -1089,7 +1089,7 @@ html::-webkit-scrollbar {
     min-width: 107px;
     max-width: 107px;
     border-color: rgba(235, 217, 222, 0.84);
-    border-radius: 14px;
+    border-radius: var(--radius-input);
     background: rgba(255, 255, 255, 0.94);
     box-shadow: 0 3px 12px rgba(116, 76, 91, 0.03);
   }
@@ -1100,7 +1100,7 @@ html::-webkit-scrollbar {
   .recipe-card__body {
     min-height: 63px;
     gap: 1px;
-    padding: 4px 6px;
+    padding: var(--space-1) 6px;
   }
   .recipe-card__body h3 {
     color: var(--mobile-text-primary);
@@ -1114,7 +1114,7 @@ html::-webkit-scrollbar {
     margin-bottom: 0;
   }
   .recipe-card__tags span {
-    padding: 0 4px;
+    padding: 0 var(--space-1);
     color: #d28096;
     font-size: 11px;
     font-weight: 400;
@@ -1147,9 +1147,9 @@ html::-webkit-scrollbar {
   }
   .dashboard-card {
     min-height: 0;
-    padding: 16px;
+    padding: var(--space-4);
     border-color: rgba(235, 217, 222, 0.84);
-    border-radius: 18px;
+    border-radius: var(--radius-card);
     background: rgba(255, 255, 255, 0.92);
     box-shadow: 0 3px 14px rgba(116, 76, 91, 0.035);
   }
@@ -1202,7 +1202,7 @@ html::-webkit-scrollbar {
     font-weight: 500;
   }
   .expiring-list > div {
-    column-gap: 8px;
+    column-gap: var(--space-2);
     font-size: 13px;
     font-weight: 400;
   }
@@ -1214,7 +1214,7 @@ html::-webkit-scrollbar {
   }
   .meal-slot {
     min-height: 42px;
-    padding: 4px 0;
+    padding: var(--space-1) 0;
     gap: 9px;
   }
   .meal-slot__icon {
@@ -1261,12 +1261,12 @@ html::-webkit-scrollbar {
   }
   .stats-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 15px 16px;
+    gap: 15px var(--space-4);
     margin: 0;
   }
   .stats-grid > div {
     grid-template-columns: 30px 1fr;
-    column-gap: 8px;
+    column-gap: var(--space-2);
   }
   .stats-grid strong {
     color: var(--mobile-text-primary);
@@ -1299,7 +1299,7 @@ html::-webkit-scrollbar {
     min-height: 82px;
     gap: 3px;
     border-radius: 10px;
-    background: #fff;
+    background: var(--color-card);
   }
   .calendar-day strong {
     color: var(--mobile-text-primary);
@@ -1346,7 +1346,7 @@ html::-webkit-scrollbar {
 @media (max-width: 374px) {
   .home-hero {
     min-height: 122px;
-    padding: 19px 14px 12px;
+    padding: 19px 14px var(--space-3);
   }
   .home-hero h1 {
     font-size: 20px;
@@ -1366,7 +1366,7 @@ html::-webkit-scrollbar {
     padding-left: 10px;
   }
   .quick-action-card__copy {
-    padding-right: 24px;
+    padding-right: var(--space-6);
   }
   .quick-action-card h3 {
     font-size: 15px;
@@ -1392,7 +1392,7 @@ html::-webkit-scrollbar {
   }
   .recipe-card__body {
     min-height: 58.5px;
-    padding: 4px 6px;
+    padding: var(--space-1) 6px;
   }
   .stats-grid strong {
     font-size: 14px;

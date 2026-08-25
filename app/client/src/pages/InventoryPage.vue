@@ -338,7 +338,7 @@ onMounted(async () => {
 <style scoped>
 .adjust-form {
   display: grid;
-  gap: 16px;
+  gap: var(--space-4);
 }
 .adjust-form p {
   margin: 0;

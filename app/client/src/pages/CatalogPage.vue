@@ -433,6 +433,9 @@ watch(
             class="business-favorite"
             type="button"
             :disabled="favoriteBusyIds.has(item.id)"
+            :aria-label="(item as RecipeDto | StoreDto).favorite ? `取消收藏 ${item.name}` : `收藏 ${item.name}`"
+            :aria-pressed="Boolean((item as RecipeDto | StoreDto).favorite)"
+            :aria-busy="favoriteBusyIds.has(item.id)"
             @click="toggleFavorite(item as RecipeDto | StoreDto)"
           >
             {{ (item as RecipeDto | StoreDto).favorite ? '♥' : '♡' }}
@@ -462,12 +465,12 @@ watch(
 .catalog-fields {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
+  gap: var(--space-3);
 }
 .catalog-checks {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px;
+  gap: var(--space-3);
 }
 .catalog-card {
   overflow: hidden;
