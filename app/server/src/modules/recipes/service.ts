@@ -100,6 +100,26 @@ function assertVersionNumber(version: number): void {
     throw Object.assign(new Error('version 必须是正整数'), { statusCode: 400 });
 }
 
+async function assertIngredientsExist(
+  transaction: Prisma.TransactionClient,
+  input: RecipeWriteInput
+): Promise<void> {
+  const rows = input.ingredients ?? [];
+  const ids = [...new Set(rows.map((item) => item.ingredientId).filter((id): id is string => Boolean(id)))];
+  if (!ids.length) return;
+  const found = await transaction.ingredient.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, deletedAt: true }
+  });
+  const valid = new Set(found.filter((ingredient) => ingredient.deletedAt === null).map((ingredient) => ingredient.id));
+  for (const item of rows) {
+    if (item.ingredientId && !valid.has(item.ingredientId)) {
+      const name = (item.name ?? item.ingredientName ?? '未知食材').trim();
+      throw Object.assign(new Error(`食材「${name}」不存在或已删除，无法关联到菜谱`), { statusCode: 400 });
+    }
+  }
+}
+
 async function relationCreates(
   transaction: Prisma.TransactionClient,
   recipeId: string,
@@ -222,6 +242,7 @@ export async function getRecipe(database: PrismaClient, id: string) {
 export async function createRecipe(database: PrismaClient, input: RecipeWriteInput) {
   assertRecipeInput(input);
   return database.$transaction(async (transaction) => {
+    await assertIngredientsExist(transaction, input);
     const recipe = await transaction.recipe.create({ data: scalarData(input) });
     await relationCreates(transaction, recipe.id, input);
     return transaction.recipe.findUniqueOrThrow({ where: { id: recipe.id }, include: recipeInclude });
@@ -232,6 +253,8 @@ export async function updateRecipe(database: PrismaClient, id: string, version: 
   assertVersionNumber(version);
   assertRecipeInput(input);
   return database.$transaction(async (transaction) => {
+    // 校验先于任何写操作（落库之前完成食材存在性校验）
+    await assertIngredientsExist(transaction, input);
     const result = await transaction.recipe.updateMany({
       where: { id, version, deletedAt: null },
       data: { ...scalarData(input), version: { increment: 1 } }

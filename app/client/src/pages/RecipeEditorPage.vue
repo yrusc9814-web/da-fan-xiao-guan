@@ -29,18 +29,74 @@ const form = ref({
   mealRoles: ['MAIN'] as string[],
   tags: ''
 });
-const ingredients = ref([
-    { ingredientId: null as string | null, name: '', quantity: '', unit: 'GRAM', optional: false, isPrimary: true }
+interface IngredientRow {
+  ingredientId: string | null;
+  name: string;
+  quantity: string;
+  unit: string;
+  optional: boolean;
+  isPrimary: boolean;
+  search: string;
+}
+const ingredients = ref<IngredientRow[]>([
+    { ingredientId: null, name: '', quantity: '', unit: 'GRAM', optional: false, isPrimary: true, search: '' }
   ]),
   steps = ref([{ content: '', imagePath: null as string | null }]);
 const availableTools = ref<Array<{ id: string; name: string }>>([]),
   selectedToolIds = ref<string[]>([]);
+const inventoryIngredients = ref<Array<{ id: string; name: string; quantity: number; unit: string }>>([]),
+  inventoryError = ref('');
 const ready = ref(false),
   dirty = ref(false),
   saved = ref(false);
+async function loadInventoryIngredients() {
+  try {
+    const data = await apiRequest<any>('/ingredients', { query: { search: '', pageSize: 100 } });
+    const list = Array.isArray(data) ? data : data.items ?? [];
+    inventoryIngredients.value = list.map((item: any) => ({
+      id: item.id,
+      name: item.name,
+      quantity: item.quantity,
+      unit: item.unit
+    }));
+  } catch (reason) {
+    inventoryError.value = reason instanceof Error ? reason.message : '库存食材加载失败';
+  }
+}
+function isKnownInventoryIngredient(id: string): boolean {
+  return inventoryIngredients.value.some((item) => item.id === id);
+}
+function inventoryIngredientOptions(
+  row: IngredientRow
+): Array<{ id: string; name: string; quantity: number; unit: string }> {
+  const term = row.search.trim().toLowerCase();
+  const filtered = term
+    ? inventoryIngredients.value.filter((item) => item.name.toLowerCase().includes(term))
+    : inventoryIngredients.value;
+  // 已选中的选项即使被搜索词过滤掉，也要无条件保留在列表中，保证 select 仍能正确显示当前值
+  if (row.ingredientId && !filtered.some((item) => item.id === row.ingredientId)) {
+    const selected = inventoryIngredients.value.find((item) => item.id === row.ingredientId);
+    if (selected) return [...filtered, selected];
+  }
+  return filtered;
+}
+function onIngredientSelect(row: IngredientRow, event: Event) {
+  const value = (event.target as HTMLSelectElement).value;
+  if (value) {
+    const item = inventoryIngredients.value.find((candidate) => candidate.id === value);
+    row.ingredientId = value;
+    if (item) {
+      row.name = item.name;
+      if (!row.quantity) row.unit = item.unit;
+    }
+  } else {
+    row.ingredientId = null;
+  }
+}
 async function load() {
   try {
     availableTools.value = await apiRequest('/tools');
+    await loadInventoryIngredients();
     if (!id.value) return;
     const x = await apiRequest<any>(`/recipes/${id.value}`);
     form.value = {
@@ -67,7 +123,8 @@ async function load() {
       quantity: String(v.quantity ?? ''),
       unit: v.unit ?? 'GRAM',
       optional: v.optional,
-      isPrimary: v.isPrimary
+      isPrimary: v.isPrimary,
+      search: ''
     }));
     steps.value = (x.steps ?? []).map((v: any) => ({ content: v.content, imagePath: v.imagePath }));
     selectedToolIds.value = (x.tools ?? []).map((v: any) => v.toolId).filter(Boolean);
@@ -261,15 +318,36 @@ onMounted(async () => {
                 quantity: '',
                 unit: 'GRAM',
                 optional: false,
-                isPrimary: false
+                isPrimary: false,
+                search: ''
               })
             "
             >添加一行</AppButton
           >
         </div>
         <div v-for="(row, index) in ingredients" :key="index" class="ingredient-row">
-          <AppInput v-model="row.name" label="食材" /><AppInput v-model="row.quantity" label="数量" /><label
-            class="app-field"
+          <AppInput v-model="row.name" label="食材" /><label class="app-field"
+            ><span class="app-field__label">库存食材</span
+            ><input
+              v-model="row.search"
+              type="search"
+              class="ingredient-search"
+              placeholder="搜索食材名称…"
+              aria-label="搜索库存食材"
+            /><select :value="row.ingredientId ?? ''" @change="onIngredientSelect(row, $event)">
+              <option value="">手动输入（未关联库存食材）</option>
+              <option
+                v-if="row.ingredientId && !isKnownInventoryIngredient(row.ingredientId)"
+                :value="row.ingredientId"
+                disabled
+              >
+                原关联食材已删除，请重新选择
+              </option>
+              <option v-for="item in inventoryIngredientOptions(row)" :key="item.id" :value="item.id">
+                {{ item.name }}（{{ item.quantity }} {{ displayLabel(item.unit) }}）
+              </option>
+            </select></label
+          ><AppInput v-model="row.quantity" label="数量" /><label class="app-field"
             ><span class="app-field__label">单位</span
             ><select v-model="row.unit">
               <option
@@ -294,8 +372,12 @@ onMounted(async () => {
               </option>
             </select></label
           ><label><input v-model="row.optional" type="checkbox" />可选</label
-          ><button class="text-button" type="button" @click="ingredients.splice(index, 1)">移除</button>
+          ><button class="text-button" type="button" @click="ingredients.splice(index, 1)">移除</button
+          ><p v-if="row.ingredientId === null" class="ingredient-row__hint"
+            >未关联库存食材（做饭消耗不会自动扣减库存）</p
+          >
         </div>
+        <p v-if="inventoryError" class="ingredient-row__hint">{{ inventoryError }}</p>
       </section>
       <section class="app-card editor-section">
         <div class="business-card__head">
@@ -341,9 +423,16 @@ onMounted(async () => {
 }
 .ingredient-row {
   display: grid;
-  grid-template-columns: 2fr 1fr 1fr auto auto;
+  grid-template-columns: 1.5fr 1.5fr 1fr 1fr auto auto;
   align-items: end;
   gap: 10px;
+}
+.ingredient-row__hint {
+  grid-column: 1 / -1;
+  align-self: start;
+  margin: 0;
+  color: var(--color-text-muted);
+  font-size: var(--font-size-xs);
 }
 .step-row {
   display: grid;

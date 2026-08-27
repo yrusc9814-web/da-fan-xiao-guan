@@ -1,5 +1,6 @@
 import type { MealRole, MealType, PrismaClient, QuantityUnit } from '@prisma/client';
 import { convertQuantity } from '../../database/units.js';
+import { forbidden, loadForbiddenWords } from '../../shared/diner-rules.js';
 
 export interface RecommendationInput {
   mealType?: MealType;
@@ -21,21 +22,11 @@ export interface Candidate {
   mealRole?: string;
   mealRoles?: string[];
 }
-const tokens = (value: string | null | undefined) =>
-  value
-    ?.split(/[、,，;；\s]+/)
-    .map((x) => x.trim().toLocaleLowerCase())
-    .filter(Boolean) ?? [];
 const dateDaysAgo = (days: number) => {
   const d = new Date();
   d.setDate(d.getDate() - days);
   return d.toLocaleDateString('sv-SE');
 };
-function forbidden(haystack: string, words: string[]) {
-  const lower = haystack.toLocaleLowerCase();
-  return words.some((word) => lower.includes(word));
-}
-
 async function recipeCandidates(
   database: PrismaClient,
   input: RecommendationInput,
@@ -155,14 +146,7 @@ async function storeCandidates(
   });
 }
 async function candidates(database: PrismaClient, input: RecommendationInput) {
-  const diners = input.dinerIds?.length
-    ? await database.diner.findMany({ where: { id: { in: input.dinerIds }, active: true } })
-    : [];
-  const forbiddenWords = diners.flatMap((d) => [
-    ...tokens(d.allergyText),
-    ...tokens(d.tabooText),
-    ...tokens(d.dislikesText)
-  ]);
+  const forbiddenWords = await loadForbiddenWords(database, input.dinerIds);
   const since = dateDaysAgo(input.repeatDays ?? 0);
   const recent = await database.mealRecordItem.findMany({
     where: { mealRecord: { deletedAt: null, status: 'CONFIRMED', recordDate: { gte: since } } },

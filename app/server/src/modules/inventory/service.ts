@@ -1,11 +1,13 @@
 import type { PrismaClient, QuantityUnit } from '@prisma/client';
 
 import { convertQuantity } from '../../database/units.js';
+import { forbidden, loadForbiddenWords } from '../../shared/diner-rules.js';
 
 export type InventoryRecommendationMode = 'ONLY_INVENTORY' | 'ALLOW_PURCHASE' | 'MUST_CONSUME';
 
 export interface InventoryRecommendationInput {
   mode: InventoryRecommendationMode;
+  dinerIds?: string[];
   ingredientIds?: string[];
   limit?: number;
 }
@@ -51,6 +53,21 @@ export async function recommendFromInventory(database: PrismaClient, input: Inve
     },
     include: { ingredient: true }
   });
+  const forbiddenWords = await loadForbiddenWords(database, input.dinerIds);
+  const blockedRecipeIds = new Set<string>();
+  if (forbiddenWords.length) {
+    for (const recipe of recipes) {
+      const haystack = [
+        recipe.name,
+        recipe.ingredientsText,
+        recipe.notes,
+        ...recipe.ingredients.map((x) => x.ingredientNameSnapshot)
+      ]
+        .filter(Boolean)
+        .join(' ');
+      if (forbidden(haystack, forbiddenWords)) blockedRecipeIds.add(recipe.id);
+    }
+  }
   const batchesByIngredient = new Map<string, typeof batches>();
   for (const batch of batches) {
     const group = batchesByIngredient.get(batch.ingredientId) ?? [];
@@ -171,6 +188,7 @@ export async function recommendFromInventory(database: PrismaClient, input: Inve
             : `还缺少 ${missing.length} 项食材`
       };
     })
+    .filter((candidate) => !blockedRecipeIds.has(candidate.recipe.id))
     .filter((candidate) => candidate.missingTools.length === 0)
     .filter((candidate) => input.mode !== 'ONLY_INVENTORY' || candidate.missingIngredients.length === 0)
     .filter(

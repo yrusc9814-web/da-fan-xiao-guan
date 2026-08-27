@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { onMounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import AppButton from '../components/ui/AppButton.vue';
 import AppEmptyState from '../components/ui/AppEmptyState.vue';
@@ -25,10 +25,26 @@ const route = useRoute(),
   error = ref(''),
   message = ref('');
 const planDate = ref(new Date().toLocaleDateString('sv-SE')),
-  dinerCount = ref('1');
+  dinerCount = ref('1'),
+  diners = ref<Array<{ id: string; name: string }>>([]),
+  selectedDinerIds = ref<string[]>([]);
 function validMode(value: unknown): value is RecommendationMode {
   return typeof value === 'string' && ['random', 'meal-set', 'inventory'].includes(value);
 }
+async function loadDiners() {
+  try {
+    const dinerData = await apiRequest<any>('/diners', { query: { pageSize: 100, active: true } });
+    diners.value = dinerData.items ?? dinerData;
+  } catch {
+    // 食用者列表加载失败不阻塞推荐页主体功能
+  }
+}
+function toggleDiner(id: string) {
+  selectedDinerIds.value = selectedDinerIds.value.includes(id)
+    ? selectedDinerIds.value.filter((value) => value !== id)
+    : [...selectedDinerIds.value, id];
+}
+onMounted(loadDiners);
 watch(
   () => route.query.mode,
   (value) => {
@@ -48,7 +64,10 @@ async function generate() {
           reason: string;
           missingIngredients: Array<{ name: string }>;
         }>;
-      }>('/kitchen/recommend', { method: 'POST', body: JSON.stringify({ mode: 'ALLOW_PURCHASE', limit: 8 }) });
+      }>('/kitchen/recommend', {
+        method: 'POST',
+        body: JSON.stringify({ mode: 'ALLOW_PURCHASE', limit: 8, dinerIds: selectedDinerIds.value })
+      });
       results.value = data.items.map((x) => ({
         resultType: 'RECIPE',
         resultId: x.recipe.id,
@@ -60,7 +79,7 @@ async function generate() {
     } else {
       const data = await apiRequest<{ historyId: string; results: Result[] }>(`/recommendations/${mode.value}`, {
         method: 'POST',
-        body: JSON.stringify({ mealType: mealType.value })
+        body: JSON.stringify({ mealType: mealType.value, dinerIds: selectedDinerIds.value })
       });
       results.value = data.results;
       historyId.value = data.historyId;
@@ -89,7 +108,7 @@ async function addToPlan() {
           planDate: planDate.value,
           mealType: mealType.value,
           dinerCount: Number(dinerCount.value),
-          dinerIds: []
+          dinerIds: [...selectedDinerIds.value]
         })
       });
     else
@@ -106,7 +125,7 @@ async function addToPlan() {
             mealRole: result.mealRole ?? (index === 0 ? 'MAIN' : 'SIDE'),
             sortOrder: index
           })),
-          dinerIds: []
+          dinerIds: [...selectedDinerIds.value]
         })
       });
     message.value = `已加入 ${planDate.value} 的计划`;
@@ -153,7 +172,8 @@ async function addMissingToShopping() {
       <div>
         <p class="business-eyebrow">Decision helper</p>
         <h1>今天吃什么</h1>
-        <p>结果来自真实菜谱、店铺、库存、工具与食用者偏好；忌口和过敏始终硬过滤。</p>
+        <p v-if="selectedDinerIds.length">结果来自真实菜谱、店铺、库存、工具与食用者偏好；忌口和过敏始终硬过滤。</p>
+        <p v-else>未选择食用者：本次推荐结果不会应用忌口与过敏过滤。</p>
       </div>
       <AppButton :loading="loading" @click="generate">生成推荐</AppButton>
     </header>
@@ -174,6 +194,19 @@ async function addMissingToShopping() {
           <option value="AFTERNOON_TEA">下午茶</option>
         </select></label
       ><AppInput v-model="planDate" type="date" label="加入计划日期" /><AppInput v-model="dinerCount" label="人数" />
+      <div class="recommendation-diners">
+        <fieldset>
+          <legend>食用者（可多选）</legend>
+          <p class="recommendation-diners__hint">勾选后将按其忌口、过敏硬过滤推荐结果</p>
+          <label v-for="diner in diners" :key="diner.id"
+            ><input
+              type="checkbox"
+              :checked="selectedDinerIds.includes(diner.id)"
+              @change="toggleDiner(diner.id)"
+            />{{ diner.name }}</label
+          >
+        </fieldset>
+      </div>
     </div>
     <p v-if="message" class="business-success">{{ message }}</p>
     <AppErrorState v-if="error" title="暂时无法推荐" :description="error" @retry="generate" /><AppEmptyState
@@ -237,5 +270,19 @@ async function addMissingToShopping() {
 .recommendation-result > a {
   color: var(--color-primary-hover);
   font-weight: var(--font-weight-bold);
+}
+.recommendation-diners fieldset {
+  display: grid;
+  align-content: start;
+  gap: 6px;
+  border: 1px solid var(--color-border);
+  border-radius: 12px;
+}
+.recommendation-diners label {
+  font-size: 13px;
+}
+.recommendation-diners__hint {
+  font-size: 12px;
+  color: var(--color-text-muted);
 }
 </style>
