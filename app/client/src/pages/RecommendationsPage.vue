@@ -199,11 +199,9 @@ async function addMissingToShopping() {
           <legend>食用者（可多选）</legend>
           <p class="recommendation-diners__hint">勾选后将按其忌口、过敏硬过滤推荐结果</p>
           <label v-for="diner in diners" :key="diner.id"
-            ><input
-              type="checkbox"
-              :checked="selectedDinerIds.includes(diner.id)"
-              @change="toggleDiner(diner.id)"
-            />{{ diner.name }}</label
+            ><input type="checkbox" :checked="selectedDinerIds.includes(diner.id)" @change="toggleDiner(diner.id)" />{{
+              diner.name
+            }}</label
           >
         </fieldset>
       </div>

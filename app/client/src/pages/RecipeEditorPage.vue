@@ -52,7 +52,7 @@ const ready = ref(false),
 async function loadInventoryIngredients() {
   try {
     const data = await apiRequest<any>('/ingredients', { query: { search: '', pageSize: 100 } });
-    const list = Array.isArray(data) ? data : data.items ?? [];
+    const list = Array.isArray(data) ? data : (data.items ?? []);
     inventoryIngredients.value = list.map((item: any) => ({
       id: item.id,
       name: item.name,
@@ -372,10 +372,10 @@ onMounted(async () => {
               </option>
             </select></label
           ><label><input v-model="row.optional" type="checkbox" />可选</label
-          ><button class="text-button" type="button" @click="ingredients.splice(index, 1)">移除</button
-          ><p v-if="row.ingredientId === null" class="ingredient-row__hint"
-            >未关联库存食材（做饭消耗不会自动扣减库存）</p
-          >
+          ><button class="text-button" type="button" @click="ingredients.splice(index, 1)">移除</button>
+          <p v-if="row.ingredientId === null" class="ingredient-row__hint">
+            未关联库存食材（做饭消耗不会自动扣减库存）
+          </p>
         </div>
         <p v-if="inventoryError" class="ingredient-row__hint">{{ inventoryError }}</p>
       </section>

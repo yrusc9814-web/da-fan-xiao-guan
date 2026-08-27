@@ -81,7 +81,9 @@ describe('菜谱 API', () => {
       payload: {
         name: '菜谱测试库存联动',
         mealTypes: ['LUNCH'],
-        ingredients: [{ ingredientId: ingredient.id, name: ingredient.name, quantity: 300, unit: 'GRAM', isPrimary: true }],
+        ingredients: [
+          { ingredientId: ingredient.id, name: ingredient.name, quantity: 300, unit: 'GRAM', isPrimary: true }
+        ],
         steps: [{ content: '一次完成' }]
       }
     });

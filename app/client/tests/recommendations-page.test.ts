@@ -106,7 +106,10 @@ describe('推荐页食用者选择', () => {
   it('生成推荐时把已勾选食用者传入请求 body', async () => {
     const { wrapper, fetchMock } = await mountAt('random');
     await wrapper.findAll('input[type="checkbox"]')[0].setValue(true);
-    await wrapper.findAll('button').find((b) => b.text().includes('生成推荐'))!.trigger('click');
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('生成推荐'))!
+      .trigger('click');
     await flushPromises();
     const body = postBody(fetchMock, (path) => path.endsWith('/recommendations/random'));
     expect(body.dinerIds).toEqual([diners[0].id]);
@@ -116,7 +119,10 @@ describe('推荐页食用者选择', () => {
   it('库存推荐同样把已勾选食用者传入请求 body', async () => {
     const { wrapper, fetchMock } = await mountAt('inventory');
     await wrapper.findAll('input[type="checkbox"]')[1].setValue(true);
-    await wrapper.findAll('button').find((b) => b.text().includes('生成推荐'))!.trigger('click');
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('生成推荐'))!
+      .trigger('click');
     await flushPromises();
     const body = postBody(fetchMock, (path) => path.endsWith('/kitchen/recommend'));
     expect(body.dinerIds).toEqual([diners[1].id]);
@@ -126,9 +132,15 @@ describe('推荐页食用者选择', () => {
   it('加入计划时把已勾选食用者写入 add-to-plan 请求 body', async () => {
     const { wrapper, fetchMock } = await mountAt('random');
     await wrapper.findAll('input[type="checkbox"]')[0].setValue(true);
-    await wrapper.findAll('button').find((b) => b.text().includes('生成推荐'))!.trigger('click');
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('生成推荐'))!
+      .trigger('click');
     await flushPromises();
-    await wrapper.findAll('button').find((b) => b.text().includes('整组加入计划'))!.trigger('click');
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('整组加入计划'))!
+      .trigger('click');
     await flushPromises();
     const body = postBody(fetchMock, (path) => path.includes('/add-to-plan'));
     expect(body.dinerIds).toEqual([diners[0].id]);

@@ -100,10 +100,7 @@ function assertVersionNumber(version: number): void {
     throw Object.assign(new Error('version 必须是正整数'), { statusCode: 400 });
 }
 
-async function assertIngredientsExist(
-  transaction: Prisma.TransactionClient,
-  input: RecipeWriteInput
-): Promise<void> {
+async function assertIngredientsExist(transaction: Prisma.TransactionClient, input: RecipeWriteInput): Promise<void> {
   const rows = input.ingredients ?? [];
   const ids = [...new Set(rows.map((item) => item.ingredientId).filter((id): id is string => Boolean(id)))];
   if (!ids.length) return;
