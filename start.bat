@@ -28,10 +28,10 @@ if not exist "%APP_ROOT%\logs" mkdir "%APP_ROOT%\logs"
 if exist "%PID_FILE%" (
   set /p OLD_METADATA=<"%PID_FILE%"
   for /f "tokens=1,2 delims=|" %%A in ("!OLD_METADATA!") do (set "OLD_PID=%%A"& set "OLD_STARTED=%%B")
-  powershell -NoProfile -Command "$p=Get-CimInstance Win32_Process -Filter ('ProcessId=' + $env:OLD_PID) -ErrorAction SilentlyContinue; if($p -and $p.CommandLine -like ('*' + $env:SERVICE_TAG + '*') -and $p.CommandLine -like ('*' + $env:SERVER_ENTRY + '*') -and $p.CreationDate.ToUniversalTime().ToString('o') -eq $env:OLD_STARTED){exit 0}else{exit 1}"
+  powershell -NoProfile -Command "$p=Get-CimInstance Win32_Process -Filter ('ProcessId=' + $env:OLD_PID) -ErrorAction SilentlyContinue; if($p -and $p.CommandLine -like ('*' + $env:SERVICE_TAG + '*') -and $p.CommandLine -like ('*--launch-token=' + $env:OLD_STARTED + '*')){exit 0}else{exit 1}"
   if !errorlevel! equ 0 (
     echo 搭饭小馆已经在运行，PID !OLD_PID!。
-    start "" "http://127.0.0.1:%APP_PORT%"
+    if not defined DF_NO_BROWSER start "" "http://127.0.0.1:%APP_PORT%"
     exit /b 0
   )
   del /q "%PID_FILE%"
@@ -117,5 +117,5 @@ echo 搭饭小馆已启动，PID %APP_PID%
 echo 电脑访问：http://127.0.0.1:%APP_PORT%
 if defined LAN_IP echo 手机访问：http://%LAN_IP%:%APP_PORT%
 echo 手机需要与电脑连接同一 Wi-Fi，并允许 Windows 防火墙访问端口 %APP_PORT%。
-start "" "http://127.0.0.1:%APP_PORT%"
+if not defined DF_NO_BROWSER start "" "http://127.0.0.1:%APP_PORT%"
 endlocal

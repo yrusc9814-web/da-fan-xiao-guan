@@ -1,7 +1,14 @@
+# 正式 artifact 门禁：main 的 CI（name: CI）成功结束后自动触发（workflow_run），
+# 守卫步骤校验其 conclusion == success；workflow_dispatch 为保留的手动入口（守卫自动跳过）。
+# checkout 固定到触发 CI 的 head_sha，保证包内容与已通过 CI 的代码一致。
 name: Windows Release Artifact
 
 on:
   workflow_dispatch:
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [main]
 
 permissions:
   contents: read
@@ -9,9 +16,23 @@ permissions:
 jobs:
   package:
     runs-on: windows-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
+      - name: Guard - workflow_run 触发时要求 CI conclusion 为 success
+        if: github.event_name == 'workflow_run'
+        shell: bash
+        env:
+          CI_CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          CI_HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          if [ "$CI_CONCLUSION" != "success" ]; then
+            echo "[RELEASE-GUARD] 触发本次发布的 CI conclusion=$CI_CONCLUSION（head_branch=$CI_HEAD_BRANCH）不是 success，阻止生成正式 artifact。"
+            exit 1
+          fi
+          echo "[RELEASE-GUARD] main CI 全绿（conclusion=success），继续生成正式 artifact。"
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'workflow_run' && github.event.workflow_run.head_sha || github.sha }}
       - uses: actions/setup-node@v4
         with:
           node-version: 22.23.2
@@ -20,6 +41,8 @@ jobs:
       - run: npm ls --include=optional --all sharp @img/sharp-win32-x64
       - run: npm run prisma:generate
       - run: npm run prisma:validate
+      - run: npm run format:check
+      - run: npm run lint
       - run: npm test
       - run: npm run typecheck
       - run: npm run build
@@ -40,6 +63,14 @@ jobs:
           $zipSmoke = Join-Path $env:RUNNER_TEMP 'dafan-xiaoguan-zip-smoke\搭饭小馆'
           node scripts/verify-windows-release.mjs $zipSmoke
           node scripts/smoke-windows-release.mjs $zipSmoke
+      - shell: pwsh
+        run: |
+          $zipSmoke = Join-Path $env:RUNNER_TEMP 'dafan-xiaoguan-zip-smoke\搭饭小馆'
+          node scripts/test-release-upgrade.mjs --package $zipSmoke
+      - shell: pwsh
+        run: |
+          $zipSmoke = Join-Path $env:RUNNER_TEMP 'dafan-xiaoguan-zip-smoke\搭饭小馆'
+          node scripts/test-windows-lifecycle.mjs --package $zipSmoke
       - uses: actions/upload-artifact@v4
         with:
           name: 搭饭小馆-windows-x64
