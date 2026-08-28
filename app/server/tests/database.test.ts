@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join, normalize, resolve } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   MealType,
@@ -327,5 +328,109 @@ describe('节点 2 数据库底座', () => {
     expect(() => assertRecipeName('')).toThrow();
     expect(() => assertBusinessDate('2026-08-05')).not.toThrow();
     expect(() => assertBusinessDate('2026/08/05')).toThrow();
+  });
+});
+
+describe('测试数据库安全闸', () => {
+  it('NODE_ENV=test 且缺少 TEST_DATABASE_URL 时立即中止，绝不回退到开发数据库', () => {
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test' })).toThrow(/测试数据库安全闸/);
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test' })).toThrow(/TEST_DATABASE_URL/);
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', DATABASE_URL: 'file:../../../data/app.db' })).toThrow(
+      /测试数据库安全闸/
+    );
+  });
+
+  it('TEST_DATABASE_URL 为空字符串或纯空白时立即中止', () => {
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: '' })).toThrow(/测试数据库安全闸/);
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: '   ' })).toThrow(/测试数据库安全闸/);
+  });
+
+  it('TEST_DATABASE_URL 解析到开发数据库时立即中止（相对路径、绝对路径与 query 参数变体）', () => {
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: 'file:../../../data/app.db' })).toThrow(
+      /测试数据库安全闸/
+    );
+    expect(() =>
+      resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: `file:${applicationDatabasePath}` })
+    ).toThrow(/开发数据库/);
+    expect(() =>
+      resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: 'file:../../../data/app.db?connection_limit=1' })
+    ).toThrow(/测试数据库安全闸/);
+  });
+
+  it.skipIf(process.platform !== 'win32')('Windows 大小写不敏感的路径变体同样视为开发数据库', () => {
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: 'file:../../../DATA/APP.DB' })).toThrow(
+      /测试数据库安全闸/
+    );
+  });
+
+  it('非 file 协议的 TEST_DATABASE_URL 原样通过', () => {
+    const postgresUrl = 'postgresql://user:pass@localhost:5432/test';
+    expect(resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: postgresUrl })).toBe(postgresUrl);
+  });
+
+  it('客户端工厂在测试环境下拒绝开发数据库 URL', () => {
+    expect(() => createPrismaClient(`file:${applicationDatabasePath}`)).toThrow(/安全闸|开发数据库/);
+  });
+
+  it('合法的独立测试库继续可用，且不受 DATABASE_URL 干扰', () => {
+    const isolatedUrl = resolveDatabaseUrl({
+      NODE_ENV: 'test',
+      TEST_DATABASE_URL: 'file:../../../data/test.db',
+      DATABASE_URL: 'file:../../../data/app.db'
+    });
+
+    expect(normalize(filePathFromDatabaseUrl(isolatedUrl)!)).toBe(normalize(defaultTestDatabasePath));
+  });
+
+  it('标准三斜杠 WHATWG file URL 指向开发数据库时立即中止（跨平台）', () => {
+    // pathToFileURL 产出 file:///D:/... / file:///home/... 的标准三斜杠形式：
+    // Prisma 按 WHATWG 语义解析时会指向真实开发库，而 naive 解析在 Windows 上会算错放行。
+    expect(() =>
+      resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: pathToFileURL(applicationDatabasePath).href })
+    ).toThrow(/测试数据库安全闸/);
+  });
+
+  it('file URL 变体（fragment、百分号编码、尾斜杠）无法绕过守卫（跨平台）', () => {
+    expect(() =>
+      resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: 'file:../../../data/app.db#fragment' })
+    ).toThrow(/测试数据库安全闸/);
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: 'file:../../../data/a%70p.db' })).toThrow(
+      /测试数据库安全闸/
+    );
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: 'file:../../../data/app.db/' })).toThrow(
+      /测试数据库安全闸/
+    );
+  });
+
+  it('大写 FILE: scheme 无法绕过守卫（跨平台）', () => {
+    expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: 'FILE:../../../data/app.db' })).toThrow(
+      /测试数据库安全闸/
+    );
+  });
+
+  it.skipIf(process.platform !== 'win32')(
+    'Windows 专属 file URL 变体（localhost 主机名、编码盘符）同样无法绕过',
+    () => {
+      const applicationFileUrl = pathToFileURL(applicationDatabasePath).href;
+      const localhostUrl = `file://localhost/${applicationFileUrl.slice('file://'.length)}`;
+      expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: localhostUrl })).toThrow(
+        /测试数据库安全闸/
+      );
+
+      const pathAfterDrive = applicationFileUrl.slice('file:///'.length + 2);
+      const encodedDriveUrl = `file:///%44%3A/${pathAfterDrive}`;
+      expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: encodedDriveUrl })).toThrow(
+        /测试数据库安全闸/
+      );
+    }
+  );
+
+  it('合法的标准三斜杠 file URL 指向独立测试库时不被误杀（跨平台）', () => {
+    const isolatedUrl = resolveDatabaseUrl({
+      NODE_ENV: 'test',
+      TEST_DATABASE_URL: pathToFileURL(defaultTestDatabasePath).href
+    });
+
+    expect(fileURLToPath(isolatedUrl)).toBe(defaultTestDatabasePath);
   });
 });
