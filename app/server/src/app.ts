@@ -28,6 +28,7 @@ import { registerUploadRoutes } from './modules/uploads/routes.js';
 import { registerCors } from './plugins/cors.js';
 import { registerErrorHandlers } from './plugins/error-handler.js';
 import { registerMaintenanceGuard } from './plugins/maintenance.js';
+import { runtimeValidationFastifyOptions } from './plugins/schema-validation.js';
 
 export interface BuildAppOptions {
   config?: AppConfig;
@@ -40,7 +41,8 @@ export async function buildApp(options: BuildAppOptions = {}): Promise<FastifyIn
   const database = options.database ?? defaultPrisma;
   const app = Fastify({
     logger: options.logger ?? true,
-    bodyLimit: 9 * 1024 * 1024
+    bodyLimit: 9 * 1024 * 1024,
+    ...runtimeValidationFastifyOptions
   });
 
   registerErrorHandlers(app);

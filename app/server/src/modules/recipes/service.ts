@@ -308,9 +308,21 @@ export async function deleteRecipe(database: PrismaClient, id: string, version: 
 
 export async function toggleRecipeFavorite(database: PrismaClient, id: string, version: number, favorite: boolean) {
   assertVersionNumber(version);
-  const current = await database.recipe.findFirst({ where: { id, deletedAt: null }, select: { version: true } });
-  if (!current) throw Object.assign(new Error('菜谱不存在'), { statusCode: 404 });
-  if (current.version !== version)
+  // 原子条件写：expectedVersion 与软删除过滤直接作为 UPDATE 的 where 谓词，
+  // 两个携带相同 version 的并发请求最多一个命中（count===1），另一个必然 count===0，
+  // 避免“先读版本再按 id 写”窗口造成的丢失更新。
+  const result = await database.recipe.updateMany({
+    where: { id, version, deletedAt: null },
+    data: { favorite, version: { increment: 1 } }
+  });
+  if (result.count === 0) {
+    // follow-up read 只用于区分失败原因（不存在/已删除 → 404，版本变化 → 409），不决定写入是否允许
+    const current = await database.recipe.findUnique({
+      where: { id },
+      select: { version: true, deletedAt: true }
+    });
+    if (!current || current.deletedAt) throw Object.assign(new Error('菜谱不存在'), { statusCode: 404 });
     throw new VersionConflictError({ entity: 'Recipe', id, expectedVersion: version, actualVersion: current.version });
-  return database.recipe.update({ where: { id }, data: { favorite, version: { increment: 1 } } });
+  }
+  return database.recipe.findUniqueOrThrow({ where: { id } });
 }

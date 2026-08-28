@@ -12,6 +12,7 @@ import {
   releaseHighRiskAuthorization,
   reserveHighRiskAuthorization
 } from '../settings/service.js';
+import { clearUploadSessionCookie } from '../settings/routes.js';
 import { backupResourceLimits, createBackup, restoreBackup } from './service.js';
 
 export async function registerBackupRoutes(app: FastifyInstance, database: PrismaClient) {
@@ -42,6 +43,8 @@ export async function registerBackupRoutes(app: FastifyInstance, database: Prism
         }
         await pipeline(part.file, createWriteStream(zipPath, { flags: 'wx' }));
         if (part.file.truncated) return reply.code(413).send(failure('FILE_TOO_LARGE', '备份 ZIP 超过上传大小限制'));
+        // restoreBackup 内部会 clearPinSessions() 使服务端会话全部失效，这里顺带让浏览器丢弃 upload cookie
+        clearUploadSessionCookie(reply);
         return success(
           await restoreBackup(database, zipPath, 1, () => {
             consumeReservedHighRiskAuthorization(token, 'RESTORE', reservation);

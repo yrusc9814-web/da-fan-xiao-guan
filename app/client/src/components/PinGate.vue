@@ -38,7 +38,9 @@ async function initialize() {
       return;
     }
     try {
-      await apiRequest('/settings/pin/session');
+      const session = await apiRequest<{ valid: boolean; token?: string | null }>('/settings/pin/session');
+      // 升级恢复：本机 token 丢失但 HttpOnly upload cookie 仍有效时，服务端会把 token 交回，重新持久化
+      if (session.token) setPinToken(session.token);
       emit('unlocked');
       return;
     } catch {

@@ -14,9 +14,16 @@ interface BusinessError extends Error {
 const pinSessions = new Map<string, number>();
 const highRiskTokens = new Map<string, { action: HighRiskAction; expiresAt: number; reservation?: string }>();
 const highRiskChallenges = new Map<string, { action: HighRiskAction; expiresAt: number }>();
+// failures：连续失败次数；lockedUntil：冷却截止时间（0 表示未进入冷却）；
+// expiresAt：整个条目作废时间。冷却到期即整条作废并重新计数，条目最多存活 pinLockoutMs，
+// 因此 map 不会随历史客户端无限增长。
+const pinAttempts = new Map<string, { failures: number; lockedUntil: number; expiresAt: number }>();
 const sessionLifetime = 12 * 60 * 60 * 1000;
 export const highRiskAuthorizationLifetime = 5 * 60 * 1000;
 const highRiskChallengeLifetime = 2 * 60 * 1000;
+export const pinAttemptLimit = 5;
+export const pinLockoutMs = 30 * 1000;
+export const uploadSessionCookieName = 'dafan-upload-session';
 
 function businessError(statusCode: number, businessCode: string, message: string): BusinessError {
   return Object.assign(new Error(message), { statusCode, businessCode });
@@ -32,17 +39,12 @@ export async function getSettings(database: PrismaClient) {
   return publicSettings(value);
 }
 
-async function assertVersion(database: PrismaClient, version: number) {
-  const current = await database.settings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
-  if (current.version !== version) {
-    throw new VersionConflictError({
-      entity: 'Settings',
-      id: '1',
-      expectedVersion: version,
-      actualVersion: current.version
-    });
-  }
-  return current;
+// settings 是 singleton，但“单例”不等于可以省略版本守卫：两个客户端可能同时基于
+// 同一个 version=N 发起写入，必须恰好一个成功、另一个 409。因此把 expectedVersion
+// 直接放进 UPDATE 的 where 谓词（原子条件写），而不是先读版本再按 id 更新。
+async function ensureSettingsRow(database: PrismaClient) {
+  // update: {} 不改任何字段也不推进版本，仅保证 singleton 行存在，供首次写入使用
+  return database.settings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
 }
 
 export async function updateSettings(
@@ -59,15 +61,15 @@ export async function updateSettings(
     onboardingCompleted?: boolean;
   }
 ) {
-  await assertVersion(database, version);
   if (
     input.defaultRepeatDays != null &&
     (!Number.isInteger(input.defaultRepeatDays) || input.defaultRepeatDays < 0 || input.defaultRepeatDays > 365)
   ) {
     throw Object.assign(new Error('推荐避免重复天数必须是 0 到 365 的整数'), { statusCode: 400 });
   }
-  const value = await database.settings.update({
-    where: { id: 1 },
+  await ensureSettingsRow(database);
+  const result = await database.settings.updateMany({
+    where: { id: 1, version },
     data: {
       appName: input.appName,
       subtitle: input.subtitle,
@@ -80,6 +82,17 @@ export async function updateSettings(
       version: { increment: 1 }
     }
   });
+  if (result.count === 0) {
+    // follow-up read 只用于区分失败原因（这里行必然存在，只会是版本冲突），不决定写入是否允许
+    const current = await database.settings.findUniqueOrThrow({ where: { id: 1 } });
+    throw new VersionConflictError({
+      entity: 'Settings',
+      id: '1',
+      expectedVersion: version,
+      actualVersion: current.version
+    });
+  }
+  const value = await database.settings.findUniqueOrThrow({ where: { id: 1 } });
   return publicSettings(value);
 }
 
@@ -157,14 +170,24 @@ export async function completeOnboarding(
 }
 
 export async function setPin(database: PrismaClient, version: number, pin: string | null, enabled: boolean) {
-  await assertVersion(database, version);
   if (enabled && !/^\d{4,8}$/.test(pin ?? '')) {
     throw Object.assign(new Error('PIN 必须是 4 到 8 位数字'), { statusCode: 400 });
   }
-  const value = await database.settings.update({
-    where: { id: 1 },
+  await ensureSettingsRow(database);
+  const result = await database.settings.updateMany({
+    where: { id: 1, version },
     data: { pinEnabled: enabled, pinHash: enabled ? hashPin(pin!) : null, version: { increment: 1 } }
   });
+  if (result.count === 0) {
+    const current = await database.settings.findUniqueOrThrow({ where: { id: 1 } });
+    throw new VersionConflictError({
+      entity: 'Settings',
+      id: '1',
+      expectedVersion: version,
+      actualVersion: current.version
+    });
+  }
+  const value = await database.settings.findUniqueOrThrow({ where: { id: 1 } });
   clearPinSessions();
   return publicSettings(value);
 }
@@ -179,12 +202,35 @@ export async function verifyPin(database: PrismaClient, pin: string) {
   return { valid: actual.length === target.length && timingSafeEqual(actual, target), required: true };
 }
 
-export async function verifyPinAndCreateSession(database: PrismaClient, pin: string) {
+export async function verifyPinAndCreateSession(database: PrismaClient, pin: string, clientKey = '', now = Date.now()) {
+  for (const [key, state] of pinAttempts) {
+    if (state.expiresAt <= now) pinAttempts.delete(key);
+  }
+  const lockout = pinAttempts.get(clientKey);
+  if (lockout && lockout.lockedUntil > now) {
+    throw businessError(429, 'PIN_ATTEMPTS_EXCEEDED', '尝试次数过多，请稍后再试');
+  }
   const result = await verifyPin(database, pin);
-  if (!result.valid) return { ...result, token: null };
+  if (!result.valid) {
+    const failures = (pinAttempts.get(clientKey)?.failures ?? 0) + 1;
+    const lockedUntil = failures >= pinAttemptLimit ? now + pinLockoutMs : 0;
+    pinAttempts.set(clientKey, { failures, lockedUntil, expiresAt: now + pinLockoutMs });
+    return { ...result, token: null };
+  }
+  pinAttempts.delete(clientKey);
   const token = randomBytes(32).toString('hex');
-  pinSessions.set(token, Date.now() + sessionLifetime);
+  pinSessions.set(token, now + sessionLifetime);
   return { ...result, token };
+}
+
+export function pinRetryAfterSeconds(clientKey: string, now = Date.now()): number {
+  const lockout = pinAttempts.get(clientKey);
+  if (!lockout || lockout.lockedUntil <= now) return 0;
+  return Math.max(1, Math.ceil((lockout.lockedUntil - now) / 1000));
+}
+
+export function pinAttemptsSize(): number {
+  return pinAttempts.size;
 }
 
 export function validPinSession(token: string | undefined) {
@@ -290,6 +336,7 @@ export function consumeHighRiskAuthorization(
 
 export function clearPinSessions() {
   pinSessions.clear();
+  pinAttempts.clear();
   highRiskTokens.clear();
   highRiskChallenges.clear();
 }

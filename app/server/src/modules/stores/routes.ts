@@ -3,6 +3,13 @@ import type { FastifyInstance } from 'fastify';
 
 import { success } from '../../shared/http.js';
 import {
+  booleanSchema,
+  mealTypeSchema,
+  nullableStringSchema,
+  stringSchema,
+  versionBodySchema
+} from '../../shared/validation-schemas.js';
+import {
   createStore,
   deleteStore,
   getStore,
@@ -21,6 +28,36 @@ import {
 
 type Params = { id: string };
 type RawStoreQuery = Record<string, string | undefined>;
+
+const storeBodySchema = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: stringSchema,
+    imagePath: nullableStringSchema,
+    address: nullableStringSchema,
+    storeType: nullableStringSchema,
+    cuisine: nullableStringSchema,
+    averageCost: { type: ['number', 'null'], minimum: 0 },
+    supportsDineIn: booleanSchema,
+    supportsTakeout: booleanSchema,
+    contact: nullableStringSchema,
+    businessHours: nullableStringSchema,
+    rating: { type: ['number', 'null'], minimum: 0, maximum: 5 },
+    recommendedDishes: nullableStringSchema,
+    avoidDishes: nullableStringSchema,
+    tagsText: nullableStringSchema,
+    notes: nullableStringSchema,
+    favorite: booleanSchema,
+    mealTypes: { type: 'array', items: mealTypeSchema }
+  }
+};
+
+const storeUpdateBodySchema = {
+  type: 'object',
+  required: ['version'],
+  properties: { ...storeBodySchema.properties, version: versionBodySchema }
+};
 
 function numberValue(value: string | undefined, field: string): number | undefined {
   if (value === undefined || value === '') return undefined;
@@ -94,14 +131,16 @@ export async function registerStoreRoutes(app: FastifyInstance, database: Prisma
   app.get<{ Querystring: RawStoreQuery }>('/api/v1/stores/candidates', async (request) =>
     success(await listStoreCandidates(database, parseCandidateQuery(request.query)))
   );
-  app.post<{ Body: StoreWriteInput }>('/api/v1/stores', async (request, reply) =>
+  app.post<{ Body: StoreWriteInput }>('/api/v1/stores', { schema: { body: storeBodySchema } }, async (request, reply) =>
     reply.code(201).send(success(await createStore(database, request.body)))
   );
   app.get<{ Params: Params }>('/api/v1/stores/:id', async (request) =>
     success(await getStore(database, request.params.id))
   );
-  app.put<{ Params: Params; Body: StoreUpdateInput }>('/api/v1/stores/:id', async (request) =>
-    success(await updateStore(database, request.params.id, request.body))
+  app.put<{ Params: Params; Body: StoreUpdateInput }>(
+    '/api/v1/stores/:id',
+    { schema: { body: storeUpdateBodySchema } },
+    async (request) => success(await updateStore(database, request.params.id, request.body))
   );
   app.delete<{ Params: Params; Body: { version: number } }>('/api/v1/stores/:id', async (request) =>
     success(await deleteStore(database, request.params.id, request.body?.version))

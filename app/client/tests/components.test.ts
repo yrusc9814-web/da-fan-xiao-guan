@@ -93,6 +93,58 @@ describe('public component states', () => {
     expect(wrapper.emitted('unlocked')).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+  it('PIN 启用时 pin/session 返回 token 则恢复并持久化本地会话', async () => {
+    localStorage.removeItem('dafan-pin-token');
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { version: 3, pinEnabled: true, onboardingCompleted: true, userNickname: '小饭' },
+          error: null
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({ success: true, data: { valid: true, token: 'recovered-token' }, error: null })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(PinGate);
+    await flushPromises();
+
+    expect(wrapper.emitted('unlocked')).toHaveLength(1);
+    expect(localStorage.getItem('dafan-pin-token')).toBe('recovered-token');
+    localStorage.removeItem('dafan-pin-token');
+  });
+  it('PIN 启用且会话无效时清空本地 token 并停留在 PIN 门禁', async () => {
+    localStorage.setItem('dafan-pin-token', 'stale-token');
+    const fetchMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: async () => ({
+          success: true,
+          data: { version: 4, pinEnabled: true, onboardingCompleted: true, userNickname: '小饭' },
+          error: null
+        })
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        json: async () => ({
+          success: false,
+          data: null,
+          error: { code: 'UNAUTHORIZED', message: '会话无效' }
+        })
+      });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(PinGate);
+    await flushPromises();
+
+    expect(wrapper.emitted('unlocked')).toBeUndefined();
+    expect(wrapper.text()).toContain('请输入本地 PIN');
+    expect(localStorage.getItem('dafan-pin-token')).toBeNull();
+  });
   it('disables a loading button and exposes busy state', () => {
     const wrapper = mount(AppButton, { props: { loading: true }, slots: { default: '保存' } });
 

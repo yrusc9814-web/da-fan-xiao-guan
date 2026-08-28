@@ -3,6 +3,12 @@ import type { FastifyInstance } from 'fastify';
 
 import { success } from '../../shared/http.js';
 import {
+  booleanSchema,
+  nullableStringSchema,
+  stringSchema,
+  versionBodySchema
+} from '../../shared/validation-schemas.js';
+import {
   createDiner,
   deactivateDiner,
   DinerRequestError,
@@ -15,6 +21,28 @@ import {
 
 type Params = { id: string };
 type RawQuery = Record<string, string | undefined>;
+
+const dinerBodySchema = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: stringSchema,
+    avatarPath: nullableStringSchema,
+    active: booleanSchema,
+    likesText: nullableStringSchema,
+    dislikesText: nullableStringSchema,
+    tabooText: nullableStringSchema,
+    allergyText: nullableStringSchema,
+    portionNote: nullableStringSchema,
+    notes: nullableStringSchema
+  }
+};
+
+const dinerUpdateBodySchema = {
+  type: 'object',
+  required: ['version'],
+  properties: { ...dinerBodySchema.properties, version: versionBodySchema }
+};
 
 function numberValue(value: string | undefined, field: string): number | undefined {
   if (value === undefined || value === '') return undefined;
@@ -49,14 +77,16 @@ export async function registerDinerRoutes(app: FastifyInstance, database: Prisma
       })
     );
   });
-  app.post<{ Body: DinerWriteInput }>('/api/v1/diners', async (request, reply) =>
+  app.post<{ Body: DinerWriteInput }>('/api/v1/diners', { schema: { body: dinerBodySchema } }, async (request, reply) =>
     reply.code(201).send(success(await createDiner(database, request.body)))
   );
   app.get<{ Params: Params }>('/api/v1/diners/:id', async (request) =>
     success(await getDiner(database, request.params.id))
   );
-  app.put<{ Params: Params; Body: DinerUpdateInput }>('/api/v1/diners/:id', async (request) =>
-    success(await updateDiner(database, request.params.id, request.body))
+  app.put<{ Params: Params; Body: DinerUpdateInput }>(
+    '/api/v1/diners/:id',
+    { schema: { body: dinerUpdateBodySchema } },
+    async (request) => success(await updateDiner(database, request.params.id, request.body))
   );
   app.delete<{ Params: Params; Body: { version: number } }>('/api/v1/diners/:id', async (request) =>
     success(await deactivateDiner(database, request.params.id, request.body?.version))
