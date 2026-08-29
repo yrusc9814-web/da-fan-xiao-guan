@@ -81,6 +81,18 @@ const batchAdjustmentBodySchema = {
 export async function registerIngredientRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
   app.get<{ Querystring: { search?: string; category?: string; status?: string } }>(
     '/api/v1/ingredients',
+    {
+      schema: {
+        querystring: {
+          type: 'object',
+          properties: {
+            search: stringSchema,
+            category: stringSchema,
+            status: { type: 'string', enum: ['DEPLETED', 'EXPIRED', 'EXPIRING_SOON', 'LOW_STOCK', 'NORMAL'] }
+          }
+        }
+      }
+    },
     async (request) => success(await listIngredients(database, request.query))
   );
   app.post<{ Body: IngredientWriteInput }>(

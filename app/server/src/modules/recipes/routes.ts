@@ -3,11 +3,14 @@ import type { PrismaClient } from '@prisma/client';
 
 import { success } from '../../shared/http.js';
 import {
+  booleanQuerySchema,
   booleanSchema,
   mealRoleSchema,
   mealTypeSchema,
   nullableQuantityUnitSchema,
   nullableStringSchema,
+  positiveIntQuerySchema,
+  sortOrderQuerySchema,
   stringSchema,
   stringListSchema,
   versionBodySchema,
@@ -87,17 +90,36 @@ const versionQuerySchemaWrapper = {
   properties: { version: versionQuerySchema }
 };
 
+const recipeListQuerySchema = {
+  type: 'object',
+  properties: {
+    page: positiveIntQuerySchema,
+    pageSize: positiveIntQuerySchema,
+    spicyLevel: { type: 'string', pattern: '^[0-5]$' },
+    favorite: booleanQuerySchema,
+    search: stringSchema,
+    mealType: mealTypeSchema,
+    difficulty: stringSchema,
+    tag: stringSchema,
+    sortBy: { type: 'string', enum: ['name', 'cookingTimeMinutes', 'favorite', 'createdAt', 'updatedAt'] },
+    sortOrder: sortOrderQuerySchema
+  }
+};
+
 export async function registerRecipeRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
-  app.get<{ Querystring: Record<string, string | undefined> }>('/api/v1/recipes', async (request) =>
-    success(
-      await listRecipes(database, {
-        ...request.query,
-        page: request.query.page ? Number(request.query.page) : undefined,
-        pageSize: request.query.pageSize ? Number(request.query.pageSize) : undefined,
-        spicyLevel: request.query.spicyLevel ? Number(request.query.spicyLevel) : undefined,
-        favorite: request.query.favorite == null ? undefined : request.query.favorite === 'true'
-      } as RecipeListQuery)
-    )
+  app.get<{ Querystring: Record<string, string | undefined> }>(
+    '/api/v1/recipes',
+    { schema: { querystring: recipeListQuerySchema } },
+    async (request) =>
+      success(
+        await listRecipes(database, {
+          ...request.query,
+          page: request.query.page ? Number(request.query.page) : undefined,
+          pageSize: request.query.pageSize ? Number(request.query.pageSize) : undefined,
+          spicyLevel: request.query.spicyLevel ? Number(request.query.spicyLevel) : undefined,
+          favorite: request.query.favorite == null ? undefined : request.query.favorite === 'true'
+        } as RecipeListQuery)
+      )
   );
   app.post<{ Body: RecipeWriteInput }>(
     '/api/v1/recipes',

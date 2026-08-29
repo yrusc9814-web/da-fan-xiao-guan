@@ -3,6 +3,7 @@ import type { PlanStatus, PrismaClient } from '@prisma/client';
 
 import { success } from '../../shared/http.js';
 import {
+  isoDateQuerySchema,
   mealTypeSchema,
   nullableMealRoleSchema,
   nullableStringSchema,
@@ -59,9 +60,13 @@ const planUpdateBodySchema = {
 
 const versionBodyWrapper = { type: 'object', required: ['version'], properties: { version: versionBodySchema } };
 const versionQueryWrapper = { type: 'object', required: ['version'], properties: { version: versionQuerySchema } };
+const planListQuerySchema = {
+  type: 'object',
+  properties: { from: isoDateQuerySchema, to: isoDateQuerySchema, status: planStatusSchema }
+};
 
 export async function registerMealPlanRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
-  app.get('/api/v1/plans', async (request) =>
+  app.get('/api/v1/plans', { schema: { querystring: planListQuerySchema } }, async (request) =>
     success(await listPlans(database, request.query as { from?: string; to?: string; status?: PlanStatus }))
   );
   app.post('/api/v1/plans', { schema: { body: planBodySchema } }, async (request, reply) =>

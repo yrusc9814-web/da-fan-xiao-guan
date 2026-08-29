@@ -12,7 +12,7 @@ function createDashboardDatabase(overrides: Record<string, unknown> = {}): Prism
     mealRecord: { findMany: vi.fn().mockResolvedValue([]) },
     mealPlan: { findMany: vi.fn().mockResolvedValue([]) },
     ingredient: { findMany: vi.fn().mockResolvedValue([]) },
-    inventoryLog: { count: vi.fn().mockResolvedValue(0) },
+    inventoryLog: { findMany: vi.fn().mockResolvedValue([]) },
     $disconnect: vi.fn().mockResolvedValue(undefined),
     ...overrides
   };
@@ -95,7 +95,12 @@ describe('Dashboard 首页只读接口', () => {
           }
         ])
       },
-      inventoryLog: { count: vi.fn().mockResolvedValue(2) }
+      inventoryLog: {
+        findMany: vi.fn().mockResolvedValue([
+          { ingredientId: 'ingredient-1', ingredientNameSnapshot: '番茄' },
+          { ingredientId: 'ingredient-2', ingredientNameSnapshot: '鸡蛋' }
+        ])
+      }
     });
     const app = await buildApp({ logger: false, database });
     const response = await app.inject({ method: 'GET', url: '/api/v1/dashboard' });
@@ -130,6 +135,85 @@ describe('Dashboard 首页只读接口', () => {
 
     await database.$disconnect();
     expect(after).toEqual(before);
+  });
+
+  it('本周食材消耗按不同食材计数，多次扣减同一食材只计 1 种', async () => {
+    const database = createTestPrismaClient();
+    await database.$connect();
+    const tomato = await database.ingredient.create({
+      data: { name: '验收消耗-番茄', unit: 'GRAM', quantity: 100 }
+    });
+    const egg = await database.ingredient.create({
+      data: { name: '验收消耗-鸡蛋', unit: 'PIECE', quantity: 6 }
+    });
+    const now = new Date();
+    const app = await buildApp({ logger: false, database });
+    const before = await app.inject({ method: 'GET', url: '/api/v1/dashboard' });
+    const beforeCount = before.json().data.weeklyStats.consumedIngredientCount as number;
+    await database.inventoryLog.createMany({
+      data: [
+        {
+          ingredientId: tomato.id,
+          ingredientNameSnapshot: tomato.name,
+          beforeQuantity: 100,
+          changeQuantity: -10,
+          afterQuantity: 90,
+          unit: 'GRAM',
+          changeType: 'COOK_DEDUCT',
+          createdAt: now
+        },
+        {
+          ingredientId: tomato.id,
+          ingredientNameSnapshot: tomato.name,
+          beforeQuantity: 90,
+          changeQuantity: -10,
+          afterQuantity: 80,
+          unit: 'GRAM',
+          changeType: 'COOK_DEDUCT',
+          createdAt: now
+        },
+        {
+          ingredientId: egg.id,
+          ingredientNameSnapshot: egg.name,
+          beforeQuantity: 6,
+          changeQuantity: -1,
+          afterQuantity: 5,
+          unit: 'PIECE',
+          changeType: 'COOK_DEDUCT',
+          createdAt: now
+        },
+        {
+          ingredientId: tomato.id,
+          ingredientNameSnapshot: tomato.name,
+          beforeQuantity: 80,
+          changeQuantity: 20,
+          afterQuantity: 100,
+          unit: 'GRAM',
+          changeType: 'PURCHASE',
+          createdAt: now
+        },
+        {
+          ingredientId: egg.id,
+          ingredientNameSnapshot: egg.name,
+          beforeQuantity: 5,
+          changeQuantity: -1,
+          afterQuantity: 4,
+          unit: 'PIECE',
+          changeType: 'COOK_DEDUCT',
+          createdAt: new Date('2020-01-01T00:00:00')
+        }
+      ]
+    });
+    const response = await app.inject({ method: 'GET', url: '/api/v1/dashboard' });
+    await app.close();
+    await database.inventoryLog.deleteMany({
+      where: { ingredientId: { in: [tomato.id, egg.id] } }
+    });
+    await database.ingredient.deleteMany({ where: { id: { in: [tomato.id, egg.id] } } });
+    await database.$disconnect();
+    expect(before.statusCode).toBe(200);
+    expect(response.statusCode).toBe(200);
+    expect(response.json().data.weeklyStats.consumedIngredientCount).toBe(beforeCount + 2);
   });
 
   it('上传图片读取只允许 data/uploads 内的文件', async () => {

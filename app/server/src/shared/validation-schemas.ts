@@ -56,6 +56,18 @@ export const versionBodySchema = { type: 'integer', minimum: 1 };
  */
 export const versionQuerySchema = { type: 'string', pattern: '^[1-9][0-9]*$' };
 
+/** GET query 正整数：query 永远是字符串，且 AJV 已关闭强转。 */
+export const positiveIntQuerySchema = { type: 'string', pattern: '^[1-9][0-9]{0,8}$' };
+
+/** GET query 业务日：YYYY-MM-DD 形状，不在 schema 层校验闰年。 */
+export const isoDateQuerySchema = { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' };
+
+/** GET query 布尔字面量。 */
+export const booleanQuerySchema = { type: 'string', enum: ['true', 'false'] };
+
+/** GET query 排序方向。 */
+export const sortOrderQuerySchema = { type: 'string', enum: ['asc', 'desc'] };
+
 /** 库存扣减预览的批次选择：Record<recipeIngredientId, batchId[]>。 */
 export const consumptionSelectionsSchema = {
   type: 'object',

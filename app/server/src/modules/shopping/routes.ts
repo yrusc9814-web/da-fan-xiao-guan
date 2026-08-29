@@ -94,8 +94,11 @@ const generateBodySchema = {
 };
 
 export async function registerShoppingRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
-  app.get('/api/v1/shopping-lists', async (request) =>
-    success(await listShoppingLists(database, (request.query as { status?: ShoppingListStatus }).status))
+  app.get(
+    '/api/v1/shopping-lists',
+    { schema: { querystring: { type: 'object', properties: { status: shoppingListStatusSchema } } } },
+    async (request) =>
+      success(await listShoppingLists(database, (request.query as { status?: ShoppingListStatus }).status))
   );
   app.post('/api/v1/shopping-lists', { schema: { body: shoppingListBodySchema } }, async (request, reply) =>
     reply.code(201).send(success(await createShoppingList(database, request.body as ShoppingListInput)))

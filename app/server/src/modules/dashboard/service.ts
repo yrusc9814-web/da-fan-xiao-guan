@@ -117,8 +117,9 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
       select: { planDate: true }
     }),
     database.ingredient.findMany({ where: { deletedAt: null }, orderBy: { expiryDate: 'asc' } }),
-    database.inventoryLog.count({
-      where: { createdAt: { gte: weekStart, lte: weekEnd }, changeType: 'COOK_DEDUCT' }
+    database.inventoryLog.findMany({
+      where: { createdAt: { gte: weekStart, lte: weekEnd }, changeType: 'COOK_DEDUCT' },
+      select: { ingredientId: true, ingredientNameSnapshot: true }
     })
   ]);
 
@@ -208,7 +209,7 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
       recordedDays: recordedDates.size,
       totalMeals: weekRecords.length,
       averageRating,
-      consumedIngredientCount: consumedLogs
+      consumedIngredientCount: new Set(consumedLogs.map((log) => log.ingredientId ?? log.ingredientNameSnapshot)).size
     },
     calendarDays: toCalendarDays(now, recordedDates, plannedDateSet),
     tip:

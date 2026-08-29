@@ -11,7 +11,7 @@ import {
 } from '../../shared/validation-schemas.js';
 import {
   completeOnboarding,
-  createAccessQr,
+  getAccessQr,
   createHighRiskAuthorization,
   getSettings,
   pinRetryAfterSeconds,
@@ -206,7 +206,7 @@ export async function registerSettingsRoutes(app: FastifyInstance, database: Pri
     { schema: { body: highRiskBodySchema } },
     async (request) => success(await createHighRiskAuthorization(database, request.body))
   );
-  app.get<{ Querystring: { url: string } }>('/api/v1/settings/access-qr', async (request) =>
-    success(await createAccessQr(request.query.url))
+  app.get<{ Querystring: { host?: string } }>('/api/v1/settings/access-qr', async (request) =>
+    success(await getAccessQr(request.query.host))
   );
 }

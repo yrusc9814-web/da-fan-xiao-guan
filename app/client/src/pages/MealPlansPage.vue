@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import AppButton from '../components/ui/AppButton.vue';
 import AppEmptyState from '../components/ui/AppEmptyState.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppInput from '../components/ui/AppInput.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
 import { apiRequest, ApiRequestError } from '../services/api';
+import { monthRange, parseLocalIsoDate, toLocalIsoDate } from '../utils/calendar';
 import { displayLabel } from '../utils/display';
 import { isIsoDate, positiveInteger } from '../utils/validation';
 
@@ -36,27 +38,70 @@ const recipes = ref<Array<{ id: string; name: string }>>([]),
   selectedRecipeIds = ref<string[]>([]),
   selectedStoreIds = ref<string[]>([]),
   selectedDinerIds = ref<string[]>([]);
-const today = new Date().toLocaleDateString('sv-SE');
-const form = ref({ planDate: today, mealType: 'DINNER', dinerCount: '1', customName: '', notes: '' });
-async function load() {
+const route = useRoute();
+const today = toLocalIsoDate(new Date());
+const selectedDate = computed(() => {
+  const raw = Array.isArray(route.query.date) ? route.query.date[0] : route.query.date;
+  return typeof raw === 'string' && isIsoDate(raw) && parseLocalIsoDate(raw) ? raw : today;
+});
+const selectedMonth = computed(() => {
+  const date = parseLocalIsoDate(selectedDate.value) ?? new Date();
+  return monthRange(date.getFullYear(), date.getMonth());
+});
+const form = ref({ planDate: selectedDate.value, mealType: 'DINNER', dinerCount: '1', customName: '', notes: '' });
+const catalogsLoaded = ref(false);
+let loadedMonthKey = '';
+let plansRequestSequence = 0;
+let inflightMonthKey = '';
+async function loadCatalogs() {
+  const [recipeData, storeData, dinerData] = await Promise.all([
+    apiRequest<any>('/recipes', { query: { pageSize: 100 } }),
+    apiRequest<any>('/stores', { query: { pageSize: 100 } }),
+    apiRequest<any>('/diners', { query: { pageSize: 100, active: true } })
+  ]);
+  recipes.value = recipeData.items ?? recipeData;
+  stores.value = storeData.items ?? storeData;
+  diners.value = dinerData.items ?? dinerData;
+  catalogsLoaded.value = true;
+}
+async function loadPlans(force = false) {
+  const monthKey = `${selectedMonth.value.start}:${selectedMonth.value.end}`;
+  if (!force && (monthKey === loadedMonthKey || monthKey === inflightMonthKey)) return;
+  const sequence = ++plansRequestSequence;
+  inflightMonthKey = monthKey;
   loading.value = true;
   error.value = '';
   try {
-    const [planData, recipeData, storeData, dinerData] = await Promise.all([
-      apiRequest<Plan[]>('/plans', { query: { from: '2000-01-01', to: '2100-12-31' } }),
-      apiRequest<any>('/recipes', { query: { pageSize: 100 } }),
-      apiRequest<any>('/stores', { query: { pageSize: 100 } }),
-      apiRequest<any>('/diners', { query: { pageSize: 100, active: true } })
-    ]);
+    const planData = await apiRequest<Plan[]>('/plans', {
+      query: { from: selectedMonth.value.start, to: selectedMonth.value.end }
+    });
+    if (sequence !== plansRequestSequence) return;
     plans.value = planData;
-    recipes.value = recipeData.items ?? recipeData;
-    stores.value = storeData.items ?? storeData;
-    diners.value = dinerData.items ?? dinerData;
+    loadedMonthKey = monthKey;
+  } catch (e) {
+    if (sequence !== plansRequestSequence) return;
+    error.value = e instanceof Error ? e.message : '加载失败';
+  } finally {
+    if (sequence === plansRequestSequence) {
+      inflightMonthKey = '';
+      loading.value = false;
+    }
+  }
+}
+async function load(forcePlans = true) {
+  loading.value = true;
+  error.value = '';
+  try {
+    await Promise.all([loadPlans(forcePlans), catalogsLoaded.value ? Promise.resolve() : loadCatalogs()]);
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加载失败';
   } finally {
     loading.value = false;
   }
+}
+async function focusSelectedDate() {
+  await nextTick();
+  document.querySelector<HTMLElement>(`[data-plan-date="${selectedDate.value}"]`)?.scrollIntoView({ block: 'center' });
 }
 function toggle(kind: 'recipe' | 'store' | 'diner', id: string) {
   const target = kind === 'recipe' ? selectedRecipeIds : kind === 'store' ? selectedStoreIds : selectedDinerIds;
@@ -119,10 +164,23 @@ async function action(plan: Plan, type: 'complete' | 'cancel') {
     else error.value = e instanceof Error ? e.message : '操作失败';
   }
 }
-onMounted(load);
+watch(
+  selectedDate,
+  async () => {
+    form.value.planDate = selectedDate.value;
+    await loadPlans(false);
+    await focusSelectedDate();
+  },
+  { immediate: true }
+);
+onMounted(() => {
+  void loadCatalogs().catch((e) => {
+    error.value = e instanceof Error ? e.message : '加载失败';
+  });
+});
 </script>
 <template>
-  <section class="business-page">
+  <section class="business-page" :data-selected-date="selectedDate">
     <header class="business-hero">
       <div>
         <p class="business-eyebrow">Meal planner</p>
@@ -182,15 +240,21 @@ onMounted(load);
       <AppInput v-model="form.notes" label="备注" /><AppButton type="submit" :loading="saving">保存计划</AppButton>
     </form>
     <div v-if="conflict" class="business-conflict" role="alert">
-      {{ conflict }} <button class="text-button" @click="load">重新加载</button>
+      {{ conflict }} <button class="text-button" @click="() => load()">重新加载</button>
     </div>
-    <AppErrorState v-if="error" title="计划读取失败" :description="error" @retry="load" />
+    <AppErrorState v-if="error" title="计划读取失败" :description="error" @retry="loadPlans" />
     <div v-else-if="loading" class="business-grid">
       <AppSkeleton v-for="index in 6" :key="index" height="160px" />
     </div>
     <AppEmptyState v-else-if="!plans.length" title="还没有安排" description="从今天的一顿饭开始。" />
     <div v-else class="business-grid">
-      <article v-for="plan in plans" :key="plan.id" class="business-card app-card">
+      <article
+        v-for="plan in plans"
+        :key="plan.id"
+        class="business-card app-card"
+        :class="{ 'business-card--selected': plan.planDate === selectedDate }"
+        :data-plan-date="plan.planDate"
+      >
         <div>
           <div class="business-card__head">
             <div>
@@ -230,6 +294,9 @@ onMounted(load);
 }
 .plan-options label {
   font-size: 13px;
+}
+.business-card--selected {
+  outline: 2px solid var(--color-primary);
 }
 @media (max-width: 1023px) {
   .plan-options {

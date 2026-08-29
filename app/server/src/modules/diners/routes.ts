@@ -3,8 +3,11 @@ import type { FastifyInstance } from 'fastify';
 
 import { success } from '../../shared/http.js';
 import {
+  booleanQuerySchema,
   booleanSchema,
   nullableStringSchema,
+  positiveIntQuerySchema,
+  sortOrderQuerySchema,
   stringSchema,
   versionBodySchema
 } from '../../shared/validation-schemas.js';
@@ -58,25 +61,40 @@ function booleanValue(value: string | undefined, field: string): boolean | undef
   throw new DinerRequestError(`${field}必须是 true 或 false`);
 }
 
+const dinerListQuerySchema = {
+  type: 'object',
+  properties: {
+    page: positiveIntQuerySchema,
+    pageSize: positiveIntQuerySchema,
+    search: stringSchema,
+    active: booleanQuerySchema,
+    sortOrder: sortOrderQuerySchema
+  }
+};
+
 export async function registerDinerRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
-  app.get<{ Querystring: RawQuery }>('/api/v1/diners', async (request) => {
-    if (
-      request.query.sortOrder !== undefined &&
-      request.query.sortOrder !== 'asc' &&
-      request.query.sortOrder !== 'desc'
-    ) {
-      throw new DinerRequestError('排序方向无效');
+  app.get<{ Querystring: RawQuery }>(
+    '/api/v1/diners',
+    { schema: { querystring: dinerListQuerySchema } },
+    async (request) => {
+      if (
+        request.query.sortOrder !== undefined &&
+        request.query.sortOrder !== 'asc' &&
+        request.query.sortOrder !== 'desc'
+      ) {
+        throw new DinerRequestError('排序方向无效');
+      }
+      return success(
+        await listDiners(database, {
+          page: numberValue(request.query.page, '页码'),
+          pageSize: numberValue(request.query.pageSize, '每页数量'),
+          search: request.query.search,
+          active: booleanValue(request.query.active, '启用状态'),
+          sortOrder: request.query.sortOrder as 'asc' | 'desc' | undefined
+        })
+      );
     }
-    return success(
-      await listDiners(database, {
-        page: numberValue(request.query.page, '页码'),
-        pageSize: numberValue(request.query.pageSize, '每页数量'),
-        search: request.query.search,
-        active: booleanValue(request.query.active, '启用状态'),
-        sortOrder: request.query.sortOrder as 'asc' | 'desc' | undefined
-      })
-    );
-  });
+  );
   app.post<{ Body: DinerWriteInput }>('/api/v1/diners', { schema: { body: dinerBodySchema } }, async (request, reply) =>
     reply.code(201).send(success(await createDiner(database, request.body)))
   );

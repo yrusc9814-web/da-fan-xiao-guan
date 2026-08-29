@@ -1,7 +1,9 @@
 import { randomBytes, scryptSync, timingSafeEqual } from 'node:crypto';
+import { networkInterfaces } from 'node:os';
 import type { PrismaClient } from '@prisma/client';
 import QRCode from 'qrcode';
 
+import { loadConfig } from '../../config/env.js';
 import { VersionConflictError } from '../../database/optimistic-lock.js';
 
 type HighRiskAction = 'RESTORE';
@@ -341,12 +343,79 @@ export function clearPinSessions() {
   highRiskChallenges.clear();
 }
 
+const apipaPrefix = '169.254.';
+
+export interface LanInterfaceAddress {
+  address: string;
+  family: string | number;
+  internal: boolean;
+}
+
+function isIpv4Family(family: string | number): boolean {
+  return family === 'IPv4' || family === 4;
+}
+
+export function listLanIpv4Addresses(interfaces: NodeJS.Dict<LanInterfaceAddress[]> = networkInterfaces()): string[] {
+  const addresses = new Set<string>();
+  for (const entries of Object.values(interfaces)) {
+    for (const entry of entries ?? []) {
+      if (!isIpv4Family(entry.family) || entry.internal) continue;
+      if (entry.address.startsWith(apipaPrefix) || entry.address === '127.0.0.1' || entry.address === '0.0.0.0') {
+        continue;
+      }
+      addresses.add(entry.address);
+    }
+  }
+  return [...addresses].sort((a, b) => a.localeCompare(b, 'en'));
+}
+
+function lanClassRank(address: string): number {
+  if (address.startsWith('192.168.')) return 0;
+  if (address.startsWith('10.')) return 1;
+  const parts = address.split('.').map(Number);
+  if (parts[0] === 172 && (parts[1] ?? 0) >= 16 && (parts[1] ?? 0) <= 31) return 2;
+  return 3;
+}
+
+export function pickPreferredLanIpv4(addresses: string[]): string | null {
+  if (!addresses.length) return null;
+  return [...addresses].sort((a, b) => lanClassRank(a) - lanClassRank(b) || a.localeCompare(b, 'en'))[0] ?? null;
+}
+
+function lanOrigin(address: string, port: number): string {
+  return `http://${address}:${port}`;
+}
+
 export async function createAccessQr(url: string) {
-  if (!/^https?:\/\/[\w.:[\]-]+(?:\/.*)?$/.test(url)) {
+  if (!/^https?:\/\/[\w.:[\]-]+$/.test(url)) {
     throw Object.assign(new Error('局域网访问地址无效'), { statusCode: 400 });
   }
   return {
     url,
     dataUrl: await QRCode.toDataURL(url, { width: 320, margin: 2, color: { dark: '#2f282b', light: '#fff8fa' } })
   };
+}
+
+export async function getAccessQr(
+  host?: string,
+  interfaces: NodeJS.Dict<LanInterfaceAddress[]> = networkInterfaces(),
+  port = loadConfig().port
+) {
+  const addresses = listLanIpv4Addresses(interfaces);
+  const candidates = addresses.map((address) => lanOrigin(address, port));
+  if (!candidates.length) {
+    return {
+      url: null,
+      dataUrl: null,
+      candidates,
+      message: '当前电脑没有可供手机访问的局域网地址，请确认已连接到同一 Wi-Fi。'
+    };
+  }
+  const preferred = pickPreferredLanIpv4(addresses);
+  const selected = host ? lanOrigin(host, port) : preferred ? lanOrigin(preferred, port) : null;
+  if (!selected || !candidates.includes(selected)) {
+    throw Object.assign(new Error('局域网访问地址无效'), { statusCode: 400 });
+  }
+  const qr = await createAccessQr(selected);
+  return { url: qr.url, dataUrl: qr.dataUrl, candidates, message: null };
 }

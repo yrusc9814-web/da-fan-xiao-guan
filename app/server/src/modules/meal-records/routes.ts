@@ -4,6 +4,7 @@ import type { PrismaClient } from '@prisma/client';
 import { success } from '../../shared/http.js';
 import {
   booleanSchema,
+  isoDateQuerySchema,
   mealTypeSchema,
   nullableMealRoleSchema,
   nullableStringSchema,
@@ -67,9 +68,22 @@ const recordUpdateBodySchema = {
 
 const versionBodyWrapper = { type: 'object', required: ['version'], properties: { version: versionBodySchema } };
 const versionQueryWrapper = { type: 'object', required: ['version'], properties: { version: versionQuerySchema } };
+const recordListQuerySchema = {
+  type: 'object',
+  properties: {
+    from: isoDateQuerySchema,
+    to: isoDateQuerySchema,
+    sourceType: recordSourceTypeSchema,
+    mealType: mealTypeSchema,
+    status: recordStatusSchema,
+    minRating: { type: 'string', pattern: '^(?:[0-4](?:\\.[0-9]+)?|5(?:\\.0+)?)$' },
+    dinerId: stringSchema,
+    q: stringSchema
+  }
+};
 
 export async function registerMealRecordRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
-  app.get('/api/v1/records', async (request) =>
+  app.get('/api/v1/records', { schema: { querystring: recordListQuerySchema } }, async (request) =>
     success(await listRecords(database, request.query as Parameters<typeof listRecords>[1]))
   );
   app.post('/api/v1/records', { schema: { body: recordBodySchema } }, async (request, reply) =>

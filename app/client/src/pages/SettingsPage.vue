@@ -25,6 +25,10 @@ const data = ref<Settings | null>(null),
   message = ref(''),
   pin = ref(''),
   qr = ref(''),
+  qrUrl = ref(''),
+  qrMessage = ref(''),
+  qrCandidates = ref<string[]>([]),
+  selectedHost = ref(''),
   repeatDays = ref('7');
 async function load() {
   loading.value = true;
@@ -90,10 +94,26 @@ async function savePin(enabled: boolean) {
     handle(e);
   }
 }
-async function makeQr() {
+function hostFromOrigin(origin: string): string {
   try {
-    const result = await apiRequest<{ dataUrl: string }>('/settings/access-qr', { query: { url: location.origin } });
-    qr.value = result.dataUrl;
+    return new URL(origin).hostname;
+  } catch {
+    return '';
+  }
+}
+async function makeQr(host?: string) {
+  try {
+    const result = await apiRequest<{
+      url: string | null;
+      dataUrl: string | null;
+      candidates: string[];
+      message: string | null;
+    }>('/settings/access-qr', { query: host ? { host } : {} });
+    qrCandidates.value = result.candidates;
+    qrMessage.value = result.message ?? '';
+    qrUrl.value = result.url ?? '';
+    qr.value = result.dataUrl ?? '';
+    selectedHost.value = result.url ? hostFromOrigin(result.url) : '';
   } catch (e) {
     handle(e);
   }
@@ -146,8 +166,18 @@ onMounted(load);
         <section class="app-card">
           <h2>手机访问二维码</h2>
           <p>二维码只编码当前局域网访问地址，不依赖外部服务。</p>
-          <AppButton variant="secondary" @click="makeQr">生成二维码</AppButton
-          ><img v-if="qr" :src="qr" alt="局域网访问二维码" />
+          <AppButton variant="secondary" @click="makeQr()">生成二维码</AppButton>
+          <p v-if="qrUrl">{{ qrUrl }}</p>
+          <label v-if="qrCandidates.length > 1" class="app-field"
+            ><span class="app-field__label">访问地址</span>
+            <select :value="selectedHost" @change="makeQr(($event.target as HTMLSelectElement).value)">
+              <option v-for="candidate in qrCandidates" :key="candidate" :value="hostFromOrigin(candidate)">
+                {{ candidate }}
+              </option>
+            </select></label
+          >
+          <img v-if="qr" :src="qr" alt="局域网访问二维码" />
+          <p v-else-if="qrMessage">{{ qrMessage }}</p>
         </section>
         <section class="app-card">
           <h2>食用者与偏好</h2>
