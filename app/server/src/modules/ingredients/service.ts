@@ -1,7 +1,8 @@
-import type { InventoryChangeType, PrismaClient, QuantityUnit } from '@prisma/client';
+import type { InventoryChangeType, Prisma, PrismaClient, QuantityUnit } from '@prisma/client';
 
 import { VersionConflictError } from '../../database/optimistic-lock.js';
 import { recordDeletedItem } from '../../database/deleted-items.js';
+import { normalizePagination, toPaginationResponse } from '../../database/pagination.js';
 import { convertQuantity } from '../../database/units.js';
 
 export interface BatchInput {
@@ -75,18 +76,39 @@ function aggregateQuantity(batches: Array<{ quantity: number; unit: QuantityUnit
 
 export async function listIngredients(
   database: PrismaClient,
-  query: { search?: string; category?: string; status?: string } = {}
+  query: { search?: string; category?: string; status?: string; page?: number; pageSize?: number } = {}
 ) {
-  const ingredients = await database.ingredient.findMany({
-    where: {
-      deletedAt: null,
-      ...(query.search?.trim() ? { name: { contains: query.search.trim() } } : {}),
-      ...(query.category ? { category: query.category } : {})
-    },
-    include: ingredientInclude,
-    orderBy: { updatedAt: 'desc' }
-  });
-  return query.status ? ingredients.filter((item) => ingredientStatus(item) === query.status) : ingredients;
+  const pagination = normalizePagination(query);
+  const where: Prisma.IngredientWhereInput = {
+    deletedAt: null,
+    ...(query.search?.trim() ? { name: { contains: query.search.trim() } } : {}),
+    ...(query.category ? { category: query.category } : {})
+  };
+  if (query.status) {
+    const ingredients = await database.ingredient.findMany({
+      where,
+      include: ingredientInclude,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }]
+    });
+    const mapped = ingredients.filter((item) => ingredientStatus(item) === query.status);
+    return toPaginationResponse(
+      mapped.slice(pagination.skip, pagination.skip + pagination.take),
+      pagination.page,
+      pagination.pageSize,
+      mapped.length
+    );
+  }
+  const [items, total] = await Promise.all([
+    database.ingredient.findMany({
+      where,
+      include: ingredientInclude,
+      orderBy: [{ updatedAt: 'desc' }, { id: 'desc' }],
+      skip: pagination.skip,
+      take: pagination.take
+    }),
+    database.ingredient.count({ where })
+  ]);
+  return toPaginationResponse(items, pagination.page, pagination.pageSize, total);
 }
 
 export async function getIngredient(database: PrismaClient, id: string) {

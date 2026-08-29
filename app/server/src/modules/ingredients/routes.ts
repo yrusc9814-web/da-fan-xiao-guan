@@ -6,6 +6,7 @@ import {
   booleanSchema,
   inventoryChangeTypeSchema,
   nullableStringSchema,
+  positiveIntQuerySchema,
   quantityUnitSchema,
   stringSchema,
   versionBodySchema,
@@ -79,7 +80,9 @@ const batchAdjustmentBodySchema = {
 };
 
 export async function registerIngredientRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
-  app.get<{ Querystring: { search?: string; category?: string; status?: string } }>(
+  app.get<{
+    Querystring: { search?: string; category?: string; status?: string; page?: string; pageSize?: string };
+  }>(
     '/api/v1/ingredients',
     {
       schema: {
@@ -88,12 +91,23 @@ export async function registerIngredientRoutes(app: FastifyInstance, database: P
           properties: {
             search: stringSchema,
             category: stringSchema,
-            status: { type: 'string', enum: ['DEPLETED', 'EXPIRED', 'EXPIRING_SOON', 'LOW_STOCK', 'NORMAL'] }
+            status: { type: 'string', enum: ['DEPLETED', 'EXPIRED', 'EXPIRING_SOON', 'LOW_STOCK', 'NORMAL'] },
+            page: positiveIntQuerySchema,
+            pageSize: positiveIntQuerySchema
           }
         }
       }
     },
-    async (request) => success(await listIngredients(database, request.query))
+    async (request) =>
+      success(
+        await listIngredients(database, {
+          search: request.query.search,
+          category: request.query.category,
+          status: request.query.status,
+          page: request.query.page ? Number(request.query.page) : undefined,
+          pageSize: request.query.pageSize ? Number(request.query.pageSize) : undefined
+        })
+      )
   );
   app.post<{ Body: IngredientWriteInput }>(
     '/api/v1/ingredients',

@@ -10,6 +10,7 @@ import type {
 
 import { VersionConflictError } from '../../database/optimistic-lock.js';
 import { recordDeletedItem } from '../../database/deleted-items.js';
+import { normalizePagination, toPaginationResponse } from '../../database/pagination.js';
 
 export interface RecordItemInput {
   itemType: RecordItemType;
@@ -88,42 +89,52 @@ export async function listRecords(
     minRating?: string;
     dinerId?: string;
     q?: string;
+    page?: number;
+    pageSize?: number;
   }
 ) {
   const q = query.q?.trim();
-  return database.mealRecord.findMany({
-    where: {
-      deletedAt: null,
-      ...(query.from || query.to
-        ? { recordDate: { ...(query.from ? { gte: query.from } : {}), ...(query.to ? { lte: query.to } : {}) } }
-        : {}),
-      ...(query.sourceType ? { sourceType: query.sourceType } : {}),
-      ...(query.mealType ? { mealType: query.mealType } : {}),
-      ...(query.status ? { status: query.status } : {}),
-      ...(query.minRating ? { rating: { gte: Number(query.minRating) } } : {}),
-      ...(query.dinerId ? { diners: { some: { dinerId: query.dinerId } } } : {}),
-      ...(q
-        ? {
-            OR: [
-              { notes: { contains: q } },
-              {
-                items: {
-                  some: {
-                    OR: [
-                      { customName: { contains: q } },
-                      { recipe: { name: { contains: q } } },
-                      { store: { name: { contains: q } } }
-                    ]
-                  }
+  const pagination = normalizePagination(query);
+  const where: Prisma.MealRecordWhereInput = {
+    deletedAt: null,
+    ...(query.from || query.to
+      ? { recordDate: { ...(query.from ? { gte: query.from } : {}), ...(query.to ? { lte: query.to } : {}) } }
+      : {}),
+    ...(query.sourceType ? { sourceType: query.sourceType } : {}),
+    ...(query.mealType ? { mealType: query.mealType } : {}),
+    ...(query.status ? { status: query.status } : {}),
+    ...(query.minRating ? { rating: { gte: Number(query.minRating) } } : {}),
+    ...(query.dinerId ? { diners: { some: { dinerId: query.dinerId } } } : {}),
+    ...(q
+      ? {
+          OR: [
+            { notes: { contains: q } },
+            {
+              items: {
+                some: {
+                  OR: [
+                    { customName: { contains: q } },
+                    { recipe: { name: { contains: q } } },
+                    { store: { name: { contains: q } } }
+                  ]
                 }
               }
-            ]
-          }
-        : {})
-    },
-    include: recordInclude,
-    orderBy: [{ recordDate: 'desc' }, { recordTime: 'desc' }]
-  });
+            }
+          ]
+        }
+      : {})
+  };
+  const [items, total] = await Promise.all([
+    database.mealRecord.findMany({
+      where,
+      include: recordInclude,
+      orderBy: [{ recordDate: 'desc' }, { recordTime: 'desc' }, { id: 'desc' }],
+      skip: pagination.skip,
+      take: pagination.take
+    }),
+    database.mealRecord.count({ where })
+  ]);
+  return toPaginationResponse(items, pagination.page, pagination.pageSize, total);
 }
 
 export async function getRecord(database: PrismaClient, id: string) {

@@ -40,6 +40,8 @@ function buildFetch() {
       return Promise.resolve(jsonResponse({ mode: 'ALLOW_PURCHASE', candidateCount: 0, items: [] }));
     if (path.includes('/add-to-plan'))
       return Promise.resolve(jsonResponse({ plan: { id: 'plan-1' }, historyId: 'history-1' }));
+    if (path.endsWith('/shopping-lists') && (_init?.method ?? 'GET') === 'POST')
+      return Promise.resolve(jsonResponse({ id: 'list-1', version: 1, items: [] }));
     return Promise.resolve(jsonResponse({ items: [] }));
   });
 }
@@ -127,6 +129,56 @@ describe('推荐页食用者选择', () => {
     const body = postBody(fetchMock, (path) => path.endsWith('/kitchen/recommend'));
     expect(body.dinerIds).toEqual([diners[1].id]);
     expect(body.mode).toBe('ALLOW_PURCHASE');
+  });
+
+  it('缺料加入购物清单一次 POST 全部 items，不循环逐条写入', async () => {
+    const { wrapper, fetchMock } = await mountAt('random');
+    fetchMock.mockImplementation((input: unknown, init?: { method?: string; body?: string }) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith('/diners')) return Promise.resolve(jsonResponse({ items: diners }));
+      if (path.endsWith('/recommendations/random'))
+        return Promise.resolve(
+          jsonResponse({
+            historyId: 'history-1',
+            results: [
+              {
+                resultType: 'RECIPE',
+                resultId: 'recipe-1',
+                title: '验收-测试菜',
+                reason: '测试',
+                missingIngredients: ['番茄', '鸡蛋']
+              }
+            ]
+          })
+        );
+      if (path.endsWith('/shopping-lists') && (init?.method ?? 'GET') === 'POST')
+        return Promise.resolve(jsonResponse({ id: 'list-1', version: 1, items: [] }));
+      return Promise.resolve(jsonResponse({ items: [] }));
+    });
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('生成推荐'))!
+      .trigger('click');
+    await flushPromises();
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('缺料加入购物清单'))!
+      .trigger('click');
+    await flushPromises();
+    const shoppingPosts = fetchMock.mock.calls.filter(([input, init]) => {
+      const url = new URL(String(input));
+      return (init?.method ?? 'GET') === 'POST' && url.pathname.endsWith('/shopping-lists');
+    });
+    expect(shoppingPosts).toHaveLength(1);
+    const body = JSON.parse((shoppingPosts[0][1] as RequestInit).body as string) as {
+      items: Array<{ ingredientName: string }>;
+    };
+    expect(body.items.map((item) => item.ingredientName)).toEqual(['番茄', '鸡蛋']);
+    expect(
+      fetchMock.mock.calls.some(
+        ([input]) => String(input).includes('/shopping-lists/') && String(input).includes('/items')
+      )
+    ).toBe(false);
   });
 
   it('加入计划时把已勾选食用者写入 add-to-plan 请求 body', async () => {

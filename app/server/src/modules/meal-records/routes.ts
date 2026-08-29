@@ -6,6 +6,7 @@ import {
   booleanSchema,
   isoDateQuerySchema,
   mealTypeSchema,
+  positiveIntQuerySchema,
   nullableMealRoleSchema,
   nullableStringSchema,
   recordItemTypeSchema,
@@ -78,14 +79,30 @@ const recordListQuerySchema = {
     status: recordStatusSchema,
     minRating: { type: 'string', pattern: '^(?:[0-4](?:\\.[0-9]+)?|5(?:\\.0+)?)$' },
     dinerId: stringSchema,
-    q: stringSchema
+    q: stringSchema,
+    page: positiveIntQuerySchema,
+    pageSize: positiveIntQuerySchema
   }
 };
 
 export async function registerMealRecordRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
-  app.get('/api/v1/records', { schema: { querystring: recordListQuerySchema } }, async (request) =>
-    success(await listRecords(database, request.query as Parameters<typeof listRecords>[1]))
-  );
+  app.get('/api/v1/records', { schema: { querystring: recordListQuerySchema } }, async (request) => {
+    const query = request.query as Record<string, string | undefined>;
+    return success(
+      await listRecords(database, {
+        from: query.from,
+        to: query.to,
+        sourceType: query.sourceType as Parameters<typeof listRecords>[1]['sourceType'],
+        mealType: query.mealType as Parameters<typeof listRecords>[1]['mealType'],
+        status: query.status as Parameters<typeof listRecords>[1]['status'],
+        minRating: query.minRating,
+        dinerId: query.dinerId,
+        q: query.q,
+        page: query.page ? Number(query.page) : undefined,
+        pageSize: query.pageSize ? Number(query.pageSize) : undefined
+      })
+    );
+  });
   app.post('/api/v1/records', { schema: { body: recordBodySchema } }, async (request, reply) =>
     reply.code(201).send(success(await createRecord(database, request.body as RecordInput)))
   );

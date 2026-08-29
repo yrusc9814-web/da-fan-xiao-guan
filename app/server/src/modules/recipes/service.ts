@@ -217,13 +217,16 @@ export async function listRecipes(database: PrismaClient, query: RecipeListQuery
   };
   const sortable = ['name', 'cookingTimeMinutes', 'favorite', 'createdAt', 'updatedAt'] as const;
   const sortBy = sortable.includes(query.sortBy as (typeof sortable)[number]) ? query.sortBy! : 'updatedAt';
+  const sortOrder = query.sortOrder ?? 'desc';
   const [items, total] = await database.$transaction([
     database.recipe.findMany({
       where,
       include: recipeInclude,
       skip: (page - 1) * pageSize,
       take: pageSize,
-      orderBy: { [sortBy]: query.sortOrder ?? 'desc' }
+      // 与 meal-records/ingredients 的 fix 模式一致：以 id 作同方向决胜位，
+      // 保证 updatedAt 相同（如同一批 seed/迁移写入）时分页顺序稳定不重不漏
+      orderBy: [{ [sortBy]: sortOrder }, { id: sortOrder }]
     }),
     database.recipe.count({ where })
   ]);

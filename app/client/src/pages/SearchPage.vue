@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import AppButton from '../components/ui/AppButton.vue';
 import AppEmptyState from '../components/ui/AppEmptyState.vue';
@@ -7,6 +7,8 @@ import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppInput from '../components/ui/AppInput.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
 import { apiRequest } from '../services/api';
+import { debounce } from '../utils/debounce';
+import { createRequestSequence } from '../utils/request-sequence';
 type ResultItem = { id: string; name?: string; recordDate?: string; notes?: string | null };
 const route = useRoute(),
   router = useRouter(),
@@ -20,7 +22,22 @@ const route = useRoute(),
     records: []
   });
 const sectionLabels = { recipes: '菜谱', ingredients: '食材', stores: '店铺', records: '记录' };
+const searchSequence = createRequestSequence();
+const emptyResult = (): Record<'recipes' | 'ingredients' | 'stores' | 'records', ResultItem[]> => ({
+  recipes: [],
+  ingredients: [],
+  stores: [],
+  records: []
+});
 const total = computed(() => Object.values(result.value).reduce((n, x) => n + x.length, 0));
+// 程序性 replace 的目标值：在发起 replace 前同步写入，路由 watcher 用“值比对”识别
+// 自己刚同步出的 echo（route.query.q === lastSyncedKeyword）并忽略，避免回写冲掉用户
+// 更新的输入；浏览器前进/后退等外部导航带来的值与它不同，照常响应。写入时机不依赖
+// promise 落定顺序，因此没有“计数归零后 echo 或外部导航被吞掉”的 race。
+let lastSyncedKeyword = String(route.query.q ?? '');
+// 最近一次真正发起搜索（submit、路由同步、输入防抖）的关键词：输入防抖到期时据此
+// 跳过已被其它路径处理过的同一关键词，避免重复请求。
+let lastSearchedKeyword = '';
 function target(key: string, item: ResultItem) {
   if (key === 'recipes') return `/recipes/${item.id}`;
   if (key === 'ingredients') return { path: '/inventory', query: { focus: item.id } };
@@ -32,25 +49,52 @@ function title(item: ResultItem) {
 }
 async function search() {
   const query = q.value.trim();
+  lastSearchedKeyword = query;
+  const sequence = searchSequence.next();
   if (!query) {
-    result.value = { recipes: [], ingredients: [], stores: [], records: [] };
+    // 清空关键词：作废全部在途请求（sequence 已递增），并立刻复位结果/错误/骨架屏
+    result.value = emptyResult();
+    error.value = '';
+    loading.value = false;
     return;
   }
   loading.value = true;
   error.value = '';
+  if (route.query.q !== query) {
+    // 路由同步 fire-and-forget：不阻塞 fetch，竞态由 searchSequence + watcher 值比对兜底
+    lastSyncedKeyword = query;
+    void router.replace({ query: { q: query } });
+  }
   try {
-    if (route.query.q !== query) await router.replace({ query: { q: query } });
-    result.value = await apiRequest('/search', { query: { q: query } });
+    const data = await apiRequest<typeof result.value>('/search', { query: { q: query } });
+    if (!searchSequence.isCurrent(sequence)) return;
+    result.value = data;
+    error.value = '';
   } catch (e) {
+    if (!searchSequence.isCurrent(sequence)) return;
     error.value = e instanceof Error ? e.message : '搜索失败';
   } finally {
-    loading.value = false;
+    if (searchSequence.isCurrent(sequence)) loading.value = false;
   }
 }
+// 输入即搜：与 selector 一致的 request-sequence + debounce 250ms 模式；表单 submit /
+// 回车仍是立即搜索路径。连续输入只保留最后一次，请求竞态由 searchSequence 守卫，
+// 已被 submit / 路由同步处理过的同一关键词由 lastSearchedKeyword 去重。
+const searchOnInput = debounce(() => {
+  if (q.value.trim() === lastSearchedKeyword) return;
+  void search();
+}, 250);
+watch(q, () => searchOnInput());
 watch(
   () => route.query.q,
   (value) => {
     const next = String(value ?? '');
+    if (next === lastSyncedKeyword) {
+      // 程序性 replace 自己产生的 echo：输入框已反映（或新于）该值，回写会冲掉用户输入
+      return;
+    }
+    // 外部导航（浏览器前进/后退、其它代码 router.push）：采纳为新基线并正常响应
+    lastSyncedKeyword = next;
     if (next !== q.value) {
       q.value = next;
       void search();
@@ -59,6 +103,10 @@ watch(
 );
 onMounted(() => {
   if (q.value) void search();
+});
+onUnmounted(() => {
+  searchSequence.next();
+  searchOnInput.cancel();
 });
 </script>
 <template>

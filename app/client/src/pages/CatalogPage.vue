@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { DinerDto, KitchenToolDto, RecipeDto, StoreDto } from '../../../shared/types';
 import AppButton from '../components/ui/AppButton.vue';
@@ -10,6 +10,7 @@ import AppSkeleton from '../components/ui/AppSkeleton.vue';
 import ConfirmDeleteDialog from '../components/ConfirmDeleteDialog.vue';
 import { apiRequest, ApiRequestError } from '../services/api';
 import { displayLabel } from '../utils/display';
+import { createRequestSequence } from '../utils/request-sequence';
 import { finiteInRange, positiveInteger } from '../utils/validation';
 
 type CatalogKind = 'recipes' | 'stores' | 'diners' | 'tools';
@@ -49,6 +50,7 @@ const settings = computed(
 const items = ref<CatalogItem[]>([]),
   loading = ref(true),
   saving = ref(false);
+const catalogSequence = createRequestSequence();
 const error = ref(''),
   conflict = ref(''),
   query = ref('');
@@ -92,14 +94,20 @@ function normalizeItems(value: unknown): CatalogItem[] {
     : [];
 }
 async function load() {
+  const sequence = catalogSequence.next();
   loading.value = true;
   error.value = '';
   try {
-    items.value = normalizeItems(await apiRequest(`/${props.kind}`, { query: { search: query.value, pageSize: 100 } }));
+    const data = normalizeItems(
+      await apiRequest(`/${props.kind}`, { query: { search: query.value.trim() || undefined, pageSize: 100 } })
+    );
+    if (!catalogSequence.isCurrent(sequence)) return;
+    items.value = data;
   } catch (reason) {
+    if (!catalogSequence.isCurrent(sequence)) return;
     error.value = reason instanceof Error ? reason.message : '加载失败';
   } finally {
-    loading.value = false;
+    if (catalogSequence.isCurrent(sequence)) loading.value = false;
   }
 }
 async function createItem() {
@@ -316,6 +324,9 @@ watch(
     await load();
   }
 );
+onUnmounted(() => {
+  catalogSequence.next();
+});
 </script>
 
 <template>

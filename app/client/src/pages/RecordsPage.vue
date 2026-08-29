@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { ConsumptionPreviewDto } from '../../../shared/types';
 import AppButton from '../components/ui/AppButton.vue';
@@ -11,6 +11,9 @@ import AppSkeleton from '../components/ui/AppSkeleton.vue';
 import ConfirmDeleteDialog from '../components/ConfirmDeleteDialog.vue';
 import { apiRequest, ApiRequestError } from '../services/api';
 import { displayLabel } from '../utils/display';
+import { debounce } from '../utils/debounce';
+import { createRequestSequence } from '../utils/request-sequence';
+import { itemsFrom, withSelected } from '../utils/selector-options';
 import { finiteInRange, isIsoDate } from '../utils/validation';
 interface RecordItem {
   id: string;
@@ -33,19 +36,37 @@ interface MealRecord {
 }
 const records = ref<MealRecord[]>([]),
   loading = ref(true),
+  loadingMore = ref(false),
   saving = ref(false),
   error = ref(''),
   conflict = ref(''),
   showForm = ref(false),
   status = ref('');
+const page = ref(1),
+  pageSize = 20,
+  total = ref(0);
+const recordsSequence = createRequestSequence();
+const recipeSearchSequence = createRequestSequence();
+const storeSearchSequence = createRequestSequence();
+const dinerSearchSequence = createRequestSequence();
+const hasMore = computed(() => records.value.length < total.value);
 const route = useRoute(),
   pendingDelete = ref<MealRecord | null>(null);
 const recipes = ref<Array<{ id: string; name: string }>>([]),
   stores = ref<Array<{ id: string; name: string }>>([]),
   diners = ref<Array<{ id: string; name: string }>>([]),
+  recipeCache = ref<Array<{ id: string; name: string }>>([]),
+  storeCache = ref<Array<{ id: string; name: string }>>([]),
+  dinerCache = ref<Array<{ id: string; name: string }>>([]),
+  recipeSearch = ref(''),
+  storeSearch = ref(''),
+  dinerSearch = ref(''),
   selectedRecipeIds = ref<string[]>([]),
   selectedStoreIds = ref<string[]>([]),
   selectedDinerIds = ref<string[]>([]);
+const visibleRecipes = computed(() => withSelected(recipes.value, selectedRecipeIds.value, recipeCache.value));
+const visibleStores = computed(() => withSelected(stores.value, selectedStoreIds.value, storeCache.value));
+const visibleDiners = computed(() => withSelected(diners.value, selectedDinerIds.value, dinerCache.value));
 const preview = ref<ConsumptionPreviewDto | null>(null),
   previewRecord = ref<MealRecord | null>(null),
   selections = ref<Record<string, string[]>>({});
@@ -57,30 +78,103 @@ const form = ref({
   rating: '',
   notes: ''
 });
-async function load() {
-  loading.value = true;
+async function loadCatalog(kind: 'recipes' | 'stores' | 'diners', search: string) {
+  const sequence =
+    kind === 'recipes'
+      ? recipeSearchSequence.next()
+      : kind === 'stores'
+        ? storeSearchSequence.next()
+        : dinerSearchSequence.next();
+  const query =
+    kind === 'diners'
+      ? { search: search.trim() || undefined, pageSize: 20, active: true }
+      : { search: search.trim() || undefined, pageSize: 20 };
+  const data = await apiRequest<unknown>(`/${kind}`, { query });
+  const current =
+    kind === 'recipes'
+      ? recipeSearchSequence.isCurrent(sequence)
+      : kind === 'stores'
+        ? storeSearchSequence.isCurrent(sequence)
+        : dinerSearchSequence.isCurrent(sequence);
+  if (!current) return;
+  const items = itemsFrom<{ id: string; name: string }>(data);
+  if (kind === 'recipes') {
+    recipes.value = items;
+    recipeCache.value = withSelected(items, selectedRecipeIds.value, recipeCache.value);
+  } else if (kind === 'stores') {
+    stores.value = items;
+    storeCache.value = withSelected(items, selectedStoreIds.value, storeCache.value);
+  } else {
+    diners.value = items;
+    dinerCache.value = withSelected(items, selectedDinerIds.value, dinerCache.value);
+  }
+}
+async function load(reset = true, requestedPage?: number) {
+  if (reset) page.value = 1;
+  // 追加页先按 targetPage 请求，成功后才把页码提交进 page：失败时 page 原地不动，
+  // 下一次“加载更多”仍重试同一页，不会跳页。
+  const targetPage = requestedPage ?? page.value;
+  const sequence = recordsSequence.next();
+  if (reset) loading.value = true;
+  else loadingMore.value = true;
   error.value = '';
   try {
-    const [recordData, recipeData, storeData, dinerData] = await Promise.all([
-      apiRequest<MealRecord[]>('/records', { query: { status: status.value || undefined } }),
-      apiRequest<any>('/recipes', { query: { pageSize: 100 } }),
-      apiRequest<any>('/stores', { query: { pageSize: 100 } }),
-      apiRequest<any>('/diners', { query: { pageSize: 100, active: true } })
+    const [recordData] = await Promise.all([
+      apiRequest<{ items: MealRecord[]; total: number }>('/records', {
+        query: { status: status.value || undefined, page: targetPage, pageSize }
+      }),
+      reset
+        ? Promise.all([
+            loadCatalog('recipes', recipeSearch.value),
+            loadCatalog('stores', storeSearch.value),
+            loadCatalog('diners', dinerSearch.value)
+          ])
+        : Promise.resolve()
     ]);
-    records.value = recordData;
-    recipes.value = recipeData.items ?? recipeData;
-    stores.value = storeData.items ?? storeData;
-    diners.value = dinerData.items ?? dinerData;
+    if (!recordsSequence.isCurrent(sequence)) return false;
+    records.value = reset ? recordData.items : [...records.value, ...recordData.items];
+    total.value = recordData.total;
+    page.value = targetPage;
+    return true;
   } catch (e) {
-    error.value = e instanceof Error ? e.message : '加载失败';
+    if (!recordsSequence.isCurrent(sequence)) return false;
+    // 追加页失败不弹全局错误：保留已加载列表与“加载更多”按钮，用户可直接再次点击重试
+    if (reset) error.value = e instanceof Error ? e.message : '加载失败';
+    return false;
   } finally {
-    loading.value = false;
+    if (recordsSequence.isCurrent(sequence)) {
+      loading.value = false;
+      loadingMore.value = false;
+    }
   }
+}
+async function loadMore() {
+  if (!hasMore.value || loading.value || loadingMore.value) return false;
+  return load(false, page.value + 1);
+}
+function rememberSelection(source: Array<{ id: string; name: string }>, cache: typeof recipeCache, id: string) {
+  const item = source.find((entry) => entry.id === id);
+  if (item && !cache.value.some((entry) => entry.id === id)) cache.value = [...cache.value, item];
 }
 function toggle(kind: 'recipe' | 'store' | 'diner', id: string) {
   const target = kind === 'recipe' ? selectedRecipeIds : kind === 'store' ? selectedStoreIds : selectedDinerIds;
-  target.value = target.value.includes(id) ? target.value.filter((value) => value !== id) : [...target.value, id];
+  const adding = !target.value.includes(id);
+  target.value = adding ? [...target.value, id] : target.value.filter((value) => value !== id);
+  if (adding) {
+    if (kind === 'recipe') rememberSelection(recipes.value, recipeCache, id);
+    else if (kind === 'store') rememberSelection(stores.value, storeCache, id);
+    else rememberSelection(diners.value, dinerCache, id);
+  }
 }
+const searchRecipes = debounce(() => {
+  void loadCatalog('recipes', recipeSearch.value).catch(() => undefined);
+}, 250);
+const searchStores = debounce(() => {
+  void loadCatalog('stores', storeSearch.value).catch(() => undefined);
+}, 250);
+const searchDiners = debounce(() => {
+  void loadCatalog('diners', dinerSearch.value).catch(() => undefined);
+}, 250);
 async function createRecord() {
   if (!isIsoDate(form.value.recordDate)) {
     error.value = '请选择合法日期';
@@ -215,10 +309,20 @@ function handle(e: unknown) {
 onMounted(async () => {
   await load();
   const focus = String(route.query.focus ?? '');
+  while (focus && !records.value.some((record) => record.id === focus) && hasMore.value) {
+    // 追加失败（页码不再前进）时必须终止，否则会带着同一页无限重试
+    if (!(await loadMore())) break;
+  }
   if (focus) {
     await nextTick();
     document.getElementById(`record-${focus}`)?.scrollIntoView({ block: 'center' });
   }
+});
+onUnmounted(() => {
+  recordsSequence.next();
+  searchRecipes.cancel();
+  searchStores.cancel();
+  searchDiners.cancel();
 });
 </script>
 <template>
@@ -254,7 +358,8 @@ onMounted(async () => {
       <div class="record-options">
         <fieldset>
           <legend>菜谱（可多选）</legend>
-          <label v-for="recipe in recipes" :key="recipe.id"
+          <AppInput v-model="recipeSearch" label="搜索菜谱" @update:model-value="searchRecipes" />
+          <label v-for="recipe in visibleRecipes" :key="recipe.id"
             ><input
               type="checkbox"
               :checked="selectedRecipeIds.includes(recipe.id)"
@@ -264,7 +369,8 @@ onMounted(async () => {
         </fieldset>
         <fieldset>
           <legend>店铺（可多选）</legend>
-          <label v-for="store in stores" :key="store.id"
+          <AppInput v-model="storeSearch" label="搜索店铺" @update:model-value="searchStores" />
+          <label v-for="store in visibleStores" :key="store.id"
             ><input
               type="checkbox"
               :checked="selectedStoreIds.includes(store.id)"
@@ -274,7 +380,8 @@ onMounted(async () => {
         </fieldset>
         <fieldset>
           <legend>食用者</legend>
-          <label v-for="diner in diners" :key="diner.id"
+          <AppInput v-model="dinerSearch" label="搜索食用者" @update:model-value="searchDiners" />
+          <label v-for="diner in visibleDiners" :key="diner.id"
             ><input
               type="checkbox"
               :checked="selectedDinerIds.includes(diner.id)"
@@ -292,7 +399,7 @@ onMounted(async () => {
     <div class="business-toolbar app-card">
       <label class="app-field"
         ><span class="app-field__label">状态</span
-        ><select v-model="status" @change="load">
+        ><select v-model="status" @change="() => load(true)">
           <option value="">全部</option>
           <option value="DRAFT">草稿</option>
           <option value="CONFIRMED">已确认</option>
@@ -300,9 +407,9 @@ onMounted(async () => {
       >
     </div>
     <div v-if="conflict" class="business-conflict" role="alert">
-      {{ conflict }} <button class="text-button" @click="load">重新加载</button>
+      {{ conflict }} <button class="text-button" @click="() => load(true)">重新加载</button>
     </div>
-    <AppErrorState v-if="error" title="记录读取失败" :description="error" @retry="load" />
+    <AppErrorState v-if="error" title="记录读取失败" :description="error" @retry="() => load(true)" />
     <div v-else-if="loading" class="business-grid"><AppSkeleton v-for="index in 6" :key="index" height="170px" /></div>
     <AppEmptyState v-else-if="!records.length" title="还没有饮食记录" description="完成计划或手动记录一餐。" />
     <div v-else class="business-grid">
@@ -342,6 +449,9 @@ onMounted(async () => {
           >
         </div>
       </article>
+      <div v-if="hasMore" class="business-card__actions">
+        <AppButton variant="secondary" :loading="loadingMore" @click="loadMore">加载更多</AppButton>
+      </div>
     </div>
     <AppDialog
       :model-value="Boolean(preview)"

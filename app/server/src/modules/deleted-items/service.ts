@@ -4,47 +4,71 @@ function httpError(statusCode: number, message: string) {
   return Object.assign(new Error(message), { statusCode });
 }
 
+function idsOf(items: Array<{ entityType: string; entityId: string }>, entityType: string): string[] {
+  return items.filter((item) => item.entityType === entityType).map((item) => item.entityId);
+}
+
 export async function listDeletedItems(database: PrismaClient) {
   await database.deletedItem.deleteMany({ where: { expiresAt: { lt: new Date() } } });
   const items = await database.deletedItem.findMany({ orderBy: { deletedAt: 'desc' } });
-  return Promise.all(
-    items.map(async (item) => {
-      let name = item.entityId;
-      if (item.entityType === 'Recipe')
-        name =
-          (await database.recipe.findUnique({ where: { id: item.entityId }, select: { name: true } }))?.name ?? name;
-      if (item.entityType === 'Ingredient')
-        name =
-          (await database.ingredient.findUnique({ where: { id: item.entityId }, select: { name: true } }))?.name ??
-          name;
-      if (item.entityType === 'KitchenTool')
-        name =
-          (await database.kitchenTool.findUnique({ where: { id: item.entityId }, select: { name: true } }))?.name ??
-          name;
-      if (item.entityType === 'Store')
-        name =
-          (await database.store.findUnique({ where: { id: item.entityId }, select: { name: true } }))?.name ?? name;
-      if (item.entityType === 'MealPlan') {
-        const value = await database.mealPlan.findUnique({
-          where: { id: item.entityId },
-          select: { planDate: true, mealType: true }
-        });
-        if (value) name = `${value.planDate} ${value.mealType}`;
-      }
-      if (item.entityType === 'MealRecord') {
-        const value = await database.mealRecord.findUnique({
-          where: { id: item.entityId },
-          select: { recordDate: true, mealType: true }
-        });
-        if (value) name = `${value.recordDate} ${value.mealType}`;
-      }
-      if (item.entityType === 'ShoppingList')
-        name =
-          (await database.shoppingList.findUnique({ where: { id: item.entityId }, select: { name: true } }))?.name ??
-          name;
-      return { ...item, name };
-    })
-  );
+  const names = new Map<string, string>();
+  const key = (entityType: string, entityId: string) => `${entityType}:${entityId}`;
+
+  const recipeIds = idsOf(items, 'Recipe');
+  if (recipeIds.length) {
+    const rows = await database.recipe.findMany({ where: { id: { in: recipeIds } }, select: { id: true, name: true } });
+    for (const row of rows) names.set(key('Recipe', row.id), row.name);
+  }
+  const ingredientIds = idsOf(items, 'Ingredient');
+  if (ingredientIds.length) {
+    const rows = await database.ingredient.findMany({
+      where: { id: { in: ingredientIds } },
+      select: { id: true, name: true }
+    });
+    for (const row of rows) names.set(key('Ingredient', row.id), row.name);
+  }
+  const toolIds = idsOf(items, 'KitchenTool');
+  if (toolIds.length) {
+    const rows = await database.kitchenTool.findMany({
+      where: { id: { in: toolIds } },
+      select: { id: true, name: true }
+    });
+    for (const row of rows) names.set(key('KitchenTool', row.id), row.name);
+  }
+  const storeIds = idsOf(items, 'Store');
+  if (storeIds.length) {
+    const rows = await database.store.findMany({ where: { id: { in: storeIds } }, select: { id: true, name: true } });
+    for (const row of rows) names.set(key('Store', row.id), row.name);
+  }
+  const planIds = idsOf(items, 'MealPlan');
+  if (planIds.length) {
+    const rows = await database.mealPlan.findMany({
+      where: { id: { in: planIds } },
+      select: { id: true, planDate: true, mealType: true }
+    });
+    for (const row of rows) names.set(key('MealPlan', row.id), `${row.planDate} ${row.mealType}`);
+  }
+  const recordIds = idsOf(items, 'MealRecord');
+  if (recordIds.length) {
+    const rows = await database.mealRecord.findMany({
+      where: { id: { in: recordIds } },
+      select: { id: true, recordDate: true, mealType: true }
+    });
+    for (const row of rows) names.set(key('MealRecord', row.id), `${row.recordDate} ${row.mealType}`);
+  }
+  const listIds = idsOf(items, 'ShoppingList');
+  if (listIds.length) {
+    const rows = await database.shoppingList.findMany({
+      where: { id: { in: listIds } },
+      select: { id: true, name: true }
+    });
+    for (const row of rows) names.set(key('ShoppingList', row.id), row.name);
+  }
+
+  return items.map((item) => ({
+    ...item,
+    name: names.get(key(item.entityType, item.entityId)) ?? item.entityId
+  }));
 }
 
 export async function restoreDeletedItem(database: PrismaClient, id: string) {

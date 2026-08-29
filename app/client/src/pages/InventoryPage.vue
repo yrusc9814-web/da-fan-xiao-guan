@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import type { IngredientDto, InventoryBatchDto, PaginationResponse } from '../../../shared/types';
 import AppButton from '../components/ui/AppButton.vue';
@@ -11,11 +11,13 @@ import AppSkeleton from '../components/ui/AppSkeleton.vue';
 import ConfirmDeleteDialog from '../components/ConfirmDeleteDialog.vue';
 import { apiRequest, ApiRequestError } from '../services/api';
 import { displayLabel } from '../utils/display';
+import { createRequestSequence } from '../utils/request-sequence';
 import { finiteInRange } from '../utils/validation';
 
 const ingredients = ref<IngredientDto[]>([]),
   loading = ref(true),
   saving = ref(false);
+const inventorySequence = createRequestSequence();
 const route = useRoute(),
   pendingDelete = ref<IngredientDto | null>(null);
 const error = ref(''),
@@ -42,14 +44,20 @@ function listFrom(value: IngredientDto[] | PaginationResponse<IngredientDto>) {
   return (Array.isArray(value) ? value : value.items).map((item) => normalizeIngredient(item));
 }
 async function load() {
+  const sequence = inventorySequence.next();
   loading.value = true;
   error.value = '';
   try {
-    ingredients.value = listFrom(await apiRequest('/ingredients', { query: { search: query.value, pageSize: 100 } }));
+    const data = listFrom(
+      await apiRequest('/ingredients', { query: { search: query.value.trim() || undefined, pageSize: 100 } })
+    );
+    if (!inventorySequence.isCurrent(sequence)) return;
+    ingredients.value = data;
   } catch (reason) {
+    if (!inventorySequence.isCurrent(sequence)) return;
     error.value = reason instanceof Error ? reason.message : '加载失败';
   } finally {
-    loading.value = false;
+    if (inventorySequence.isCurrent(sequence)) loading.value = false;
   }
 }
 async function createIngredient() {
@@ -168,6 +176,9 @@ onMounted(async () => {
     await nextTick();
     document.getElementById(`ingredient-${focus}`)?.scrollIntoView({ block: 'center' });
   }
+});
+onUnmounted(() => {
+  inventorySequence.next();
 });
 </script>
 <template>

@@ -1,12 +1,15 @@
 <script setup lang="ts">
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import AppButton from '../components/ui/AppButton.vue';
 import AppEmptyState from '../components/ui/AppEmptyState.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppInput from '../components/ui/AppInput.vue';
 import { apiRequest } from '../services/api';
+import { debounce } from '../utils/debounce';
 import { displayLabel } from '../utils/display';
+import { createRequestSequence } from '../utils/request-sequence';
+import { itemsFrom, withSelected } from '../utils/selector-options';
 interface Result {
   resultType: string;
   resultId: string;
@@ -24,27 +27,52 @@ const route = useRoute(),
   loading = ref(false),
   error = ref(''),
   message = ref('');
+const shoppingBusy = ref(false);
 const planDate = ref(new Date().toLocaleDateString('sv-SE')),
   dinerCount = ref('1'),
   diners = ref<Array<{ id: string; name: string }>>([]),
+  dinerCache = ref<Array<{ id: string; name: string }>>([]),
+  dinerSearch = ref(''),
   selectedDinerIds = ref<string[]>([]);
+const visibleDiners = computed(() => withSelected(diners.value, selectedDinerIds.value, dinerCache.value));
+const dinerSequence = createRequestSequence();
 function validMode(value: unknown): value is RecommendationMode {
   return typeof value === 'string' && ['random', 'meal-set', 'inventory'].includes(value);
 }
-async function loadDiners() {
+async function loadDiners(search = dinerSearch.value) {
+  const sequence = dinerSequence.next();
   try {
-    const dinerData = await apiRequest<any>('/diners', { query: { pageSize: 100, active: true } });
-    diners.value = dinerData.items ?? dinerData;
+    const dinerData = await apiRequest<unknown>('/diners', {
+      query: { search: search.trim() || undefined, pageSize: 20, active: true }
+    });
+    if (!dinerSequence.isCurrent(sequence)) return;
+    const items = itemsFrom<{ id: string; name: string }>(dinerData);
+    diners.value = items;
+    dinerCache.value = withSelected(items, selectedDinerIds.value, dinerCache.value);
   } catch {
     // 食用者列表加载失败不阻塞推荐页主体功能
   }
 }
 function toggleDiner(id: string) {
-  selectedDinerIds.value = selectedDinerIds.value.includes(id)
-    ? selectedDinerIds.value.filter((value) => value !== id)
-    : [...selectedDinerIds.value, id];
+  const adding = !selectedDinerIds.value.includes(id);
+  selectedDinerIds.value = adding
+    ? [...selectedDinerIds.value, id]
+    : selectedDinerIds.value.filter((value) => value !== id);
+  if (adding) {
+    const item = diners.value.find((diner) => diner.id === id);
+    if (item && !dinerCache.value.some((entry) => entry.id === id)) dinerCache.value = [...dinerCache.value, item];
+  }
 }
-onMounted(loadDiners);
+const searchDiners = debounce(() => {
+  void loadDiners(dinerSearch.value);
+}, 250);
+onMounted(() => {
+  void loadDiners();
+});
+onUnmounted(() => {
+  dinerSequence.next();
+  searchDiners.cancel();
+});
 watch(
   () => route.query.mode,
   (value) => {
@@ -137,32 +165,30 @@ async function addToPlan() {
 }
 async function addMissingToShopping() {
   const missing = [...new Set(results.value.flatMap((result) => result.missingIngredients))];
-  if (!missing.length) return;
+  if (!missing.length || shoppingBusy.value) return;
+  shoppingBusy.value = true;
   loading.value = true;
   error.value = '';
   try {
-    let list = await apiRequest<{ id: string; version: number }>('/shopping-lists', {
+    await apiRequest('/shopping-lists', {
       method: 'POST',
-      body: JSON.stringify({ name: `推荐缺料 ${planDate.value}`, items: [] })
-    });
-    for (const ingredientName of missing) {
-      list = await apiRequest(`/shopping-lists/${list.id}/items`, {
-        method: 'POST',
-        body: JSON.stringify({
-          version: list.version,
+      body: JSON.stringify({
+        name: `推荐缺料 ${planDate.value}`,
+        items: missing.map((ingredientName) => ({
           ingredientName,
           quantity: 1,
           unit: 'OTHER',
           sourceType: 'RECOMMENDATION',
           sourceId: historyId.value || null
-        })
-      });
-    }
+        }))
+      })
+    });
     message.value = `${missing.length} 项缺料已加入购物清单`;
   } catch (e) {
     error.value = e instanceof Error ? e.message : '生成购物清单失败';
   } finally {
     loading.value = false;
+    shoppingBusy.value = false;
   }
 }
 </script>
@@ -198,7 +224,8 @@ async function addMissingToShopping() {
         <fieldset>
           <legend>食用者（可多选）</legend>
           <p class="recommendation-diners__hint">勾选后将按其忌口、过敏硬过滤推荐结果</p>
-          <label v-for="diner in diners" :key="diner.id"
+          <AppInput v-model="dinerSearch" label="搜索食用者" @update:model-value="searchDiners" />
+          <label v-for="diner in visibleDiners" :key="diner.id"
             ><input type="checkbox" :checked="selectedDinerIds.includes(diner.id)" @change="toggleDiner(diner.id)" />{{
               diner.name
             }}</label
@@ -217,7 +244,8 @@ async function addMissingToShopping() {
         ><AppButton
           v-if="results.some((result) => result.missingIngredients.length)"
           variant="secondary"
-          :loading="loading"
+          :loading="loading || shoppingBusy"
+          :disabled="shoppingBusy"
           @click="addMissingToShopping"
           >缺料加入购物清单</AppButton
         ><AppButton :loading="loading" @click="addToPlan">整组加入计划</AppButton>

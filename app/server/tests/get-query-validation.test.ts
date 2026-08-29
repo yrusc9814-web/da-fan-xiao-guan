@@ -52,6 +52,8 @@ describe('GET query 运行时校验（坏输入 → 400，不进入 Prisma 500�
 
   it('D：pageSize=abc → 400', async () => {
     expect((await app.inject({ method: 'GET', url: '/api/v1/recipes?pageSize=abc' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/records?pageSize=abc' })).statusCode).toBe(400);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/ingredients?pageSize=abc' })).statusCode).toBe(400);
   });
 
   it('E：take=abc → 400', async () => {
@@ -71,6 +73,8 @@ describe('GET query 运行时校验（坏输入 → 400，不进入 Prisma 500�
   it('G/H：合法 query 与缺省 query 保持 200', async () => {
     expect((await app.inject({ method: 'GET', url: '/api/v1/recipes' })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/v1/recipes?page=1' })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/records' })).statusCode).toBe(200);
+    expect((await app.inject({ method: 'GET', url: '/api/v1/ingredients' })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/v1/plans' })).statusCode).toBe(200);
     expect((await app.inject({ method: 'GET', url: '/api/v1/inventory/logs' })).statusCode).toBe(200);
   });

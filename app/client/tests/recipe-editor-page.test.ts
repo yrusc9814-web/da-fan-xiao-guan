@@ -91,8 +91,27 @@ async function mountEditor({
       body = { success: true, data: { ...recipe, ...JSON.parse(String(init.body)) }, error: null };
     } else if (url.includes('/api/v1/tools')) {
       body = { success: true, data: tools, error: null };
+    } else if (url.includes('/api/v1/ingredients/') && (!init || init.method === 'GET' || !init.method)) {
+      const id = url.split('/api/v1/ingredients/')[1]?.split('?')[0];
+      const found = inventory.find((item) => item.id === id);
+      if (!found) {
+        return {
+          ok: false,
+          status: 404,
+          json: async () => ({
+            success: false,
+            data: null,
+            error: { code: 'NOT_FOUND', message: '食材不存在' }
+          })
+        };
+      }
+      body = { success: true, data: found, error: null };
     } else if (url.includes('/api/v1/ingredients')) {
-      body = { success: true, data: inventory, error: null };
+      body = {
+        success: true,
+        data: { items: inventory, page: 1, pageSize: 20, total: inventory.length, totalPages: 1 },
+        error: null
+      };
     } else {
       body = { success: true, data: null, error: null };
     }
@@ -234,6 +253,49 @@ describe('菜谱编辑页库存关联', () => {
     expect(body.ingredients).toHaveLength(1);
     expect(body.ingredients[0].ingredientId).toBe('ing-search-a');
     expect(body.ingredients[0].ingredientName).toBe('验收-搜索番茄');
+  });
+
+  it('服务端搜索能选中第一页之外的库存食材，清空搜索后已选项仍回显', async () => {
+    const firstPage = Array.from({ length: 20 }, (_, index) => ({
+      id: `ing-page-${index + 1}`,
+      name: `验收-首页食材-${index + 1}`,
+      quantity: 1,
+      unit: 'PIECE'
+    }));
+    const late = { id: 'ing-late-120', name: '验收-第120号食材', quantity: 2, unit: 'PIECE' };
+    const { wrapper, fetchMock } = await mountEditor({ inventory: firstPage });
+    await wrapper.findAll('input[type="text"]')[0].setValue('验收-搜索第120');
+    fetchMock.mockImplementation(async (input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/api/v1/ingredients') && url.includes('search=')) {
+        return { ok: true, json: async () => ({ success: true, data: { items: [late] }, error: null }) };
+      }
+      if (url.includes('/api/v1/ingredients')) {
+        return { ok: true, json: async () => ({ success: true, data: { items: firstPage }, error: null }) };
+      }
+      if (url.includes('/api/v1/recipes') && init?.method === 'POST') {
+        return { ok: true, json: async () => ({ success: true, data: { id: 'recipe-new-1' }, error: null }) };
+      }
+      return { ok: true, json: async () => ({ success: true, data: [], error: null }) };
+    });
+    const row = wrapper.get('.ingredient-row');
+    await row.find('input[type="search"]').setValue('第120号');
+    await row.find('input[type="search"]').trigger('input');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await flushPromises();
+    const select = row.find('select');
+    expect(select.text()).toContain('验收-第120号食材');
+    await select.setValue('ing-late-120');
+    await row.find('input[type="search"]').setValue('');
+    await row.find('input[type="search"]').trigger('input');
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    await flushPromises();
+    expect((select.element as HTMLSelectElement).value).toBe('ing-late-120');
+    await wrapper.get('button.app-button--primary').trigger('click');
+    await flushPromises();
+    const call = saveCall(fetchMock);
+    const body = JSON.parse(String(call![1].body));
+    expect(body.ingredients[0].ingredientId).toBe('ing-late-120');
   });
 
   it('编辑模式中已软删的原关联食材不回填时保留原值，提示重新选择', async () => {

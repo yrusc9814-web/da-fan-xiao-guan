@@ -108,7 +108,7 @@ describe('节点 5 计划、日记、清单、日历和统计', () => {
 
     expect(confirmed.status).toBe('CONFIRMED');
     expect(confirmed.confirmedAt).not.toBeNull();
-    expect(records.map((record) => record.id)).toContain(draft.id);
+    expect(records.items.map((record) => record.id)).toContain(draft.id);
   });
 
   it('同食材可换算单位合并，不可换算单位保持独立，父版本控制冲突', async () => {

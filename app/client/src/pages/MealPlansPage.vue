@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import AppButton from '../components/ui/AppButton.vue';
 import AppEmptyState from '../components/ui/AppEmptyState.vue';
@@ -8,7 +8,10 @@ import AppInput from '../components/ui/AppInput.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
 import { apiRequest, ApiRequestError } from '../services/api';
 import { monthRange, parseLocalIsoDate, toLocalIsoDate } from '../utils/calendar';
+import { debounce } from '../utils/debounce';
 import { displayLabel } from '../utils/display';
+import { createRequestSequence } from '../utils/request-sequence';
+import { itemsFrom, withSelected } from '../utils/selector-options';
 import { isIsoDate, positiveInteger } from '../utils/validation';
 
 interface Plan {
@@ -35,9 +38,18 @@ const plans = ref<Plan[]>([]),
 const recipes = ref<Array<{ id: string; name: string }>>([]),
   stores = ref<Array<{ id: string; name: string }>>([]),
   diners = ref<Array<{ id: string; name: string }>>([]),
+  recipeCache = ref<Array<{ id: string; name: string }>>([]),
+  storeCache = ref<Array<{ id: string; name: string }>>([]),
+  dinerCache = ref<Array<{ id: string; name: string }>>([]),
+  recipeSearch = ref(''),
+  storeSearch = ref(''),
+  dinerSearch = ref(''),
   selectedRecipeIds = ref<string[]>([]),
   selectedStoreIds = ref<string[]>([]),
   selectedDinerIds = ref<string[]>([]);
+const visibleRecipes = computed(() => withSelected(recipes.value, selectedRecipeIds.value, recipeCache.value));
+const visibleStores = computed(() => withSelected(stores.value, selectedStoreIds.value, storeCache.value));
+const visibleDiners = computed(() => withSelected(diners.value, selectedDinerIds.value, dinerCache.value));
 const route = useRoute();
 const today = toLocalIsoDate(new Date());
 const selectedDate = computed(() => {
@@ -53,15 +65,45 @@ const catalogsLoaded = ref(false);
 let loadedMonthKey = '';
 let plansRequestSequence = 0;
 let inflightMonthKey = '';
+const recipeSearchSequence = createRequestSequence();
+const storeSearchSequence = createRequestSequence();
+const dinerSearchSequence = createRequestSequence();
+async function loadCatalog(kind: 'recipes' | 'stores' | 'diners', search: string) {
+  const sequence =
+    kind === 'recipes'
+      ? recipeSearchSequence.next()
+      : kind === 'stores'
+        ? storeSearchSequence.next()
+        : dinerSearchSequence.next();
+  const query =
+    kind === 'diners'
+      ? { search: search.trim() || undefined, pageSize: 20, active: true }
+      : { search: search.trim() || undefined, pageSize: 20 };
+  const items = itemsFrom<{ id: string; name: string }>(await apiRequest(`/${kind}`, { query }));
+  const current =
+    kind === 'recipes'
+      ? recipeSearchSequence.isCurrent(sequence)
+      : kind === 'stores'
+        ? storeSearchSequence.isCurrent(sequence)
+        : dinerSearchSequence.isCurrent(sequence);
+  if (!current) return;
+  if (kind === 'recipes') {
+    recipes.value = items;
+    recipeCache.value = withSelected(items, selectedRecipeIds.value, recipeCache.value);
+  } else if (kind === 'stores') {
+    stores.value = items;
+    storeCache.value = withSelected(items, selectedStoreIds.value, storeCache.value);
+  } else {
+    diners.value = items;
+    dinerCache.value = withSelected(items, selectedDinerIds.value, dinerCache.value);
+  }
+}
 async function loadCatalogs() {
-  const [recipeData, storeData, dinerData] = await Promise.all([
-    apiRequest<any>('/recipes', { query: { pageSize: 100 } }),
-    apiRequest<any>('/stores', { query: { pageSize: 100 } }),
-    apiRequest<any>('/diners', { query: { pageSize: 100, active: true } })
+  await Promise.all([
+    loadCatalog('recipes', recipeSearch.value),
+    loadCatalog('stores', storeSearch.value),
+    loadCatalog('diners', dinerSearch.value)
   ]);
-  recipes.value = recipeData.items ?? recipeData;
-  stores.value = storeData.items ?? storeData;
-  diners.value = dinerData.items ?? dinerData;
   catalogsLoaded.value = true;
 }
 async function loadPlans(force = false) {
@@ -103,10 +145,29 @@ async function focusSelectedDate() {
   await nextTick();
   document.querySelector<HTMLElement>(`[data-plan-date="${selectedDate.value}"]`)?.scrollIntoView({ block: 'center' });
 }
+function rememberSelection(source: Array<{ id: string; name: string }>, cache: typeof recipeCache, id: string) {
+  const item = source.find((entry) => entry.id === id);
+  if (item && !cache.value.some((entry) => entry.id === id)) cache.value = [...cache.value, item];
+}
 function toggle(kind: 'recipe' | 'store' | 'diner', id: string) {
   const target = kind === 'recipe' ? selectedRecipeIds : kind === 'store' ? selectedStoreIds : selectedDinerIds;
-  target.value = target.value.includes(id) ? target.value.filter((value) => value !== id) : [...target.value, id];
+  const adding = !target.value.includes(id);
+  target.value = adding ? [...target.value, id] : target.value.filter((value) => value !== id);
+  if (adding) {
+    if (kind === 'recipe') rememberSelection(recipes.value, recipeCache, id);
+    else if (kind === 'store') rememberSelection(stores.value, storeCache, id);
+    else rememberSelection(diners.value, dinerCache, id);
+  }
 }
+const searchRecipes = debounce(() => {
+  void loadCatalog('recipes', recipeSearch.value).catch(() => undefined);
+}, 250);
+const searchStores = debounce(() => {
+  void loadCatalog('stores', storeSearch.value).catch(() => undefined);
+}, 250);
+const searchDiners = debounce(() => {
+  void loadCatalog('diners', dinerSearch.value).catch(() => undefined);
+}, 250);
 async function createPlan() {
   if (!isIsoDate(form.value.planDate)) {
     error.value = '请选择合法日期';
@@ -178,6 +239,11 @@ onMounted(() => {
     error.value = e instanceof Error ? e.message : '加载失败';
   });
 });
+onUnmounted(() => {
+  searchRecipes.cancel();
+  searchStores.cancel();
+  searchDiners.cancel();
+});
 </script>
 <template>
   <section class="business-page" :data-selected-date="selectedDate">
@@ -208,7 +274,8 @@ onMounted(() => {
       <div class="plan-options">
         <fieldset>
           <legend>从菜谱添加（可多选）</legend>
-          <label v-for="recipe in recipes" :key="recipe.id"
+          <AppInput v-model="recipeSearch" label="搜索菜谱" @update:model-value="searchRecipes" />
+          <label v-for="recipe in visibleRecipes" :key="recipe.id"
             ><input
               type="checkbox"
               :checked="selectedRecipeIds.includes(recipe.id)"
@@ -218,7 +285,8 @@ onMounted(() => {
         </fieldset>
         <fieldset>
           <legend>从店铺添加（可多选）</legend>
-          <label v-for="store in stores" :key="store.id"
+          <AppInput v-model="storeSearch" label="搜索店铺" @update:model-value="searchStores" />
+          <label v-for="store in visibleStores" :key="store.id"
             ><input
               type="checkbox"
               :checked="selectedStoreIds.includes(store.id)"
@@ -228,7 +296,8 @@ onMounted(() => {
         </fieldset>
         <fieldset>
           <legend>食用者</legend>
-          <label v-for="diner in diners" :key="diner.id"
+          <AppInput v-model="dinerSearch" label="搜索食用者" @update:model-value="searchDiners" />
+          <label v-for="diner in visibleDiners" :key="diner.id"
             ><input
               type="checkbox"
               :checked="selectedDinerIds.includes(diner.id)"

@@ -1,11 +1,14 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue';
+import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router';
 import AppButton from '../components/ui/AppButton.vue';
 import AppInput from '../components/ui/AppInput.vue';
 import AppTextarea from '../components/ui/AppTextarea.vue';
 import { apiRequest, ApiRequestError } from '../services/api';
+import { debounce } from '../utils/debounce';
 import { displayLabel } from '../utils/display';
+import { createRequestSequence } from '../utils/request-sequence';
+import { itemsFrom } from '../utils/selector-options';
 import { finiteInRange, positiveInteger } from '../utils/validation';
 const route = useRoute(),
   router = useRouter(),
@@ -44,38 +47,54 @@ const ingredients = ref<IngredientRow[]>([
   steps = ref([{ content: '', imagePath: null as string | null }]);
 const availableTools = ref<Array<{ id: string; name: string }>>([]),
   selectedToolIds = ref<string[]>([]);
-const inventoryIngredients = ref<Array<{ id: string; name: string; quantity: number; unit: string }>>([]),
+type InventoryOption = { id: string; name: string; quantity: number; unit: string };
+const inventoryIngredients = ref<InventoryOption[]>([]),
+  inventoryCache = ref<InventoryOption[]>([]),
   inventoryError = ref('');
+const inventorySequence = createRequestSequence();
 const ready = ref(false),
   dirty = ref(false),
   saved = ref(false);
-async function loadInventoryIngredients() {
+function rememberIngredient(item: InventoryOption) {
+  if (!inventoryCache.value.some((entry) => entry.id === item.id))
+    inventoryCache.value = [...inventoryCache.value, item];
+}
+function toInventoryOption(item: { id: string; name: string; quantity?: number; unit?: string }): InventoryOption {
+  return { id: item.id, name: item.name, quantity: item.quantity ?? 0, unit: item.unit ?? 'OTHER' };
+}
+async function loadInventoryIngredients(search = '') {
+  const sequence = inventorySequence.next();
   try {
-    const data = await apiRequest<any>('/ingredients', { query: { search: '', pageSize: 100 } });
-    const list = Array.isArray(data) ? data : (data.items ?? []);
-    inventoryIngredients.value = list.map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      quantity: item.quantity,
-      unit: item.unit
-    }));
+    const data = await apiRequest<unknown>('/ingredients', {
+      query: { search: search.trim() || undefined, pageSize: 20 }
+    });
+    if (!inventorySequence.isCurrent(sequence)) return;
+    const list = itemsFrom<{ id: string; name: string; quantity?: number; unit?: string }>(data).map(toInventoryOption);
+    inventoryIngredients.value = list;
+    inventoryError.value = '';
   } catch (reason) {
+    if (!inventorySequence.isCurrent(sequence)) return;
     inventoryError.value = reason instanceof Error ? reason.message : '库存食材加载失败';
   }
 }
+const searchInventory = debounce((term: string) => {
+  void loadInventoryIngredients(term);
+}, 250);
 function isKnownInventoryIngredient(id: string): boolean {
-  return inventoryIngredients.value.some((item) => item.id === id);
+  return (
+    inventoryCache.value.some((item) => item.id === id) || inventoryIngredients.value.some((item) => item.id === id)
+  );
 }
-function inventoryIngredientOptions(
-  row: IngredientRow
-): Array<{ id: string; name: string; quantity: number; unit: string }> {
+function inventoryIngredientOptions(row: IngredientRow): InventoryOption[] {
   const term = row.search.trim().toLowerCase();
-  const filtered = term
-    ? inventoryIngredients.value.filter((item) => item.name.toLowerCase().includes(term))
-    : inventoryIngredients.value;
+  const pool = [...inventoryCache.value];
+  for (const item of inventoryIngredients.value) {
+    if (!pool.some((entry) => entry.id === item.id)) pool.push(item);
+  }
+  const filtered = term ? pool.filter((item) => item.name.toLowerCase().includes(term)) : pool;
   // 已选中的选项即使被搜索词过滤掉，也要无条件保留在列表中，保证 select 仍能正确显示当前值
   if (row.ingredientId && !filtered.some((item) => item.id === row.ingredientId)) {
-    const selected = inventoryIngredients.value.find((item) => item.id === row.ingredientId);
+    const selected = pool.find((item) => item.id === row.ingredientId);
     if (selected) return [...filtered, selected];
   }
   return filtered;
@@ -83,15 +102,37 @@ function inventoryIngredientOptions(
 function onIngredientSelect(row: IngredientRow, event: Event) {
   const value = (event.target as HTMLSelectElement).value;
   if (value) {
-    const item = inventoryIngredients.value.find((candidate) => candidate.id === value);
+    const item =
+      inventoryCache.value.find((candidate) => candidate.id === value) ??
+      inventoryIngredients.value.find((candidate) => candidate.id === value);
     row.ingredientId = value;
     if (item) {
+      rememberIngredient(item);
       row.name = item.name;
       if (!row.quantity) row.unit = item.unit;
     }
   } else {
     row.ingredientId = null;
   }
+}
+async function hydrateSelectedIngredients() {
+  const missing = ingredients.value
+    .map((row) => row.ingredientId)
+    .filter(
+      (value): value is string => typeof value === 'string' && value.length > 0 && !isKnownInventoryIngredient(value)
+    );
+  await Promise.all(
+    missing.map(async (ingredientId) => {
+      try {
+        const item = await apiRequest<{ id: string; name: string; quantity?: number; unit?: string }>(
+          `/ingredients/${ingredientId}`
+        );
+        if (item?.id) rememberIngredient(toInventoryOption(item));
+      } catch {
+        // 已删除或无法读取时保留 snapshot 选项
+      }
+    })
+  );
 }
 async function load() {
   try {
@@ -126,6 +167,7 @@ async function load() {
       isPrimary: v.isPrimary,
       search: ''
     }));
+    await hydrateSelectedIngredients();
     steps.value = (x.steps ?? []).map((v: any) => ({ content: v.content, imagePath: v.imagePath }));
     selectedToolIds.value = (x.tools ?? []).map((v: any) => v.toolId).filter(Boolean);
     (form.value as any).version = x.version;
@@ -251,6 +293,10 @@ onMounted(async () => {
   await load();
   ready.value = true;
 });
+onUnmounted(() => {
+  inventorySequence.next();
+  searchInventory.cancel();
+});
 </script>
 <template>
   <section class="business-page">
@@ -334,6 +380,7 @@ onMounted(async () => {
               class="ingredient-search"
               placeholder="搜索食材名称…"
               aria-label="搜索库存食材"
+              @input="searchInventory(row.search)"
             /><select :value="row.ingredientId ?? ''" @change="onIngredientSelect(row, $event)">
               <option value="">手动输入（未关联库存食材）</option>
               <option
