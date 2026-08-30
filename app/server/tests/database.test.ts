@@ -417,8 +417,10 @@ describe('测试数据库安全闸', () => {
         /测试数据库安全闸/
       );
 
+      const driveLetter = applicationFileUrl.charAt('file:///'.length);
+      const encodedDrive = `%${driveLetter.charCodeAt(0).toString(16).toUpperCase()}%3A`;
       const pathAfterDrive = applicationFileUrl.slice('file:///'.length + 2);
-      const encodedDriveUrl = `file:///%44%3A/${pathAfterDrive}`;
+      const encodedDriveUrl = `file:///${encodedDrive}/${pathAfterDrive}`;
       expect(() => resolveDatabaseUrl({ NODE_ENV: 'test', TEST_DATABASE_URL: encodedDriveUrl })).toThrow(
         /测试数据库安全闸/
       );
