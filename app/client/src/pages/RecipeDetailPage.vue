@@ -2,6 +2,7 @@
 import { onMounted, ref } from 'vue';
 import { useRoute } from 'vue-router';
 
+import CookingView from '../components/CookingView.vue';
 import AppEmptyState from '../components/ui/AppEmptyState.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
@@ -13,6 +14,7 @@ interface RecipeDetail {
   name: string;
   imagePath: string | null;
   cookingTimeMinutes: number | null;
+  difficulty: string | null;
   servings: number | null;
   favorite: boolean;
   ingredientsText: string | null;
@@ -32,6 +34,11 @@ const route = useRoute();
 const recipe = ref<RecipeDetail | null>(null);
 const loading = ref(true);
 const error = ref('');
+const cookingOpen = ref(false);
+
+function openCooking(): void {
+  cookingOpen.value = true;
+}
 
 function imageUrl(path: string | null): string | null {
   if (!path || path.includes('://') || path.includes('\0')) return null;
@@ -75,9 +82,18 @@ onMounted(() => {
             {{ recipe.favorite ? '已收藏' : '未收藏' }}
           </p>
         </div>
-        <RouterLink :to="`/recipes/${recipe.id}/edit`" class="app-button app-button--primary app-button--md"
-          >编辑菜谱</RouterLink
-        >
+        <div class="business-hero__actions">
+          <button
+            type="button"
+            class="app-button app-button--primary app-button--md"
+            @click="openCooking"
+          >
+            开始制作
+          </button>
+          <RouterLink :to="`/recipes/${recipe.id}/edit`" class="app-button app-button--secondary app-button--md"
+            >编辑菜谱</RouterLink
+          >
+        </div>
       </header>
       <img
         v-if="imageUrl(recipe.imagePath)"
@@ -111,6 +127,7 @@ onMounted(() => {
           <p>工具：{{ recipe.tools.map((item) => item.toolNameSnapshot).join('、') || '暂无' }}</p>
         </article>
       </div>
+      <CookingView v-model="cookingOpen" :recipe="recipe" />
     </template>
   </section>
 </template>
@@ -121,6 +138,12 @@ onMounted(() => {
   aspect-ratio: 16/9;
   object-fit: cover;
   border-radius: var(--radius-card-large);
+}
+.business-hero__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex: 0 0 auto;
 }
 .recipe-detail-page ul,
 .recipe-detail-page ol {
