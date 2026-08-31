@@ -39,7 +39,9 @@ const visibleDiners = computed(() => withSelected(diners.value, selectedDinerIds
 const dinerSequence = createRequestSequence();
 
 // 候选池
-const candidateRecipes = ref<Array<{ id: string; name: string; enabledForRecommendation: boolean; version: number }>>([]);
+const candidateRecipes = ref<Array<{ id: string; name: string; enabledForRecommendation: boolean; version: number }>>(
+  []
+);
 const candidateLoading = ref(false);
 const showCandidatePanel = ref(false);
 const candidateCount = computed(() => candidateRecipes.value.filter((r) => r.enabledForRecommendation).length);
@@ -420,11 +422,7 @@ async function addMissingToShopping() {
             <span class="spin-wheel__item spin-wheel__item--result">{{ spinResult?.title }}</span>
           </template>
         </div>
-        <AppButton
-          :loading="spinning"
-          :disabled="candidateCount === 0 || spinning"
-          @click="spin"
-        >
+        <AppButton :loading="spinning" :disabled="candidateCount === 0 || spinning" @click="spin">
           {{ spinning ? '转动中…' : resultReady ? '再转一次' : '转一下' }}
         </AppButton>
       </div>
@@ -432,30 +430,16 @@ async function addMissingToShopping() {
       <div v-if="resultReady && spinResult" class="spin-result__actions">
         <AppButton variant="secondary" size="sm" @click="reroll">换一个</AppButton>
         <AppButton size="sm" @click="eatThis(spinResult.resultId)">就吃这个</AppButton>
-        <AppButton
-          variant="secondary"
-          size="sm"
-          :loading="loading"
-          @click="addToPlanFromSpin"
-        >加入计划</AppButton>
-        <RouterLink
-          class="text-button"
-          :to="`/recipes/${spinResult.resultId}`"
-        >查看详情 →</RouterLink>
+        <AppButton variant="secondary" size="sm" :loading="loading" @click="addToPlanFromSpin">加入计划</AppButton>
+        <RouterLink class="text-button" :to="`/recipes/${spinResult.resultId}`">查看详情 →</RouterLink>
       </div>
 
-      <p
-        v-if="candidateCount === 0 && !candidateLoading && !spinning"
-        class="spin-section__hint"
-      >
+      <p v-if="candidateCount === 0 && !candidateLoading && !spinning" class="spin-section__hint">
         候选池为空，请先
         <RouterLink to="/recipes/new">新增菜谱</RouterLink>
         或在候选管理中启用已有菜谱的「参与推荐」。
       </p>
-      <p
-        v-if="candidateCount === 1 && !resultReady && !spinning"
-        class="spin-section__hint"
-      >
+      <p v-if="candidateCount === 1 && !resultReady && !spinning" class="spin-section__hint">
         候选池仅 1 道菜，转盘结果将直接是该菜谱。
       </p>
     </div>

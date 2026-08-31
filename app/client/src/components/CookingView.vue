@@ -38,10 +38,10 @@ export interface CookingRecipe {
   tools: CookingTool[];
 }
 
-const props = withDefaults(
-  defineProps<{ modelValue: boolean; recipe: CookingRecipe | null }>(),
-  { modelValue: false, recipe: null }
-);
+const props = withDefaults(defineProps<{ modelValue: boolean; recipe: CookingRecipe | null }>(), {
+  modelValue: false,
+  recipe: null
+});
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 
 const router = useRouter();
@@ -61,12 +61,7 @@ function finishMeal(): void {
 </script>
 
 <template>
-  <AppDialog
-    :model-value="modelValue"
-    title="开始制作"
-    dialog-class="cooking-panel"
-    @update:model-value="updateOpen"
-  >
+  <AppDialog :model-value="modelValue" title="开始制作" dialog-class="cooking-panel" @update:model-value="updateOpen">
     <template v-if="recipe">
       <div class="cooking-summary">
         <span class="cooking-summary__item">
@@ -116,9 +111,7 @@ function finishMeal(): void {
     <AppEmptyState v-else title="暂未读取到菜谱信息" description="请返回详情页后重试。" />
 
     <template #footer>
-      <button type="button" class="app-button app-button--ghost app-button--md" @click="updateOpen(false)">
-        返回
-      </button>
+      <button type="button" class="app-button app-button--ghost app-button--md" @click="updateOpen(false)">返回</button>
       <button type="button" class="app-button app-button--primary app-button--md" @click="finishMeal">
         <AppIcon name="check" :size="18" />
         完成这一餐

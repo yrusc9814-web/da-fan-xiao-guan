@@ -83,11 +83,7 @@ onMounted(() => {
           </p>
         </div>
         <div class="business-hero__actions">
-          <button
-            type="button"
-            class="app-button app-button--primary app-button--md"
-            @click="openCooking"
-          >
+          <button type="button" class="app-button app-button--primary app-button--md" @click="openCooking">
             开始制作
           </button>
           <RouterLink :to="`/recipes/${recipe.id}/edit`" class="app-button app-button--secondary app-button--md"

@@ -106,13 +106,10 @@ async function startEat(): Promise<void> {
       createdRecord.value = { id: record.id, version: record.version };
 
       // Get consumption preview
-      const consumptionPreview = await apiRequest<ConsumptionPreviewDto>(
-        `/records/${record.id}/consumption-preview`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ recordVersion: record.version })
-        }
-      );
+      const consumptionPreview = await apiRequest<ConsumptionPreviewDto>(`/records/${record.id}/consumption-preview`, {
+        method: 'POST',
+        body: JSON.stringify({ recordVersion: record.version })
+      });
       preview.value = consumptionPreview;
       pageState.value = 'preview';
     } else {
@@ -134,9 +131,7 @@ function toggleBatch(recipeIngredientId: string, batchId: string): void {
   const current = usedSelections.value[recipeIngredientId] ?? [];
   usedSelections.value = {
     ...usedSelections.value,
-    [recipeIngredientId]: current.includes(batchId)
-      ? current.filter((id) => id !== batchId)
-      : [...current, batchId]
+    [recipeIngredientId]: current.includes(batchId) ? current.filter((id) => id !== batchId) : [...current, batchId]
   };
 }
 
@@ -144,16 +139,13 @@ async function refreshPreview(): Promise<void> {
   if (!createdRecord.value || !preview.value) return;
   pageState.value = 'loading';
   try {
-    preview.value = await apiRequest<ConsumptionPreviewDto>(
-      `/records/${createdRecord.value.id}/consumption-preview`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          recordVersion: createdRecord.value.version,
-          selections: usedSelections.value
-        })
-      }
-    );
+    preview.value = await apiRequest<ConsumptionPreviewDto>(`/records/${createdRecord.value.id}/consumption-preview`, {
+      method: 'POST',
+      body: JSON.stringify({
+        recordVersion: createdRecord.value.version,
+        selections: usedSelections.value
+      })
+    });
     pageState.value = 'preview';
   } catch (e) {
     pageError.value = e instanceof Error ? e.message : '预览失败，请重试';
@@ -296,9 +288,7 @@ onMounted(() => {
           >
             <div class="preview-item__head">
               <strong>{{ row.ingredientName }}</strong>
-              <span class="preview-item__required">
-                需要 {{ row.requiredQuantity }} {{ displayLabel(row.unit) }}
-              </span>
+              <span class="preview-item__required"> 需要 {{ row.requiredQuantity }} {{ displayLabel(row.unit) }} </span>
             </div>
 
             <!-- Allocations -->
@@ -355,10 +345,7 @@ onMounted(() => {
           >
             按选择重新预览
           </AppButton>
-          <AppButton
-            v-if="!preview.items.some((x) => x.requiresManualSelection)"
-            @click="confirmConsumption"
-          >
+          <AppButton v-if="!preview.items.some((x) => x.requiresManualSelection)" @click="confirmConsumption">
             确认扣减并完成
           </AppButton>
         </div>
@@ -366,11 +353,7 @@ onMounted(() => {
     </template>
 
     <!-- Error in flow (with retry) -->
-    <AppErrorState
-      v-if="pageState === 'error' && recipe"
-      title="操作未完成"
-      :description="pageError"
-    >
+    <AppErrorState v-if="pageState === 'error' && recipe" title="操作未完成" :description="pageError">
       <div class="complete-meal-actions">
         <AppButton variant="ghost" @click="goBack">返回</AppButton>
         <AppButton @click="startEat">重试</AppButton>

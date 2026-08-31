@@ -84,10 +84,7 @@ describe('完成这一餐链路（即时记录 → 库存预览 → 确认扣减
     expect(preview.statusCode).toBe(200);
     const previewData = preview.json().data;
     const byName = Object.fromEntries(
-      previewData.items.map((item: { ingredientName: string; [key: string]: unknown }) => [
-        item.ingredientName,
-        item
-      ])
+      previewData.items.map((item: { ingredientName: string; [key: string]: unknown }) => [item.ingredientName, item])
     );
     expect(byName['完成链测试土豆'].shortageQuantity).toBe(0);
     expect(byName['完成链测试胡萝卜'].shortageQuantity).toBeGreaterThan(0);
