@@ -16,6 +16,7 @@ import SettingsPage from '../pages/SettingsPage.vue';
 import StatisticsPage from '../pages/StatisticsPage.vue';
 import DeletedItemsPage from '../pages/DeletedItemsPage.vue';
 import RecipeDetailPage from '../pages/RecipeDetailPage.vue';
+import CompleteMealPage from '../pages/CompleteMealPage.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -31,6 +32,7 @@ const router = createRouter({
     { path: '/recipes/new', name: 'recipe-new', component: RecipeEditorPage, meta: { title: '新增菜谱' } },
     { path: '/recipes/:id', name: 'recipe-detail', component: RecipeDetailPage, meta: { title: '菜谱详情' } },
     { path: '/recipes/:id/edit', name: 'recipe-edit', component: RecipeEditorPage, meta: { title: '编辑菜谱' } },
+    { path: '/complete-meal', name: 'complete-meal', component: CompleteMealPage, meta: { title: '完成这一餐' } },
     { path: '/inventory', name: 'inventory', component: InventoryPage, meta: { title: '食材库存' } },
     { path: '/chef', name: 'chef', component: InventoryPage, meta: { title: '厨师' } },
     {
