@@ -464,7 +464,7 @@ onUnmounted(() => {
       "
     >
       <section v-if="preview" class="consumption-content">
-        <p>预览不会修改库存；确认后库存、日志、缺料购物与日记状态会在同一事务更新。</p>
+        <p>预览不会修改库存；确认后库存扣减、缺料购物清单与记录状态会在同一事务更新。</p>
         <div class="consumption-items">
           <article v-for="row in preview.items" :key="row.recipeIngredientId">
             <strong>{{ row.ingredientName }}</strong

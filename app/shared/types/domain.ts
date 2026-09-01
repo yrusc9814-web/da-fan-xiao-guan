@@ -360,6 +360,14 @@ export interface ConsumptionConfirmationDto {
   repeated: boolean;
 }
 
+/** 即时用餐：由菜谱直接计算出的库存预览（无需先建 DRAFT 记录）。 */
+export interface ImmediateMealPreviewDto {
+  recipeId: ID;
+  dinerCount: number;
+  previewToken: string;
+  items: ConsumptionPreviewItemDto[];
+}
+
 export interface UploadAssetDto {
   id: ID;
   url: string;
