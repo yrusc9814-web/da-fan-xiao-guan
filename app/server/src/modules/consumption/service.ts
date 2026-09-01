@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { Prisma, PrismaClient, QuantityUnit } from '@prisma/client';
+import type { Prisma, PrismaClient, QuantityUnit, RecordSourceType, MealType } from '@prisma/client';
 
 import { convertQuantity } from '../../database/units.js';
 import { VersionConflictError } from '../../database/optimistic-lock.js';
@@ -27,6 +27,29 @@ interface PreviewItem {
   requiresManualSelection: boolean;
 }
 
+interface RecipeLike {
+  id: string;
+  servings: number | null;
+  ingredients: Array<{
+    id: string;
+    ingredientId: string | null;
+    ingredientNameSnapshot: string;
+    quantity: number | null;
+    unit: QuantityUnit | null;
+    optional: boolean;
+  }>;
+}
+
+/** 即时用餐确认所需的记录上下文（无需先落库 DRAFT 记录）。 */
+export interface ImmediateMealInput {
+  recordDate: string;
+  recordTime?: string | null;
+  mealType: MealType;
+  sourceType: RecordSourceType;
+  notes?: string | null;
+  dinerIds?: string[];
+}
+
 function httpError(statusCode: number, message: string): Error {
   return Object.assign(new Error(message), { statusCode });
 }
@@ -38,6 +61,96 @@ function today(): string {
 }
 function previewHash(payload: object): string {
   return createHash('sha256').update(JSON.stringify(payload)).digest('hex');
+}
+
+async function buildPreviewForRecipe(
+  database: Database,
+  recipe: RecipeLike,
+  dinerCount: number,
+  selections: BatchSelections = {}
+) {
+  const items: PreviewItem[] = [];
+  const scale = dinerCount / Math.max(recipe.servings ?? dinerCount, 1);
+  for (const recipeIngredient of recipe.ingredients) {
+    if (recipeIngredient.optional || recipeIngredient.quantity == null || recipeIngredient.unit == null) continue;
+    const required = round(recipeIngredient.quantity * scale);
+    const requiredUnit = recipeIngredient.unit;
+    const base: PreviewItem = {
+      recipeIngredientId: recipeIngredient.id,
+      ingredientId: recipeIngredient.ingredientId,
+      ingredientName: recipeIngredient.ingredientNameSnapshot,
+      requiredQuantity: required,
+      unit: requiredUnit,
+      allocations: [],
+      availableBatches: [],
+      shortageQuantity: required,
+      requiresManualSelection: false
+    };
+    if (!recipeIngredient.ingredientId) {
+      items.push(base);
+      continue;
+    }
+
+    let candidates = await database.inventoryBatch.findMany({
+      where: {
+        ingredientId: recipeIngredient.ingredientId,
+        deletedAt: null,
+        quantity: { gt: 0 },
+        OR: [{ expiryDate: null }, { expiryDate: { gte: today() } }]
+      },
+      orderBy: [{ consumePriority: 'desc' }, { expiryDate: 'asc' }, { createdAt: 'asc' }]
+    });
+    const selectionProvided = Object.hasOwn(selections, recipeIngredient.id);
+    const selectedIds = selections[recipeIngredient.id] ?? [];
+    if (selectionProvided) {
+      const order = new Map(selectedIds.map((id, index) => [id, index]));
+      candidates = candidates
+        .filter((batch) => order.has(batch.id))
+        .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+    }
+    const compatible = candidates.filter((batch) => convertQuantity(1, batch.unit, requiredUnit) !== null);
+    const allCompatible = selectionProvided
+      ? await database.inventoryBatch.findMany({
+          where: {
+            ingredientId: recipeIngredient.ingredientId,
+            deletedAt: null,
+            quantity: { gt: 0 },
+            OR: [{ expiryDate: null }, { expiryDate: { gte: today() } }]
+          },
+          orderBy: [{ consumePriority: 'desc' }, { expiryDate: 'asc' }, { createdAt: 'asc' }]
+        })
+      : compatible;
+    base.availableBatches = allCompatible
+      .filter((batch) => convertQuantity(1, batch.unit, requiredUnit) !== null)
+      .map((batch) => ({
+        batchId: batch.id,
+        batchVersion: batch.version,
+        quantity: batch.quantity,
+        availableQuantity: batch.quantity,
+        unit: batch.unit,
+        expiryDate: batch.expiryDate,
+        location: batch.location
+      }));
+    base.requiresManualSelection = compatible.length > 1 && !selectionProvided;
+    let remaining = required;
+    for (const batch of compatible) {
+      const availableInRequiredUnit = convertQuantity(batch.quantity, batch.unit, requiredUnit) ?? 0;
+      const takeInRequiredUnit = Math.min(remaining, availableInRequiredUnit);
+      const takeInBatchUnit = convertQuantity(takeInRequiredUnit, requiredUnit, batch.unit) ?? 0;
+      if (takeInBatchUnit > 0)
+        base.allocations.push({
+          batchId: batch.id,
+          batchVersion: batch.version,
+          quantity: round(takeInBatchUnit),
+          unit: batch.unit
+        });
+      remaining = round(remaining - takeInRequiredUnit);
+      if (remaining <= 0) break;
+    }
+    base.shortageQuantity = Math.max(0, remaining);
+    items.push(base);
+  }
+  return items;
 }
 
 async function buildPreview(
@@ -71,86 +184,8 @@ async function buildPreview(
   const items: PreviewItem[] = [];
   for (const recordItem of record.items) {
     if (!recordItem.recipe) continue;
-    const scale = dinerCount / Math.max(recordItem.recipe.servings ?? dinerCount, 1);
-    for (const recipeIngredient of recordItem.recipe.ingredients) {
-      if (recipeIngredient.optional || recipeIngredient.quantity == null || recipeIngredient.unit == null) continue;
-      const required = round(recipeIngredient.quantity * scale);
-      const requiredUnit = recipeIngredient.unit;
-      const base: PreviewItem = {
-        recipeIngredientId: recipeIngredient.id,
-        ingredientId: recipeIngredient.ingredientId,
-        ingredientName: recipeIngredient.ingredientNameSnapshot,
-        requiredQuantity: required,
-        unit: requiredUnit,
-        allocations: [],
-        availableBatches: [],
-        shortageQuantity: required,
-        requiresManualSelection: false
-      };
-      if (!recipeIngredient.ingredientId) {
-        items.push(base);
-        continue;
-      }
-
-      let candidates = await database.inventoryBatch.findMany({
-        where: {
-          ingredientId: recipeIngredient.ingredientId,
-          deletedAt: null,
-          quantity: { gt: 0 },
-          OR: [{ expiryDate: null }, { expiryDate: { gte: today() } }]
-        },
-        orderBy: [{ consumePriority: 'desc' }, { expiryDate: 'asc' }, { createdAt: 'asc' }]
-      });
-      const selectionProvided = Object.hasOwn(selections, recipeIngredient.id);
-      const selectedIds = selections[recipeIngredient.id] ?? [];
-      if (selectionProvided) {
-        const order = new Map(selectedIds.map((id, index) => [id, index]));
-        candidates = candidates
-          .filter((batch) => order.has(batch.id))
-          .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
-      }
-      const compatible = candidates.filter((batch) => convertQuantity(1, batch.unit, requiredUnit) !== null);
-      const allCompatible = selectionProvided
-        ? await database.inventoryBatch.findMany({
-            where: {
-              ingredientId: recipeIngredient.ingredientId,
-              deletedAt: null,
-              quantity: { gt: 0 },
-              OR: [{ expiryDate: null }, { expiryDate: { gte: today() } }]
-            },
-            orderBy: [{ consumePriority: 'desc' }, { expiryDate: 'asc' }, { createdAt: 'asc' }]
-          })
-        : compatible;
-      base.availableBatches = allCompatible
-        .filter((batch) => convertQuantity(1, batch.unit, requiredUnit) !== null)
-        .map((batch) => ({
-          batchId: batch.id,
-          batchVersion: batch.version,
-          quantity: batch.quantity,
-          availableQuantity: batch.quantity,
-          unit: batch.unit,
-          expiryDate: batch.expiryDate,
-          location: batch.location
-        }));
-      base.requiresManualSelection = compatible.length > 1 && !selectionProvided;
-      let remaining = required;
-      for (const batch of compatible) {
-        const availableInRequiredUnit = convertQuantity(batch.quantity, batch.unit, requiredUnit) ?? 0;
-        const takeInRequiredUnit = Math.min(remaining, availableInRequiredUnit);
-        const takeInBatchUnit = convertQuantity(takeInRequiredUnit, requiredUnit, batch.unit) ?? 0;
-        if (takeInBatchUnit > 0)
-          base.allocations.push({
-            batchId: batch.id,
-            batchVersion: batch.version,
-            quantity: round(takeInBatchUnit),
-            unit: batch.unit
-          });
-        remaining = round(remaining - takeInRequiredUnit);
-        if (remaining <= 0) break;
-      }
-      base.shortageQuantity = Math.max(0, remaining);
-      items.push(base);
-    }
+    const recipeItems = await buildPreviewForRecipe(database, recordItem.recipe, dinerCount, selections);
+    items.push(...recipeItems);
   }
   const hashPayload = { recordId: record.id, recordVersion: record.version, items };
   return { recordId: record.id, recordVersion: record.version, previewToken: previewHash(hashPayload), items };
@@ -198,6 +233,82 @@ async function mergeShortage(tx: Prisma.TransactionClient, listId: string, item:
   });
 }
 
+/**
+ * 在事务内执行库存扣减、缺料并入购物清单、刷新食材汇总。
+ * 供「先建 DRAFT 再确认」与「即时用餐直接确认」两条路径复用。
+ */
+async function applyConsumption(
+  tx: Prisma.TransactionClient,
+  items: PreviewItem[],
+  recordId: string
+): Promise<{ logIds: string[]; shoppingListId: string | null }> {
+  const logIds: string[] = [];
+  for (const item of items) {
+    for (const allocation of item.allocations) {
+      const batch = await tx.inventoryBatch.findUnique({
+        where: { id: allocation.batchId },
+        include: { ingredient: true }
+      });
+      if (!batch || batch.deletedAt || batch.version !== allocation.batchVersion)
+        throw httpError(409, '库存批次已变化，请重新预览');
+      const after = round(batch.quantity - allocation.quantity);
+      if (after < 0) throw httpError(409, '库存数量不足，请重新预览');
+      const updated = await tx.inventoryBatch.updateMany({
+        where: { id: batch.id, version: batch.version, deletedAt: null, quantity: { gte: allocation.quantity } },
+        data: { quantity: after, version: { increment: 1 } }
+      });
+      if (!updated.count) throw httpError(409, '库存批次已变化，请重新预览');
+      const log = await tx.inventoryLog.create({
+        data: {
+          ingredientId: batch.ingredientId,
+          ingredientNameSnapshot: batch.ingredient.name,
+          inventoryBatchId: batch.id,
+          beforeQuantity: batch.quantity,
+          changeQuantity: -allocation.quantity,
+          afterQuantity: after,
+          unit: batch.unit,
+          changeType: 'COOK_DEDUCT',
+          relatedRecordId: recordId
+        }
+      });
+      logIds.push(log.id);
+    }
+  }
+
+  const active = items.some((item) => item.shortageQuantity > 0)
+    ? await tx.shoppingList.findFirst({
+        where: { deletedAt: null, status: 'ACTIVE' },
+        orderBy: { updatedAt: 'desc' }
+      })
+    : null;
+  const shopping =
+    active ??
+    (items.some((item) => item.shortageQuantity > 0)
+      ? await tx.shoppingList.create({ data: { name: '库存不足待采购' } })
+      : null);
+  if (shopping) {
+    for (const item of items) await mergeShortage(tx, shopping.id, item);
+    await tx.shoppingList.update({ where: { id: shopping.id }, data: { version: { increment: 1 } } });
+  }
+
+  for (const ingredientId of new Set(
+    items.map((item) => item.ingredientId).filter((id): id is string => Boolean(id))
+  )) {
+    const ingredient = await tx.ingredient.findUnique({
+      where: { id: ingredientId },
+      include: { inventoryBatches: { where: { deletedAt: null } } }
+    });
+    if (!ingredient) continue;
+    const quantity = ingredient.inventoryBatches.reduce(
+      (sum, batch) => sum + (convertQuantity(batch.quantity, batch.unit, ingredient.unit) ?? 0),
+      0
+    );
+    await tx.ingredient.update({ where: { id: ingredient.id }, data: { quantity, version: { increment: 1 } } });
+  }
+
+  return { logIds, shoppingListId: shopping?.id ?? null };
+}
+
 export async function confirmConsumption(
   database: PrismaClient,
   input: {
@@ -223,79 +334,101 @@ export async function confirmConsumption(
     if (preview.items.some((item) => item.requiresManualSelection))
       throw httpError(422, '存在多个可用库存批次，请先明确选择批次');
 
-    const logIds: string[] = [];
-    for (const item of preview.items) {
-      for (const allocation of item.allocations) {
-        const batch = await tx.inventoryBatch.findUnique({
-          where: { id: allocation.batchId },
-          include: { ingredient: true }
-        });
-        if (!batch || batch.deletedAt || batch.version !== allocation.batchVersion)
-          throw httpError(409, '库存批次已变化，请重新预览');
-        const after = round(batch.quantity - allocation.quantity);
-        if (after < 0) throw httpError(409, '库存数量不足，请重新预览');
-        const updated = await tx.inventoryBatch.updateMany({
-          where: { id: batch.id, version: batch.version, deletedAt: null, quantity: { gte: allocation.quantity } },
-          data: { quantity: after, version: { increment: 1 } }
-        });
-        if (!updated.count) throw httpError(409, '库存批次已变化，请重新预览');
-        const log = await tx.inventoryLog.create({
-          data: {
-            ingredientId: batch.ingredientId,
-            ingredientNameSnapshot: batch.ingredient.name,
-            inventoryBatchId: batch.id,
-            beforeQuantity: batch.quantity,
-            changeQuantity: -allocation.quantity,
-            afterQuantity: after,
-            unit: batch.unit,
-            changeType: 'COOK_DEDUCT',
-            relatedRecordId: input.recordId
-          }
-        });
-        logIds.push(log.id);
-      }
-    }
-
-    const active = preview.items.some((item) => item.shortageQuantity > 0)
-      ? await tx.shoppingList.findFirst({
-          where: { deletedAt: null, status: 'ACTIVE' },
-          orderBy: { updatedAt: 'desc' }
-        })
-      : null;
-    const shopping =
-      active ??
-      (preview.items.some((item) => item.shortageQuantity > 0)
-        ? await tx.shoppingList.create({ data: { name: '库存不足待采购' } })
-        : null);
-    if (shopping) {
-      for (const item of preview.items) await mergeShortage(tx, shopping.id, item);
-      await tx.shoppingList.update({ where: { id: shopping.id }, data: { version: { increment: 1 } } });
-    }
+    const { logIds, shoppingListId } = await applyConsumption(tx, preview.items, input.recordId);
 
     const record = await tx.mealRecord.update({
       where: { id: input.recordId },
       data: { status: 'CONFIRMED', confirmedAt: new Date(), version: { increment: 1 } }
     });
-    for (const ingredientId of new Set(
-      preview.items.map((item) => item.ingredientId).filter((id): id is string => Boolean(id))
-    )) {
-      const ingredient = await tx.ingredient.findUnique({
-        where: { id: ingredientId },
-        include: { inventoryBatches: { where: { deletedAt: null } } }
-      });
-      if (!ingredient) continue;
-      const quantity = ingredient.inventoryBatches.reduce(
-        (sum, batch) => sum + (convertQuantity(batch.quantity, batch.unit, ingredient.unit) ?? 0),
-        0
-      );
-      await tx.ingredient.update({ where: { id: ingredient.id }, data: { quantity, version: { increment: 1 } } });
-    }
     const result = {
       operationId: input.operationId,
       recordId: record.id,
       recordVersion: record.version,
       inventoryLogIds: logIds,
-      shoppingListId: shopping?.id ?? null,
+      shoppingListId,
+      repeated: false
+    };
+    await tx.consumptionOperation.create({
+      data: {
+        id: input.operationId,
+        mealRecordId: record.id,
+        previewHash: input.previewToken,
+        resultJson: JSON.stringify(result)
+      }
+    });
+    return result;
+  });
+}
+
+export async function getImmediateMealPreview(
+  database: PrismaClient,
+  input: ImmediateMealInput & { recipeId: string; selections?: BatchSelections }
+) {
+  const recipe = await database.recipe.findFirst({
+    where: { id: input.recipeId, deletedAt: null },
+    include: { ingredients: { orderBy: { sortOrder: 'asc' } } }
+  });
+  if (!recipe) throw httpError(404, '菜谱不存在');
+  const dinerCount = Math.max(input.dinerIds?.length ?? 1, 1);
+  const items = await buildPreviewForRecipe(database, recipe, dinerCount, input.selections);
+  const previewToken = previewHash({ recipeId: input.recipeId, dinerCount, items });
+  return { recipeId: input.recipeId, dinerCount, previewToken, items };
+}
+
+export async function confirmImmediateMeal(
+  database: PrismaClient,
+  input: ImmediateMealInput & {
+    recipeId: string;
+    previewToken: string;
+    operationId: string;
+    selections?: BatchSelections;
+  }
+) {
+  if (!input.operationId?.trim()) throw httpError(400, 'operationId 不能为空');
+  return database.$transaction(async (tx) => {
+    const previous = await tx.consumptionOperation.findUnique({ where: { id: input.operationId } });
+    if (previous) {
+      if (previous.previewHash !== input.previewToken) throw httpError(409, 'operationId 已用于另一笔请求');
+      const result = JSON.parse(previous.resultJson) as Record<string, unknown>;
+      return { ...result, repeated: true };
+    }
+    const recipe = await tx.recipe.findFirst({
+      where: { id: input.recipeId, deletedAt: null },
+      include: { ingredients: { orderBy: { sortOrder: 'asc' } } }
+    });
+    if (!recipe) throw httpError(404, '菜谱不存在');
+    const dinerCount = Math.max(input.dinerIds?.length ?? 1, 1);
+    const items = await buildPreviewForRecipe(tx, recipe, dinerCount, input.selections);
+    const previewToken = previewHash({ recipeId: input.recipeId, dinerCount, items });
+    if (previewToken !== input.previewToken) throw httpError(409, '库存已变化，请重新预览后确认');
+    if (items.some((item) => item.requiresManualSelection))
+      throw httpError(422, '存在多个可用库存批次，请先明确选择批次');
+
+    // 真正确认时才创建正式记录，避免留下 DRAFT 幽灵记录
+    const record = await tx.mealRecord.create({
+      data: {
+        recordDate: input.recordDate,
+        recordTime: input.recordTime ?? null,
+        mealType: input.mealType,
+        sourceType: input.sourceType,
+        status: 'CONFIRMED',
+        confirmedAt: new Date(),
+        notes: input.notes ?? null,
+        items: {
+          create: [{ itemType: 'RECIPE', recipeId: input.recipeId, mealRole: 'MAIN', sortOrder: 0 }]
+        },
+        diners: { create: [...new Set(input.dinerIds ?? [])].map((dinerId) => ({ dinerId })) }
+      }
+    });
+
+    const { logIds, shoppingListId } = await applyConsumption(tx, items, record.id);
+
+    const result = {
+      operationId: input.operationId,
+      recordId: record.id,
+      recordVersion: record.version,
+      inventoryLogIds: logIds,
+      shoppingListId,
       repeated: false
     };
     await tx.consumptionOperation.create({

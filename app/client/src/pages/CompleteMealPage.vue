@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { ConsumptionPreviewDto } from '../../../shared/types';
+import type { ConsumptionPreviewItemDto, ImmediateMealPreviewDto } from '../../../shared/types';
+import CookingView from '../components/CookingView.vue';
 import AppButton from '../components/ui/AppButton.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
@@ -13,6 +14,7 @@ interface RecipeBrief {
   name: string;
   imagePath: string | null;
   cookingTimeMinutes: number | null;
+  difficulty: string | null;
   servings: number | null;
   ingredients: Array<{
     id: string;
@@ -22,6 +24,8 @@ interface RecipeBrief {
     optional: boolean;
     ingredientId: string | null;
   }>;
+  steps: Array<{ id: string; stepNo: number; content: string }>;
+  tools: Array<{ id: string; toolNameSnapshot: string; required: boolean }>;
 }
 
 type PageState = 'prompt' | 'loading' | 'error' | 'preview' | 'success';
@@ -33,16 +37,14 @@ const recipe = ref<RecipeBrief | null>(null);
 const pageState = ref<PageState>('prompt');
 const loading = ref(false);
 const pageError = ref('');
-const preview = ref<ConsumptionPreviewDto | null>(null);
+const preview = ref<ImmediateMealPreviewDto | null>(null);
 const successMessage = ref('');
+const cookingOpen = ref(false);
 
 // Form fields with auto-detected defaults
 const mealType = ref(inferMealType());
 const sourceType = ref('HOMEMADE');
 const notes = ref('');
-
-// Track the created record for confirm step
-const createdRecord = ref<{ id: string; version: number } | null>(null);
 const usedSelections = ref<Record<string, string[]>>({});
 
 function inferMealType(): string {
@@ -75,50 +77,50 @@ async function loadRecipe(): Promise<void> {
   }
 }
 
+/**
+ * 获取库存预览：直接在服务端内存计算，不创建任何记录。
+ * 用户取消或离开页面都不会留下未完成的记录。
+ */
 async function startEat(): Promise<void> {
   if (!recipe.value) return;
   pageState.value = 'loading';
   pageError.value = '';
 
   try {
-    const recordPayload: Record<string, unknown> = {
-      recordDate: new Date().toLocaleDateString('sv-SE'),
-      mealType: mealType.value,
-      sourceType: sourceType.value,
-      notes: notes.value || null,
-      items: [
-        {
-          itemType: 'RECIPE',
-          recipeId: recipe.value.id,
-          mealRole: 'MAIN',
-          sortOrder: 0
-        }
-      ]
-    };
-
     if (hasStructuredIngredients()) {
-      // Path A: structured ingredients → DRAFT → preview → confirm
-      recordPayload.status = 'DRAFT';
-      const record = await apiRequest<{ id: string; version: number }>('/records', {
+      // Path A: structured ingredients → in-memory preview → 确认时才创建记录
+      preview.value = await apiRequest<ImmediateMealPreviewDto>('/consumption/preview-from-recipe', {
         method: 'POST',
-        body: JSON.stringify(recordPayload)
+        body: JSON.stringify({
+          recipeId: recipe.value.id,
+          mealType: mealType.value,
+          sourceType: sourceType.value,
+          recordDate: new Date().toLocaleDateString('sv-SE'),
+          notes: notes.value || null
+        })
       });
-      createdRecord.value = { id: record.id, version: record.version };
-
-      // Get consumption preview
-      const consumptionPreview = await apiRequest<ConsumptionPreviewDto>(`/records/${record.id}/consumption-preview`, {
-        method: 'POST',
-        body: JSON.stringify({ recordVersion: record.version })
-      });
-      preview.value = consumptionPreview;
+      usedSelections.value = {};
       pageState.value = 'preview';
     } else {
-      // Path B: no structured ingredients → CONFIRMED directly
+      // Path B: no structured ingredients → 直接创建正式记录
       await apiRequest('/records', {
         method: 'POST',
-        body: JSON.stringify(recordPayload)
+        body: JSON.stringify({
+          recordDate: new Date().toLocaleDateString('sv-SE'),
+          mealType: mealType.value,
+          sourceType: sourceType.value,
+          notes: notes.value || null,
+          items: [
+            {
+              itemType: 'RECIPE',
+              recipeId: recipe.value.id,
+              mealRole: 'MAIN',
+              sortOrder: 0
+            }
+          ]
+        })
       });
-      successMessage.value = '记录成功！';
+      successMessage.value = '这餐已记录';
       pageState.value = 'success';
     }
   } catch (e) {
@@ -136,13 +138,17 @@ function toggleBatch(recipeIngredientId: string, batchId: string): void {
 }
 
 async function refreshPreview(): Promise<void> {
-  if (!createdRecord.value || !preview.value) return;
+  if (!recipe.value || !preview.value) return;
   pageState.value = 'loading';
   try {
-    preview.value = await apiRequest<ConsumptionPreviewDto>(`/records/${createdRecord.value.id}/consumption-preview`, {
+    preview.value = await apiRequest<ImmediateMealPreviewDto>('/consumption/preview-from-recipe', {
       method: 'POST',
       body: JSON.stringify({
-        recordVersion: createdRecord.value.version,
+        recipeId: recipe.value.id,
+        mealType: mealType.value,
+        sourceType: sourceType.value,
+        recordDate: new Date().toLocaleDateString('sv-SE'),
+        notes: notes.value || null,
         selections: usedSelections.value
       })
     });
@@ -164,20 +170,29 @@ async function useSuggestedBatches(): Promise<void> {
   await refreshPreview();
 }
 
+/** 是否有库存缺口（缺料或未关联库存食材） */
+function hasShortage(): boolean {
+  return preview.value?.items.some((item) => item.shortageQuantity > 0) ?? false;
+}
+
 async function confirmConsumption(): Promise<void> {
-  if (!preview.value || !createdRecord.value) return;
+  if (!recipe.value || !preview.value) return;
   pageState.value = 'loading';
   try {
-    await apiRequest(`/records/${createdRecord.value.id}/confirm-consumption`, {
+    await apiRequest('/consumption/confirm-from-recipe', {
       method: 'POST',
       body: JSON.stringify({
-        recordVersion: createdRecord.value.version,
+        recipeId: recipe.value.id,
+        mealType: mealType.value,
+        sourceType: sourceType.value,
+        recordDate: new Date().toLocaleDateString('sv-SE'),
+        notes: notes.value || null,
         previewToken: preview.value.previewToken,
         operationId: crypto.randomUUID(),
         selections: usedSelections.value
       })
     });
-    successMessage.value = '记录成功！';
+    successMessage.value = '这餐已记录';
     pageState.value = 'success';
   } catch (e) {
     if (e instanceof ApiRequestError && e.status === 409) {
@@ -195,6 +210,17 @@ function goBack(): void {
   } else {
     router.push({ name: 'home' });
   }
+}
+
+function formatPreviewAmount(item: ConsumptionPreviewItemDto): string {
+  const allocated = item.allocations.reduce((sum, a) => sum + (a.quantity ?? 0), 0);
+  if (allocated > 0) {
+    return `可从库存扣减 ${allocated} ${displayLabel(item.unit)}${item.shortageQuantity > 0 ? `，缺 ${item.shortageQuantity}` : ''}`;
+  }
+  if (!item.ingredientId && item.shortageQuantity > 0) {
+    return `未关联库存食材（需要 ${item.requiredQuantity} ${displayLabel(item.unit)}，不会自动扣减）`;
+  }
+  return `需要 ${item.requiredQuantity} ${displayLabel(item.unit)}`;
 }
 
 onMounted(() => {
@@ -219,7 +245,7 @@ onMounted(() => {
     <template v-if="recipe && pageState === 'prompt'">
       <header class="business-hero">
         <div>
-          <p class="business-eyebrow">完成这一餐</p>
+          <p class="business-eyebrow">还差一步</p>
           <h1>{{ recipe.name }}</h1>
           <p v-if="recipe.servings">{{ recipe.servings }} 份</p>
         </div>
@@ -251,13 +277,18 @@ onMounted(() => {
         </label>
 
         <div class="complete-meal-actions">
-          <AppButton variant="ghost" @click="goBack">返回</AppButton>
-          <AppButton @click="startEat">就吃这个</AppButton>
+          <AppButton variant="ghost" @click="goBack">取消</AppButton>
+          <AppButton @click="startEat">确认并完成</AppButton>
+        </div>
+
+        <div v-if="hasStructuredIngredients()" class="complete-meal-cooking-link">
+          <AppButton variant="secondary" @click="cookingOpen = true">开始制作这个菜谱</AppButton>
+          <span class="complete-meal-cooking-link__hint">可查看食材、步骤与所需工具</span>
         </div>
       </div>
     </template>
 
-    <!-- Loading: creating record / confirming -->
+    <!-- Loading: preview / confirming -->
     <div v-if="pageState === 'loading'" class="app-card complete-meal-loading">
       <p>处理中…</p>
       <AppSkeleton :lines="3" />
@@ -267,14 +298,14 @@ onMounted(() => {
     <template v-if="recipe && pageState === 'preview' && preview">
       <header class="business-hero">
         <div>
-          <p class="business-eyebrow">完成这一餐</p>
+          <p class="business-eyebrow">还差一步</p>
           <h1>{{ recipe.name }}</h1>
         </div>
       </header>
 
       <div class="app-card">
-        <h2 class="section-title">将扣减的食材</h2>
-        <p class="preview-hint">以下食材将从库存中扣减，预览不会修改库存。</p>
+        <h2 class="section-title">库存核对</h2>
+        <p class="preview-hint">确认前不会扣减任何库存；有缺料时会明确提示，不会静默扣减。</p>
 
         <div class="preview-items">
           <article
@@ -288,7 +319,7 @@ onMounted(() => {
           >
             <div class="preview-item__head">
               <strong>{{ row.ingredientName }}</strong>
-              <span class="preview-item__required"> 需要 {{ row.requiredQuantity }} {{ displayLabel(row.unit) }} </span>
+              <span class="preview-item__required"> {{ formatPreviewAmount(row) }} </span>
             </div>
 
             <!-- Allocations -->
@@ -303,7 +334,7 @@ onMounted(() => {
             <div v-if="row.shortageQuantity > 0" class="preview-item__shortage">
               <span class="preview-item__label">库存不足：</span>
               <span>缺少 {{ row.shortageQuantity }} {{ displayLabel(row.unit) }}</span>
-              <span v-if="!row.ingredientId" class="preview-item__note">（未关联库存食材，无法自动扣减）</span>
+              <span v-if="!row.ingredientId" class="preview-item__note">（未关联库存食材，不会自动扣减）</span>
             </div>
 
             <!-- Manual batch selection -->
@@ -345,10 +376,16 @@ onMounted(() => {
           >
             按选择重新预览
           </AppButton>
-          <AppButton v-if="!preview.items.some((x) => x.requiresManualSelection)" @click="confirmConsumption">
-            确认扣减并完成
+          <AppButton
+            v-if="!preview.items.some((x) => x.requiresManualSelection)"
+            @click="confirmConsumption"
+          >
+            {{ hasShortage() ? '按缺少食材完成' : '确认并完成' }}
           </AppButton>
         </div>
+        <p v-if="hasShortage()" class="preview-note">
+          本次不会扣减缺少的食材，仅记录这一餐；缺料会加入购物清单。
+        </p>
       </div>
     </template>
 
@@ -366,10 +403,12 @@ onMounted(() => {
       <h2>{{ successMessage }}</h2>
       <p>这餐已经记下来了，可以去首页或日历查看。</p>
       <div class="complete-meal-actions">
-        <AppButton @click="goBack">返回菜谱</AppButton>
+        <AppButton @click="goBack">回到菜谱</AppButton>
         <AppButton variant="secondary" @click="router.push({ name: 'home' })">回首页</AppButton>
       </div>
     </div>
+
+    <CookingView v-model="cookingOpen" :recipe="recipe" />
   </section>
 </template>
 
@@ -385,6 +424,19 @@ onMounted(() => {
   gap: var(--space-3);
   justify-content: flex-end;
   margin-top: var(--space-4);
+}
+
+.complete-meal-cooking-link {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--color-border);
+}
+
+.complete-meal-cooking-link__hint {
+  color: var(--color-text-muted);
+  font-size: 12px;
 }
 
 .complete-meal-loading {
@@ -419,6 +471,16 @@ onMounted(() => {
   color: var(--color-text-secondary, #666);
   font-size: 13px;
   margin: 0 0 var(--space-4);
+}
+
+.preview-note {
+  margin: var(--space-4) 0 0;
+  padding: var(--space-3);
+  border-radius: var(--radius-tag);
+  background: #fff7f0;
+  border: 1px solid #ffd6a5;
+  color: #e65100;
+  font-size: 13px;
 }
 
 .preview-items {
