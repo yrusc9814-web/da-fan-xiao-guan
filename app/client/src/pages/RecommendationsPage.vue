@@ -154,27 +154,46 @@ async function toggleCandidateEnabled(recipe: {
 }
 
 // 转盘
-async function spin() {
+async function spin(excludeId?: string) {
   if (spinning.value) return;
   spinning.value = true;
   resultReady.value = false;
   spinResult.value = null;
   spinHistoryId.value = '';
   try {
-    const data = await apiRequest<{
-      historyId: string;
-      results: Array<{ resultType: string; resultId: string; title: string }>;
-    }>('/recommendations/random', {
-      method: 'POST',
-      body: JSON.stringify({ mealType: mealType.value, dinerIds: [...selectedDinerIds.value] })
-    });
-    const result = data.results[0];
+    // 「换一个」重试：如果排除当前结果后仍可能得到相同结果，重试最多 4 次
+    const maxRetries = excludeId ? 4 : 1;
+    let result: { resultType: string; resultId: string; title: string } | undefined;
+    let lastHistoryId = '';
+    for (let attempt = 0; attempt < maxRetries; attempt++) {
+      const data = await apiRequest<{
+        historyId: string;
+        results: Array<{ resultType: string; resultId: string; title: string }>;
+      }>('/recommendations/random', {
+        method: 'POST',
+        body: JSON.stringify({ mealType: mealType.value, dinerIds: [...selectedDinerIds.value] })
+      });
+      const candidate = data.results[0];
+      if (!candidate) {
+        spinning.value = false;
+        error.value = '候选池暂无可用结果，请先调整候选菜或餐次。';
+        return;
+      }
+      lastHistoryId = data.historyId;
+      // 「换一个」语义：尽最大努力排除当前结果
+      if (excludeId && candidate.resultId === excludeId && attempt < maxRetries - 1) {
+        await new Promise(resolve => setTimeout(resolve, 200 + attempt * 100));
+        continue;
+      }
+      result = candidate;
+      break;
+    }
     if (!result) {
       spinning.value = false;
-      error.value = '候选池暂无可用结果，请先调整候选菜或餐次。';
+      error.value = '找不到与当前不同的候选，请调整候选池。';
       return;
     }
-    spinHistoryId.value = data.historyId;
+    spinHistoryId.value = lastHistoryId;
     const names = candidateRecipes.value.filter((r) => r.enabledForRecommendation).map((r) => r.name);
     if (names.length <= 1) {
       spinning.value = false;
@@ -187,6 +206,7 @@ async function spin() {
     function animate() {
       const elapsed = Date.now() - startTime;
       if (elapsed >= duration) {
+        if (!result) return; // 完成时动画结束但没有结果——防御
         cyclingName.value = result.title;
         spinning.value = false;
         resultReady.value = true;
@@ -204,11 +224,12 @@ async function spin() {
   }
 }
 async function reroll() {
+  const excluded = spinResult.value?.resultId;
   if (candidateRecipes.value.filter((r) => r.enabledForRecommendation).length <= 1) {
     error.value = '候选池只有一道菜，无法换一个，请先增加更多候选菜谱。';
     return;
   }
-  await spin();
+  await spin(excluded);
 }
 function eatThis(recipeId: string) {
   router.push({ name: 'complete-meal', query: { recipeId } });
