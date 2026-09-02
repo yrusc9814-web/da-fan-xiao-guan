@@ -1,3 +1,30 @@
+<script lang="ts">
+export interface SpinCandidate {
+  id: string;
+  name: string;
+  enabledForRecommendation: boolean;
+  version: number;
+}
+export interface SpinResultLike {
+  resultType: string;
+  resultId: string;
+  title: string;
+}
+/**
+ * 「换一个」确定性兜底：从参与随机的候选池中选取一个与当前结果不同的候选。
+ * - 候选池存在 != currentId 的候选时，保证返回不同的候选（不依赖概率）。
+ * - 候选池只有 1 个（或没有别的候选）时返回 null，由调用方给出「暂时没有别的候选」语义。
+ */
+export function pickDifferentCandidate(
+  candidates: SpinCandidate[],
+  currentId: string | undefined
+): SpinResultLike | null {
+  const enabled = candidates.filter((r) => r.enabledForRecommendation);
+  const other = enabled.find((r) => r.id !== currentId);
+  if (!other) return null;
+  return { resultType: 'RECIPE', resultId: other.id, title: other.name };
+}
+</script>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
@@ -161,7 +188,7 @@ async function spin(excludeId?: string) {
   spinResult.value = null;
   spinHistoryId.value = '';
   try {
-    // 「换一个」重试：如果排除当前结果后仍可能得到相同结果，重试最多 4 次
+    // 「换一个」重试：不超过 4 次 API 请求
     const maxRetries = excludeId ? 4 : 1;
     let result: { resultType: string; resultId: string; title: string } | undefined;
     let lastHistoryId = '';
@@ -180,20 +207,33 @@ async function spin(excludeId?: string) {
         return;
       }
       lastHistoryId = data.historyId;
-      // 「换一个」语义：尽最大努力排除当前结果
+      // 跳过与当前结果相同的候选（仅前 3 次重试）
       if (excludeId && candidate.resultId === excludeId && attempt < maxRetries - 1) {
-        await new Promise(resolve => setTimeout(resolve, 200 + attempt * 100));
+        await new Promise((resolve) => setTimeout(resolve, 200 + attempt * 100));
         continue;
       }
       result = candidate;
       break;
     }
+    // 确定性 fallback：API 重试全部返回相同结果时，从候选池取一个不同的候选
+    let usedFallback = false;
+    if (result && excludeId && result.resultId === excludeId) {
+      const fallback = pickDifferentCandidate(candidateRecipes.value, excludeId);
+      if (!fallback) {
+        spinning.value = false;
+        error.value = '暂时没有别的候选：候选池中没有与当前不同的菜谱，请先调整候选菜或餐次。';
+        return;
+      }
+      // fallback 结果来自候选池而非本次服务端推荐，无对应 historyId，清空以防「加入计划」误加当前结果
+      result = fallback;
+      usedFallback = true;
+    }
     if (!result) {
       spinning.value = false;
-      error.value = '找不到与当前不同的候选，请调整候选池。';
+      error.value = '暂时没有别的候选：候选池中没有与当前不同的菜谱，请先调整候选菜或餐次。';
       return;
     }
-    spinHistoryId.value = lastHistoryId;
+    spinHistoryId.value = usedFallback ? '' : lastHistoryId;
     const names = candidateRecipes.value.filter((r) => r.enabledForRecommendation).map((r) => r.name);
     if (names.length <= 1) {
       spinning.value = false;
