@@ -376,16 +376,11 @@ onMounted(() => {
           >
             按选择重新预览
           </AppButton>
-          <AppButton
-            v-if="!preview.items.some((x) => x.requiresManualSelection)"
-            @click="confirmConsumption"
-          >
+          <AppButton v-if="!preview.items.some((x) => x.requiresManualSelection)" @click="confirmConsumption">
             {{ hasShortage() ? '按缺少食材完成' : '确认并完成' }}
           </AppButton>
         </div>
-        <p v-if="hasShortage()" class="preview-note">
-          本次不会扣减缺少的食材，仅记录这一餐；缺料会加入购物清单。
-        </p>
+        <p v-if="hasShortage()" class="preview-note">本次不会扣减缺少的食材，仅记录这一餐；缺料会加入购物清单。</p>
       </div>
     </template>
 
