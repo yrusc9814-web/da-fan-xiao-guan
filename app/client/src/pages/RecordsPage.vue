@@ -331,7 +331,7 @@ onUnmounted(() => {
       <div>
         <p class="business-eyebrow">Meal journal</p>
         <h1>饮食日记</h1>
-        <p>草稿经库存预览与确认后，才会进入正式统计。</p>
+        <p>待完成的餐次完成记录后会计入统计。</p>
       </div>
       <AppButton @click="showForm = !showForm">{{ showForm ? '收起' : '手动记录' }}</AppButton>
     </header>
@@ -401,8 +401,8 @@ onUnmounted(() => {
         ><span class="app-field__label">状态</span
         ><select v-model="status" @change="() => load(true)">
           <option value="">全部</option>
-          <option value="DRAFT">草稿</option>
-          <option value="CONFIRMED">已确认</option>
+          <option value="DRAFT">待完成</option>
+          <option value="CONFIRMED">已记录</option>
         </select></label
       >
     </div>

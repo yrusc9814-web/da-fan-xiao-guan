@@ -61,7 +61,7 @@ onMounted(load);
       <div>
         <p class="business-eyebrow">Calendar</p>
         <h1>饮食日历</h1>
-        <p>计划、正式记录与草稿分别标记，同一天可以同时出现。</p>
+        <p>计划、已记录与待完成的餐次会分别标记，同一天可以同时出现。</p>
       </div>
       <div class="calendar-nav">
         <AppButton variant="ghost" @click="move(-1)">上个月</AppButton><strong>{{ range.label }}</strong
@@ -90,7 +90,7 @@ onMounted(load);
           ><span v-if="marker(cell.date)?.hasRecords"
             >记录 {{ marker(cell.date)?.records.filter((x) => x.status === 'CONFIRMED').length }}</span
           ><span v-if="marker(cell.date)?.hasDrafts"
-            >草稿 {{ marker(cell.date)?.records.filter((x) => x.status === 'DRAFT').length }}</span
+            >待完成 {{ marker(cell.date)?.records.filter((x) => x.status === 'DRAFT').length }}</span
           >
         </div></RouterLink
       >
