@@ -2,7 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
-import RecommendationsPage from '../src/pages/RecommendationsPage.vue';
+import RecommendationsPage, { pickDifferentCandidate, type SpinCandidate } from '../src/pages/RecommendationsPage.vue';
 
 const diners = [
   { id: 'diner-1', name: '验收-张三' },
@@ -70,6 +70,168 @@ function postBody(fetchMock: ReturnType<typeof vi.fn>, predicate: (path: string)
 
 afterEach(() => {
   vi.unstubAllGlobals();
+});
+
+function candidate(id: string, name: string, enabled = true): SpinCandidate {
+  return { id, name, enabledForRecommendation: enabled, version: 1 };
+}
+
+describe('「换一个」确定性兜底 pickDifferentCandidate', () => {
+  it('2 候选（当前=A）：必返回 B，与概率无关', () => {
+    const result = pickDifferentCandidate([candidate('a', '菜A'), candidate('b', '菜B')], 'a');
+    expect(result).toEqual({ resultType: 'RECIPE', resultId: 'b', title: '菜B' });
+  });
+
+  it('多候选（当前=A）+ A 权重极高：仍保证返回非 A 候选', () => {
+    // 候选池顺序模拟 A 优先（如带权排序），兜底逻辑必须无视顺序挑选非 A
+    const pool = [candidate('a', '菜A'), candidate('b', '菜B'), candidate('c', '菜C'), candidate('d', '菜D')];
+    const result = pickDifferentCandidate(pool, 'a');
+    expect(result).toBeTruthy();
+    expect(result!.resultId).not.toBe('a');
+  });
+
+  it('候选池只有 1 个（当前=A）：返回 null，语义为暂时没有别的候选', () => {
+    expect(pickDifferentCandidate([candidate('a', '菜A')], 'a')).toBeNull();
+  });
+
+  it('当前结果不在候选池：任意启用候选都是不同结果，直接返回', () => {
+    expect(pickDifferentCandidate([candidate('a', '菜A')], 'x')).toEqual({
+      resultType: 'RECIPE',
+      resultId: 'a',
+      title: '菜A'
+    });
+  });
+
+  it('停用（不参与推荐）的候选不计入可选池', () => {
+    const pool = [candidate('a', '菜A'), candidate('b', '菜B', false)];
+    expect(pickDifferentCandidate(pool, 'a')).toBeNull();
+  });
+
+  it('候选池为空：返回 null', () => {
+    expect(pickDifferentCandidate([], 'a')).toBeNull();
+  });
+});
+
+describe('「换一个」确定性接入转盘（不依赖随机）', () => {
+  it('候选池 2 道菜、API 恒返回当前结果：点「换一个」必得另一道菜', async () => {
+    // /recipes 返回 2 道启用候选；/recommendations/random 恒定返回 菜A（模拟权重极高）
+    const alwaysA = vi.fn().mockImplementation((input: unknown) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith('/diners')) return Promise.resolve(jsonResponse({ items: diners }));
+      if (path.endsWith('/recipes'))
+        return Promise.resolve(
+          jsonResponse({
+            items: [
+              { id: 'a', name: '菜A', enabledForRecommendation: true, version: 1 },
+              { id: 'b', name: '菜B', enabledForRecommendation: true, version: 1 }
+            ]
+          })
+        );
+      if (path.endsWith('/recommendations/random'))
+        return Promise.resolve(
+          jsonResponse({
+            historyId: 'history-a',
+            results: [
+              {
+                resultType: 'RECIPE',
+                resultId: 'a',
+                title: '菜A',
+                reason: '测试',
+                missingIngredients: []
+              }
+            ]
+          })
+        );
+      return Promise.resolve(jsonResponse({ items: [] }));
+    });
+    vi.stubGlobal('fetch', alwaysA);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/recommendations', component: RecommendationsPage }]
+    });
+    await router.push('/recommendations?mode=random');
+    const wrapper = mount(RecommendationsPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const clickButton = async (text: string) => {
+      const btn = wrapper.findAll('button').find((b) => b.text().includes(text));
+      expect(btn, `未找到按钮 ${text}`).toBeTruthy();
+      await btn!.trigger('click');
+    };
+
+    // 1. 转一下：得到菜A
+    await clickButton('转一下');
+    await flushPromises();
+    await new Promise((resolve) => setTimeout(resolve, 1200)); // 动画 600ms
+    await flushPromises();
+    expect(wrapper.find('.spin-wheel__item--result').text()).toBe('菜A');
+
+    // 2. 换一个：API 4 次重试都返回菜A，必须走确定性兜底换成菜B
+    await clickButton('换一个');
+    await flushPromises();
+    await new Promise((resolve) => setTimeout(resolve, 2600)); // 3 次重试延迟(200+300+400) + 动画 600ms
+    await flushPromises();
+    expect(wrapper.find('.spin-wheel__item--result').text()).toBe('菜B');
+
+    // 3. 随机 API 调用计数：初次 1 次 + 换一个 4 次 = 5 次，全部返回菜A
+    const randomPosts = alwaysA.mock.calls.filter(
+      ([input, init]) => (init?.method ?? 'GET') === 'POST' && String(input).includes('/recommendations/random')
+    );
+    expect(randomPosts).toHaveLength(5);
+  });
+
+  it('候选池仅 1 道启用候选：点「换一个」明确提示没有别的候选', async () => {
+    const single = vi.fn().mockImplementation((input: unknown) => {
+      const path = new URL(String(input)).pathname;
+      if (path.endsWith('/diners')) return Promise.resolve(jsonResponse({ items: diners }));
+      if (path.endsWith('/recipes'))
+        return Promise.resolve(
+          jsonResponse({
+            items: [{ id: 'a', name: '菜A', enabledForRecommendation: true, version: 1 }]
+          })
+        );
+      if (path.endsWith('/recommendations/random'))
+        return Promise.resolve(
+          jsonResponse({
+            historyId: 'history-a',
+            results: [
+              {
+                resultType: 'RECIPE',
+                resultId: 'a',
+                title: '菜A',
+                reason: '测试',
+                missingIngredients: []
+              }
+            ]
+          })
+        );
+      return Promise.resolve(jsonResponse({ items: [] }));
+    });
+    vi.stubGlobal('fetch', single);
+    const router = createRouter({
+      history: createMemoryHistory(),
+      routes: [{ path: '/recommendations', component: RecommendationsPage }]
+    });
+    await router.push('/recommendations?mode=random');
+    const wrapper = mount(RecommendationsPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const clickButton = async (text: string) => {
+      const btn = wrapper.findAll('button').find((b) => b.text().includes(text));
+      expect(btn, `未找到按钮 ${text}`).toBeTruthy();
+      await btn!.trigger('click');
+    };
+
+    await clickButton('转一下');
+    await flushPromises();
+    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await flushPromises();
+    expect(wrapper.find('.spin-wheel__item--result').text()).toBe('菜A');
+
+    await clickButton('换一个');
+    await flushPromises();
+    expect(wrapper.text()).toContain('候选池只有一道菜');
+  });
 });
 
 describe('推荐页首页入口', () => {
