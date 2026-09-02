@@ -49,7 +49,7 @@ onMounted(load);
       <div>
         <p class="business-eyebrow">Insights</p>
         <h1>统计分析</h1>
-        <p>仅汇总已确认的饮食记录，草稿不会污染正式统计。</p>
+        <p>已完成记录的餐次将进入统计。</p>
       </div>
       <div class="calendar-nav">
         <select v-model="range" class="stats-select" aria-label="统计时间范围" @change="load">
