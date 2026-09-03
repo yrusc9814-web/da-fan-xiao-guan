@@ -329,7 +329,7 @@ onUnmounted(() => {
   <section class="business-page">
     <header class="business-hero">
       <div>
-        <p class="business-eyebrow">Meal journal</p>
+        <p class="business-eyebrow">记录每一餐</p>
         <h1>饮食日记</h1>
         <p>待完成的餐次完成记录后会计入统计。</p>
       </div>
@@ -464,7 +464,7 @@ onUnmounted(() => {
       "
     >
       <section v-if="preview" class="consumption-content">
-        <p>预览不会修改库存；确认后库存扣减、缺料购物清单与记录状态会在同一事务更新。</p>
+        <p>预览不会修改库存。确认后才会正式扣减库存，缺少的食材会自动加入购物清单。</p>
         <div class="consumption-items">
           <article v-for="row in preview.items" :key="row.recipeIngredientId">
             <strong>{{ row.ingredientName }}</strong

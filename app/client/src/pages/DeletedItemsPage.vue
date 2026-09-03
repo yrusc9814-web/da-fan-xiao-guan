@@ -54,9 +54,9 @@ onMounted(load);
   <section class="business-page">
     <header class="business-hero">
       <div>
-        <p class="business-eyebrow">Recently deleted</p>
+        <p class="business-eyebrow">回收站</p>
         <h1>最近删除</h1>
-        <p>支持的业务数据保留 30 天；恢复会原子清除删除标记并递增版本。</p>
+        <p>删除的菜谱、食材、店铺等会在这里保留 30 天，期间可以随时找回。</p>
       </div>
     </header>
     <p v-if="message" class="business-success">{{ message }}</p>

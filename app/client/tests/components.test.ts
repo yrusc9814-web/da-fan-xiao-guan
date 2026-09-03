@@ -142,7 +142,7 @@ describe('public component states', () => {
     await flushPromises();
 
     expect(wrapper.emitted('unlocked')).toBeUndefined();
-    expect(wrapper.text()).toContain('请输入本地 PIN');
+    expect(wrapper.text()).toContain('请输入访问 PIN');
     expect(localStorage.getItem('dafan-pin-token')).toBeNull();
   });
   it('disables a loading button and exposes busy state', () => {

@@ -132,9 +132,9 @@ onMounted(load);
   <section class="business-page">
     <header class="business-hero">
       <div>
-        <p class="business-eyebrow">Local settings</p>
+        <p class="business-eyebrow">偏好与数据</p>
         <h1>系统设置</h1>
-        <p>正式版固定使用 8787 端口；其余设置以 SQLite 为运行时事实源。</p>
+        <p>在这里管理你的昵称、推荐偏好与数据安全。修改后记得保存。</p>
       </div>
       <AppButton :loading="saving" @click="save">保存设置</AppButton>
     </header>
@@ -143,20 +143,20 @@ onMounted(load);
     <div v-if="loading" class="settings-grid"><AppSkeleton v-for="index in 4" :key="index" height="160px" /></div>
     <template v-else-if="data"
       ><div class="business-form app-card">
-        <AppInput v-model="data.appName" label="应用名称" /><AppInput v-model="data.subtitle" label="副标题" /><AppInput
+        <AppInput v-model="data.appName" label="小馆名称" /><AppInput v-model="data.subtitle" label="副标题" /><AppInput
           v-model="data.userNickname"
-          label="昵称"
+          label="你的昵称"
         /><AppInput v-model="repeatDays" label="推荐避免重复天数" />
       </div>
       <div class="settings-grid">
         <section class="app-card">
-          <h2>自动化偏好</h2>
-          <label><input v-model="data.autoBackupEnabled" type="checkbox" /> 每日自动备份</label
-          ><label><input v-model="data.autoDeductInventory" type="checkbox" /> 完成计划后提示库存扣减确认</label>
+          <h2>自动化</h2>
+          <label><input v-model="data.autoBackupEnabled" type="checkbox" /> 每天自动备份一次我的数据</label
+          ><label><input v-model="data.autoDeductInventory" type="checkbox" /> 完成计划后提醒我确认库存扣减</label>
         </section>
         <section class="app-card">
-          <h2>本地 PIN</h2>
-          <p>仅接受 4–8 位数字。</p>
+          <h2>访问 PIN</h2>
+          <p>打开小馆时需要输入的数字密码，仅接受 4–8 位数字。</p>
           <AppInput v-model="pin" type="password" label="新 PIN" />
           <div class="business-card__actions">
             <AppButton variant="ghost" @click="savePin(false)">关闭 PIN</AppButton
@@ -164,8 +164,8 @@ onMounted(load);
           </div>
         </section>
         <section class="app-card">
-          <h2>手机访问二维码</h2>
-          <p>二维码只编码当前局域网访问地址，不依赖外部服务。</p>
+          <h2>手机访问</h2>
+          <p>生成二维码，在同一 Wi-Fi 下用手机打开小馆。</p>
           <AppButton variant="secondary" @click="makeQr()">生成二维码</AppButton>
           <p v-if="qrUrl">{{ qrUrl }}</p>
           <label v-if="qrCandidates.length > 1" class="app-field"
@@ -180,13 +180,18 @@ onMounted(load);
           <p v-else-if="qrMessage">{{ qrMessage }}</p>
         </section>
         <section class="app-card">
-          <h2>食用者与偏好</h2>
-          <p>管理忌口、过敏与默认餐量。</p>
+          <h2>食用者</h2>
+          <p>管理家里谁的忌口、过敏与餐量。</p>
           <RouterLink class="app-button app-button--secondary app-button--md" to="/diners">管理食用者</RouterLink>
         </section>
         <section class="app-card">
+          <h2>数据备份与恢复</h2>
+          <p>把小馆的全部数据打包保存，或从备份文件恢复。</p>
+          <RouterLink class="app-button app-button--secondary app-button--md" to="/backup">备份与恢复</RouterLink>
+        </section>
+        <section class="app-card">
           <h2>最近删除</h2>
-          <p>在 30 天内恢复误删的业务数据。</p>
+          <p>误删的内容 30 天内可以在这里找回。</p>
           <RouterLink class="app-button app-button--secondary app-button--md" to="/settings/deleted-items"
             >打开回收站</RouterLink
           >

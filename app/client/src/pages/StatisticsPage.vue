@@ -4,6 +4,7 @@ import AppButton from '../components/ui/AppButton.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
 import { apiRequest } from '../services/api';
+import { displayLabel } from '../utils/display';
 interface Stats {
   period: { start: string; end: string };
   totalRecords: number;
@@ -47,7 +48,7 @@ onMounted(load);
   <section class="business-page">
     <header class="business-hero">
       <div>
-        <p class="business-eyebrow">Insights</p>
+        <p class="business-eyebrow">吃出的小结</p>
         <h1>统计分析</h1>
         <p>已完成记录的餐次将进入统计。</p>
       </div>
@@ -60,7 +61,7 @@ onMounted(load);
       </div>
     </header>
     <AppErrorState v-if="error" title="统计读取失败" :description="error" @retry="load" />
-    <div v-else-if="loading" class="stats-grid" aria-label="正在聚合真实记录">
+    <div v-else-if="loading" class="stats-grid" aria-label="正在读取统计">
       <AppSkeleton v-for="index in 6" :key="index" height="96px" />
     </div>
     <template v-else-if="stats"
@@ -108,7 +109,7 @@ onMounted(load);
         </article>
         <article class="app-card">
           <h2>来源分布</h2>
-          <p v-for="(count, name) in stats.sourceBreakdown" :key="name">{{ name }}：{{ count }}</p>
+          <p v-for="(count, name) in stats.sourceBreakdown" :key="name">{{ displayLabel(name) }}：{{ count }}</p>
           <p v-if="!Object.keys(stats.sourceBreakdown).length">暂无数据</p>
         </article>
       </div></template

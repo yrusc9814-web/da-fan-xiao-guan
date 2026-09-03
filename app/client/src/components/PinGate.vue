@@ -20,7 +20,6 @@ const emit = defineEmits<{ unlocked: [] }>(),
   dinerName = ref('我');
 const step = ref(1),
   subtitle = ref('今天也要和喜欢的人，好好吃饭。'),
-  userAvatarPath = ref(''),
   pinEnabled = ref(false),
   defaultRepeatDays = ref('7'),
   autoBackupEnabled = ref(true),
@@ -80,7 +79,7 @@ async function completeOnboarding() {
         nickname: nickname.value.trim(),
         dinerName: dinerName.value.trim(),
         subtitle: subtitle.value.trim(),
-        userAvatarPath: userAvatarPath.value.trim() || null,
+        userAvatarPath: null,
         pinEnabled: pinEnabled.value,
         pin: pinEnabled.value ? pin.value : null,
         defaultRepeatDays: repeat,
@@ -127,22 +126,22 @@ onMounted(initialize);
 <template>
   <main class="pin-gate">
     <section v-if="mode === 'onboarding'" class="app-card">
-      <p class="business-eyebrow">First setup · {{ step }} / 3</p>
+      <p class="business-eyebrow">首次设置 · {{ step }} / 3</p>
       <h1>欢迎来到搭饭小馆</h1>
       <template v-if="step === 1"
         ><p>先认识一下。设置只会在最后一步一次性保存。</p>
         <AppInput v-model="nickname" label="你的昵称" /><AppInput v-model="dinerName" label="默认食用者" /><AppInput
           v-model="subtitle"
-          label="小馆副标题" /><AppInput v-model="userAvatarPath" label="头像路径（可跳过）" /></template
+          label="小馆副标题" /></template
       ><template v-else-if="step === 2"
-        ><p>本机默认通过 8787 端口提供服务。开启局域网访问时，请只在可信 Wi‑Fi 中分享地址。</p>
+        ><p>可以设置一个打开小馆时要输入的数字密码；如果想让手机访问，请只在可信 Wi‑Fi 中分享地址。</p>
         <label><input v-model="pinEnabled" type="checkbox" /> 使用访问 PIN</label
         ><AppInput v-if="pinEnabled" v-model="pin" type="password" label="访问 PIN（4–8 位数字）" /></template
       ><template v-else
         ><p>选择推荐、备份与库存确认偏好，之后仍可在设置页修改。</p>
         <AppInput v-model="defaultRepeatDays" label="推荐避免重复天数" /><label
-          ><input v-model="autoBackupEnabled" type="checkbox" /> 每日自动备份</label
-        ><label><input v-model="autoDeductInventory" type="checkbox" /> 完成计划后提示库存扣减确认</label></template
+          ><input v-model="autoBackupEnabled" type="checkbox" /> 每天自动备份一次我的数据</label
+        ><label><input v-model="autoDeductInventory" type="checkbox" /> 完成计划后提醒我确认库存扣减</label></template
       >
       <p v-if="error" class="pin-error">{{ error }}</p>
       <div class="gate-actions">
@@ -152,9 +151,9 @@ onMounted(initialize);
       </div>
     </section>
     <section v-else class="app-card">
-      <p class="business-eyebrow">Local access</p>
+      <p class="business-eyebrow">欢迎回来</p>
       <h1>欢迎回到搭饭小馆</h1>
-      <p>请输入本地 PIN 后继续。PIN 只在这台服务所在的本地数据库中验证。</p>
+      <p>请输入访问 PIN 后继续。</p>
       <AppInput v-model="pin" type="password" label="PIN" error="" @keyup.enter="unlock" />
       <p v-if="error" class="pin-error">{{ error }}</p>
       <AppButton :loading="loading" @click="unlock">进入小馆</AppButton>

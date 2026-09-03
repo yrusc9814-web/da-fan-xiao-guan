@@ -66,7 +66,7 @@ async function authorizeAndRestore(): Promise<void> {
     });
     setPinToken(null);
     authorizeDialogOpen.value = false;
-    message.value = '恢复成功，安全会话已失效，建议重新启动服务后继续使用。';
+    message.value = '恢复成功，建议重启小馆后继续使用。';
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : '恢复失败，当前数据已回滚';
   } finally {
@@ -109,15 +109,15 @@ onMounted(() => {
   <section class="business-page">
     <header class="business-hero">
       <div>
-        <p class="business-eyebrow">Backup & restore</p>
+        <p class="business-eyebrow">数据安全</p>
         <h1>备份与恢复</h1>
-        <p>ZIP 包含 SQLite、uploads、配置快照和 SHA256 清单；恢复前会在 staging 中完整校验。</p>
+        <p>备份文件包含你的菜谱、库存、记录、图片和设置；恢复时会先完整校验备份内容，再替换当前数据。</p>
       </div>
-      <AppButton :loading="busy" @click="exportBackup">导出完整备份</AppButton>
+      <AppButton :loading="busy" @click="exportBackup">导出备份</AppButton>
     </header>
     <div class="app-card backup-panel">
-      <h2>恢复备份</h2>
-      <p>支持本应用生成的 ZIP。路径越界、未知文件、资源超限或 hash 错误都会在替换前拒绝。</p>
+      <h2>从备份恢复</h2>
+      <p>选择本应用导出的备份文件。如果文件不完整或已损坏，恢复会在替换前被拒绝，现有数据不受影响。</p>
       <input type="file" accept=".zip,application/zip" @change="choose" />
       <AppButton :disabled="!file" :loading="busy" @click="requestRestore">校验并恢复</AppButton>
       <p v-if="message" class="backup-success">{{ message }}</p>
@@ -125,7 +125,7 @@ onMounted(() => {
     </div>
 
     <AppDialog v-model="authorizeDialogOpen" title="恢复前二次验证">
-      <p>恢复会替换当前数据库和图片。系统会先创建回滚副本，并在验证完整备份后才进入维护状态。</p>
+      <p>恢复会用备份中的数据替换当前的小馆数据。系统会先自动保存一份当前数据用于恢复失败时回退。</p>
       <AppInput v-if="pinEnabled" v-model="pin" type="password" label="再次输入本地 PIN" />
       <label v-else class="backup-confirmation">
         <input v-model="localConfirmation" type="checkbox" />
