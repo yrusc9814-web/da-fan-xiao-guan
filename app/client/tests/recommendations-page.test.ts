@@ -2,7 +2,14 @@ import { flushPromises, mount } from '@vue/test-utils';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
-import RecommendationsPage, { pickDifferentCandidate, type SpinCandidate } from '../src/pages/RecommendationsPage.vue';
+import RecommendationsPage, {
+  pickDifferentCandidate,
+  sectorCenterDeg,
+  sectorIndexAtPointer,
+  sectorSpanDeg,
+  wheelRotationForTarget,
+  type SpinCandidate
+} from '../src/pages/RecommendationsPage.vue';
 
 const diners = [
   { id: 'diner-1', name: '验收-张三' },
@@ -141,6 +148,64 @@ describe('「换一个」确定性兜底 pickDifferentCandidate', () => {
   });
 });
 
+describe('真圆形转盘几何（UXB-004 单元）', () => {
+  it('扇区等分：2 个候选每扇 180°，4 个候选每扇 90°', () => {
+    expect(sectorSpanDeg(2)).toBe(180);
+    expect(sectorSpanDeg(4)).toBe(90);
+    expect(sectorSpanDeg(6)).toBe(60);
+  });
+
+  it('扇区中心角从正上方顺时针排列', () => {
+    // index0 中心在扇区前 1/2 处；4 扇区时中心依次为 45/135/225/315
+    expect(sectorCenterDeg(0, 4)).toBe(45);
+    expect(sectorCenterDeg(1, 4)).toBe(135);
+    expect(sectorCenterDeg(2, 4)).toBe(225);
+    expect(sectorCenterDeg(3, 4)).toBe(315);
+    expect(sectorCenterDeg(1, 2)).toBe(270);
+  });
+
+  it('wheelRotationForTarget 把目标扇区中心转到指针（顶部，0°）', () => {
+    // 2 扇区 index0 中心 90°：盘面顺时针转 270° 后中心到顶部
+    expect(wheelRotationForTarget(0, 2, 0)).toBe(270);
+    expect(sectorIndexAtPointer(270, 2)).toBe(0);
+    // 2 扇区 index1 中心 270°：顺时针转 90°
+    expect(wheelRotationForTarget(1, 2, 0)).toBe(90);
+    expect(sectorIndexAtPointer(90, 2)).toBe(1);
+  });
+
+  it('minTravel 保证每次至少前进指定角度，且只叠加整圈不影响落点', () => {
+    // index1(2扇区) 基础 90°；minTravel 720 → 90+720=810，落点仍是 index1
+    expect(wheelRotationForTarget(1, 2, 720)).toBe(810);
+    expect(sectorIndexAtPointer(810, 2)).toBe(1);
+    // index0(4扇区) 基础 315°；minTravel 1000 → 315+720=1035
+    expect(wheelRotationForTarget(0, 4, 1000)).toBe(1035);
+    expect(sectorIndexAtPointer(1035, 4)).toBe(0);
+  });
+
+  it('性质检验：任意候选数与目标下，落点扇区与目标一一对应', () => {
+    for (let count = 1; count <= 12; count += 1) {
+      for (let index = 0; index < count; index += 1) {
+        for (const minTravel of [0, 90, 360, 720, 1333]) {
+          const rotation = wheelRotationForTarget(index, count, minTravel);
+          expect(rotation).toBeGreaterThanOrEqual(minTravel);
+          expect(sectorIndexAtPointer(rotation, count)).toBe(index);
+        }
+      }
+    }
+  });
+
+  it('扇区下标读回与几何定义一致（多整圈等价性）', () => {
+    for (let count = 2; count <= 8; count += 1) {
+      for (let turns = 0; turns < 6; turns += 1) {
+        const rotation = turns * 360;
+        // 旋转整圈后指针正对的扇区与初始一致
+        const landed = sectorIndexAtPointer(rotation, count);
+        expect(landed).toBe(sectorIndexAtPointer(0, count));
+      }
+    }
+  });
+});
+
 /**
  * 构造「餐次感知」的 fetch mock：/recipes 按 mealType 查询参数过滤（模拟服务端
  * GET /recipes?mealType=... 的 mealTypes.some 过滤），/recommendations/random 恒定返回指定结果。
@@ -180,8 +245,22 @@ function buildCandidateAwareFetch(options: {
   });
 }
 
-async function mountSpinPage(fetchMock: ReturnType<typeof vi.fn>) {
+type MountWheelReturn = Awaited<ReturnType<typeof mountSpinPage>>['wrapper'];
+
+async function mountSpinPage(fetchMock: ReturnType<typeof vi.fn>, options: { reducedMotion?: boolean } = {}) {
   vi.stubGlobal('fetch', fetchMock);
+  if (options.reducedMotion) {
+    const media = (query: string) => ({
+      matches: true,
+      media: query,
+      addEventListener: vi.fn(),
+      removeEventListener: vi.fn(),
+      addListener: vi.fn(),
+      removeListener: vi.fn(),
+      dispatchEvent: vi.fn()
+    });
+    vi.stubGlobal('matchMedia', vi.fn().mockImplementation(media));
+  }
   const router = createRouter({
     history: createMemoryHistory(),
     routes: [{ path: '/recommendations', component: RecommendationsPage }]
@@ -192,7 +271,7 @@ async function mountSpinPage(fetchMock: ReturnType<typeof vi.fn>) {
   return { wrapper, router, fetchMock };
 }
 
-async function clickButton(wrapper: Awaited<ReturnType<typeof mountSpinPage>>['wrapper'], text: string) {
+async function clickButton(wrapper: MountWheelReturn, text: string) {
   const btn = wrapper.findAll('button').find((b) => b.text().includes(text));
   expect(btn, `未找到按钮 ${text}`).toBeTruthy();
   await btn!.trigger('click');
@@ -204,55 +283,30 @@ function countRandomPosts(fetchMock: ReturnType<typeof vi.fn>) {
   );
 }
 
-describe('「换一个」确定性接入转盘（不依赖随机）', () => {
-  // Case A3：当前餐次有 2 个合法候选时，换一个后 After != Before
-  it('Case A3：候选池 2 道菜、API 恒返回当前结果：点「换一个」必得另一道菜', async () => {
-    const fetchMock = buildCandidateAwareFetch({
-      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
-      randomResult: { resultId: 'a', title: '菜A' }
-    });
-    const { wrapper } = await mountSpinPage(fetchMock);
+/** 读取盘面当前 transform 旋转角（度） */
+function discRotationDeg(wrapper: MountWheelReturn): number {
+  const disc = wrapper.find('.spin-wheel__disc');
+  const style = disc.attributes('style') ?? '';
+  const match = style.match(/rotate\((-?[\d.]+)deg\)/);
+  expect(match, `盘面 style 未含 rotate: ${style}`).toBeTruthy();
+  return Number(match![1]);
+}
 
-    // 1. 转一下：得到菜A
-    await clickButton(wrapper, '转一下');
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 1200)); // 动画 600ms
-    await flushPromises();
-    expect(wrapper.find('.spin-wheel__item--result').text()).toBe('菜A');
+function resultPillText(wrapper: MountWheelReturn): string {
+  const pill = wrapper.find('.spin-wheel__result-pill');
+  expect(pill.exists(), '未找到结果胶囊').toBe(true);
+  return pill.text();
+}
 
-    // 2. 换一个：API 4 次重试都返回菜A，必须走确定性兜底换成菜B
-    await clickButton(wrapper, '换一个');
+async function settleSpin(wrapper: MountWheelReturn) {
+  await flushPromises();
+  if (!wrapper.find('.spin-wheel__result-pill').exists()) {
+    // 正常动效路径需等待旋转过渡完成
+    await new Promise((resolve) => setTimeout(resolve, 2600));
     await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 2600)); // 3 次重试延迟(200+300+400) + 动画 600ms
-    await flushPromises();
-    expect(wrapper.find('.spin-wheel__item--result').text()).toBe('菜B');
-
-    // 3. 随机 API 调用计数：初次 1 次 + 换一个 4 次 = 5 次，全部返回菜A
-    expect(countRandomPosts(fetchMock)).toHaveLength(5);
-  });
-
-  // Case A2：当前餐次只剩 1 个合法候选时，不得跨餐次补位，给出明确提示
-  it('Case A2：DINNER 仅剩 1 个候选时「换一个」不跨餐次拿 BREAKFAST 菜，得到明确提示', async () => {
-    const fetchMock = buildCandidateAwareFetch({
-      recipes: [candidate('a', '早餐菜A', true, ['BREAKFAST']), candidate('b', '晚餐菜B', true, ['DINNER'])],
-      randomResult: { resultId: 'b', title: '晚餐菜B' }
-    });
-    const { wrapper } = await mountSpinPage(fetchMock);
-
-    await clickButton(wrapper, '转一下');
-    await flushPromises();
-    expect(wrapper.find('.spin-wheel__item--result').text()).toBe('晚餐菜B');
-
-    await clickButton(wrapper, '换一个');
-    await flushPromises();
-    // 明确提示「这个餐次暂时没有其他候选菜」，而不是静默换菜
-    expect(wrapper.text()).toContain('这个餐次暂时没有其他候选菜');
-    // 结果保持原样，绝没有变成早餐菜A
-    expect(wrapper.find('.spin-wheel__item--result').text()).toBe('晚餐菜B');
-    // guard 直接拦截：没有为「换一个」发起额外的随机请求
-    expect(countRandomPosts(fetchMock)).toHaveLength(1);
-  });
-});
+  }
+  expect(wrapper.find('.spin-wheel__result-pill').exists(), '旋转后应呈现结果').toBe(true);
+}
 
 // Case A1：候选池（数量 + 管理列表）按当前餐次过滤
 describe('候选池按当前餐次过滤（UXA-001）', () => {
@@ -261,7 +315,7 @@ describe('候选池按当前餐次过滤（UXA-001）', () => {
       recipes: [candidate('a', '早餐菜A', true, ['BREAKFAST']), candidate('b', '晚餐菜B', true, ['DINNER'])],
       randomResult: { resultId: 'b', title: '晚餐菜B' }
     });
-    const { wrapper } = await mountSpinPage(fetchMock);
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
 
     // 候选池请求必须带当前餐次 mealType=DINNER
     const recipeCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes('/recipes'));
@@ -296,17 +350,205 @@ describe('候选池按当前餐次过滤（UXA-001）', () => {
       recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
       randomResult: { resultId: 'a', title: '菜A' }
     });
-    const { wrapper } = await mountSpinPage(fetchMock);
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
     await clickButton(wrapper, '转一下');
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    await flushPromises();
-    expect(wrapper.find('.spin-wheel__item--result').exists()).toBe(true);
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜A');
 
     const mealSelect = wrapper.findAll('select')[1]!;
     await mealSelect.setValue('LUNCH');
     await flushPromises();
-    expect(wrapper.find('.spin-wheel__item--result').exists()).toBe(false);
+    // 结果清空、盘面移除（LUNCH 无候选 → 空态），绝不残留旧结果
+    expect(wrapper.find('.spin-wheel__result-pill').exists()).toBe(false);
+    expect(wrapper.find('.spin-wheel__disc').exists()).toBe(false);
+    expect(wrapper.text()).toContain('候选池为空');
+  });
+});
+
+describe('真圆形转盘展示与业务对齐（UXB-004）', () => {
+  it('多候选：盘面渲染 N 个清晰扇区与可识别菜名，扇区顺序=候选顺序', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [
+        candidate('a', '番茄炒蛋', true, ['DINNER']),
+        candidate('b', '青椒肉丝', true, ['DINNER']),
+        candidate('c', '红烧排骨', true, ['DINNER'])
+      ],
+      randomResult: { resultId: 'b', title: '青椒肉丝' }
+    });
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
+
+    // 3 个扇区、固定指针、扇区顺序与候选列表一致（aria 按序描述）
+    expect(wrapper.findAll('.wheel-sector')).toHaveLength(3);
+    expect(wrapper.find('.spin-wheel__pointer').exists()).toBe(true);
+    expect(wrapper.find('.spin-wheel').attributes('aria-label')).toContain('番茄炒蛋、青椒肉丝、红烧排骨');
+    const labels = wrapper.findAll('.wheel-sector__label-inner').map((el) => el.text());
+    expect(labels).toEqual(['番茄炒蛋', '青椒肉丝', '红烧排骨']);
+  });
+
+  it('转一下：旋转终点精确落在业务结果所在扇区中心（视觉==业务），结果后不再显示空状态', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'b', title: '菜B' }
+    });
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
+
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+
+    // 业务结果 = 服务端返回的菜B
+    expect(resultPillText(wrapper)).toContain('菜B');
+    // 视觉结果 = 盘面停在菜B 扇区中心：2 扇区 index1 需转 90°，minTravel 两整圈 → 810°
+    expect(discRotationDeg(wrapper)).toBe(wheelRotationForTarget(1, 2, 720));
+    expect(discRotationDeg(wrapper)).toBe(810);
+    expect(sectorIndexAtPointer(discRotationDeg(wrapper), 2)).toBe(1);
+    // 结果态不残留「空状态」提示
+    expect(wrapper.text()).not.toContain('候选池为空');
+  });
+
+  it('再转一次：在既有盘面角度上累计旋转，仍精确停在新的业务结果扇区', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'b', title: '菜B' }
+    });
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    // 第一次停在菜B（810°）
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜B');
+
+    // 第二次服务端返回菜A
+    fetchMock.mockImplementation((input: unknown) => {
+      const url = new URL(String(input));
+      if (url.pathname.endsWith('/diners')) return Promise.resolve(jsonResponse({ items: diners }));
+      if (url.pathname.endsWith('/recommendations/random'))
+        return Promise.resolve(
+          jsonResponse({
+            historyId: 'history-2',
+            results: [{ resultType: 'RECIPE', resultId: 'a', title: '菜A', reason: '测试', missingIngredients: [] }]
+          })
+        );
+      return Promise.resolve(jsonResponse({ items: [] }));
+    });
+    await clickButton(wrapper, '再转一次');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜A');
+    // 2 扇区 index0 基础 270°，相对上次 810° 至少再进 720° → 270+1440=1710°
+    expect(discRotationDeg(wrapper)).toBe(wheelRotationForTarget(0, 2, 810 + 720));
+    expect(discRotationDeg(wrapper)).toBe(1710);
+    expect(sectorIndexAtPointer(discRotationDeg(wrapper), 2)).toBe(0);
+  });
+
+  it('仅 1 个候选：完整圆盘展示该候选，点转一下直接得到该结果（合理单候选语义）', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '唯一好菜', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '唯一好菜' }
+    });
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    // 转盘展示 1 个扇区并提示唯一候选
+    expect(wrapper.findAll('.wheel-sector')).toHaveLength(1);
+    expect(wrapper.text()).toContain('唯一候选');
+    expect(wrapper.text()).toContain('唯一好菜');
+
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('唯一好菜');
+  });
+
+  it('0 候选：显示正确空态且不可转（不会发起随机请求）', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '早餐菜A', true, ['BREAKFAST'])], // 当前 DINNER 无候选
+      randomResult: { resultId: 'x', title: 'x' }
+    });
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    expect(wrapper.text()).toContain('候选池为空');
+    const spinButtons = wrapper.findAll('button').filter((b) => b.text().includes('转一下'));
+    expect(spinButtons.length).toBeGreaterThan(0);
+    for (const btn of spinButtons) expect(btn.attributes('disabled')).toBeDefined();
+    expect(countRandomPosts(fetchMock)).toHaveLength(0);
+  });
+});
+
+describe('「换一个」确定性接入转盘（不依赖随机）', () => {
+  // Case A3：当前餐次有 2 个合法候选时，换一个后 After != Before
+  it('Case A3：候选池 2 道菜、API 恒返回当前结果：点「换一个」必得另一道菜且同样停在对应扇区', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' }
+    });
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
+
+    // 1. 转一下：得到菜A（API 恒返回菜A）
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜A');
+
+    // 2. 换一个：API 4 次重试都返回菜A，必须走确定性兜底换成菜B
+    await clickButton(wrapper, '换一个');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜B');
+    // 换一个同样走几何对齐：第一次停菜A(index0, 990°)；换到菜B(index1, 基础90°)
+    // 需相对上次至少再进 720° → 90 + 5×360 = 1890°
+    expect(discRotationDeg(wrapper)).toBe(1890);
+    expect(sectorIndexAtPointer(discRotationDeg(wrapper), 2)).toBe(1);
+
+    // 3. 随机 API 调用计数：初次 1 次 + 换一个 4 次 = 5 次，全部返回菜A
+    expect(countRandomPosts(fetchMock)).toHaveLength(5);
+  });
+
+  // Case A2：当前餐次只剩 1 个合法候选时，不得跨餐次补位，给出明确提示
+  it('Case A2：DINNER 仅剩 1 个候选时「换一个」不跨餐次拿 BREAKFAST 菜，得到明确提示', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '早餐菜A', true, ['BREAKFAST']), candidate('b', '晚餐菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'b', title: '晚餐菜B' }
+    });
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
+
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('晚餐菜B');
+
+    await clickButton(wrapper, '换一个');
+    await flushPromises();
+    // 明确提示「这个餐次暂时没有其他候选菜」，而不是静默换菜
+    expect(wrapper.text()).toContain('这个餐次暂时没有其他候选菜');
+    // 结果保持原样，绝没有变成早餐菜A
+    expect(resultPillText(wrapper)).toContain('晚餐菜B');
+    // guard 直接拦截：没有为「换一个」发起额外的随机请求
+    expect(countRandomPosts(fetchMock)).toHaveLength(1);
+  });
+});
+
+describe('正常动效与 reduced-motion（UXB-004）', () => {
+  it('尊重 prefers-reduced-motion：结果即时呈现，不等旋转过渡', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'b', title: '菜B' }
+    });
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await clickButton(wrapper, '转一下');
+    await flushPromises();
+    // 无 2.4s 等待：flush 后结果已呈现
+    expect(resultPillText(wrapper)).toContain('菜B');
+  });
+
+  it('正常动效：旋转期间不揭示结果，自然减速结束后才呈现', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'b', title: '菜B' }
+    });
+    // 不 stub matchMedia：jsdom 无 matchMedia → 走完整旋转过渡
+    const { wrapper } = await mountSpinPage(fetchMock);
+    await clickButton(wrapper, '转一下');
+    await flushPromises();
+    // 旋转中：按钮提示转动中，尚未出现结果胶囊
+    expect(wrapper.find('.spin-wheel__result-pill').exists()).toBe(false);
+    expect(wrapper.findAll('button').some((b) => b.text().includes('转动中'))).toBe(true);
+
+    // 旋转过渡结束后揭示结果，且按钮回到「再转一次」
+    await new Promise((resolve) => setTimeout(resolve, 2600));
+    await flushPromises();
+    expect(resultPillText(wrapper)).toContain('菜B');
+    expect(wrapper.findAll('button').some((b) => b.text().includes('再转一次'))).toBe(true);
   });
 });
 
@@ -317,16 +559,13 @@ describe('转盘结果加入计划（UXA-003）', () => {
       recipes: [candidate('b1', '菜B1', true, ['DINNER']), candidate('b2', '菜B2', true, ['DINNER'])],
       randomResult: { resultId: 'b1', title: '菜B1' }
     });
-    const { wrapper } = await mountSpinPage(fetchMock);
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
 
     await clickButton(wrapper, '转一下');
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 1200));
+    await settleSpin(wrapper);
     await clickButton(wrapper, '换一个');
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 2600));
-    await flushPromises();
-    expect(wrapper.find('.spin-wheel__item--result').text()).toBe('菜B2'); // fallback 结果
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜B2'); // fallback 结果
 
     await clickButton(wrapper, '加入计划');
     await flushPromises();
@@ -358,13 +597,11 @@ describe('转盘结果加入计划（UXA-003）', () => {
       randomResult: { resultId: 'b2', title: '菜B2' },
       randomHistoryId: 'history-spin'
     });
-    const { wrapper } = await mountSpinPage(fetchMock);
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
 
     await clickButton(wrapper, '转一下');
-    await flushPromises();
-    await new Promise((resolve) => setTimeout(resolve, 1200));
-    await flushPromises();
-    expect(wrapper.find('.spin-wheel__item--result').text()).toBe('菜B2');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜B2');
 
     await clickButton(wrapper, '加入计划');
     await flushPromises();
@@ -374,30 +611,50 @@ describe('转盘结果加入计划（UXA-003）', () => {
         (init?.method ?? 'GET') === 'POST' && String(input).includes('/recommendations/history-spin/add-to-plan')
     );
     expect(addCalls).toHaveLength(1);
-    const body = JSON.parse((addCalls[0]![1] as RequestInit).body as string) as { mealType: string };
+    const body = JSON.parse((addCalls[0]![1] as RequestInit).body as string) as {
+      mealType: string;
+      dinerIds: string[];
+    };
     expect(body.mealType).toBe('DINNER');
     expect(wrapper.text()).toContain('已加入');
   });
 });
 
-describe('推荐页首页入口', () => {
+describe('推荐页首页入口与推荐方式', () => {
   it.each([
     ['random', 'random'],
     ['meal-set', 'meal-set'],
     ['inventory', 'inventory']
   ])('mode=%s 初始化为对应推荐方式', async (query, expected) => {
     const { wrapper } = await mountAt(query);
-    expect(wrapper.get('select').element.value).toBe(expected);
+    expect(wrapper.findAll('select')[0]!.element.value).toBe(expected);
   });
 
   it('同组件 query 改变时同步模式，非法值回退 random', async () => {
     const { wrapper, router } = await mountAt('random');
     await router.push('/recommendations?mode=inventory');
     await flushPromises();
-    expect(wrapper.get('select').element.value).toBe('inventory');
+    expect(wrapper.findAll('select')[0]!.element.value).toBe('inventory');
     await router.push('/recommendations?mode=invalid');
     await flushPromises();
-    expect(wrapper.get('select').element.value).toBe('random');
+    expect(wrapper.findAll('select')[0]!.element.value).toBe('random');
+  });
+
+  it('random 模式收口到转盘：不再出现「生成推荐」按钮，转盘是唯一随机决策入口', async () => {
+    const { wrapper } = await mountAt('random');
+    expect(wrapper.findAll('button').some((b) => b.text().includes('生成推荐'))).toBe(false);
+    expect(wrapper.findAll('button').some((b) => b.text().includes('转一下'))).toBe(true);
+  });
+
+  it('meal-set / inventory 模式保留「生成推荐」，结果区与购物清单操作可用', async () => {
+    const { wrapper } = await mountAt('meal-set');
+    const generateBtn = wrapper.findAll('button').find((b) => b.text().includes('生成推荐'));
+    expect(generateBtn).toBeTruthy();
+    await generateBtn!.trigger('click');
+    await flushPromises();
+    // meal-set mock 返回 1 条菜谱结果并展示其操作
+    expect(wrapper.text()).toContain('验收-测试菜');
+    expect(wrapper.findAll('button').some((b) => b.text().includes('整组加入计划'))).toBe(true);
   });
 });
 
@@ -413,14 +670,15 @@ describe('推荐页食用者选择', () => {
     expect(wrapper.text()).not.toContain('未选择食用者');
   });
 
-  it('生成推荐时把已勾选食用者传入请求 body', async () => {
-    const { wrapper, fetchMock } = await mountAt('random');
+  it('转一下（random）把已勾选食用者传入请求 body', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' }
+    });
+    const { wrapper } = await mountSpinPage(fetchMock, { reducedMotion: true });
     await wrapper.findAll('input[type="checkbox"]')[0].setValue(true);
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('生成推荐'))!
-      .trigger('click');
-    await flushPromises();
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
     const body = postBody(fetchMock, (path) => path.endsWith('/recommendations/random'));
     expect(body.dinerIds).toEqual([diners[0].id]);
     expect(body.mealType).toBe('DINNER');
@@ -439,22 +697,19 @@ describe('推荐页食用者选择', () => {
     expect(body.mode).toBe('ALLOW_PURCHASE');
   });
 
-  it('缺料加入购物清单一次 POST 全部 items，不循环逐条写入', async () => {
-    const { wrapper, fetchMock } = await mountAt('random');
+  it('缺料加入购物清单一次 POST 全部 items，不循环逐条写入（inventory 结果通道）', async () => {
+    const { wrapper, fetchMock } = await mountAt('inventory');
     fetchMock.mockImplementation((input: unknown, init?: { method?: string; body?: string }) => {
       const path = new URL(String(input)).pathname;
       if (path.endsWith('/diners')) return Promise.resolve(jsonResponse({ items: diners }));
-      if (path.endsWith('/recommendations/random'))
+      if (path.endsWith('/kitchen/recommend'))
         return Promise.resolve(
           jsonResponse({
-            historyId: 'history-1',
-            results: [
+            items: [
               {
-                resultType: 'RECIPE',
-                resultId: 'recipe-1',
-                title: '验收-测试菜',
-                reason: '测试',
-                missingIngredients: ['番茄', '鸡蛋']
+                recipe: { id: 'recipe-1', name: '验收-番茄炒蛋' },
+                reason: '临期优先',
+                missingIngredients: [{ name: '番茄' }, { name: '鸡蛋' }]
               }
             ]
           })
@@ -489,8 +744,8 @@ describe('推荐页食用者选择', () => {
     ).toBe(false);
   });
 
-  it('加入计划时把已勾选食用者写入 add-to-plan 请求 body', async () => {
-    const { wrapper, fetchMock } = await mountAt('random');
+  it('加入计划时把已勾选食用者写入 add-to-plan 请求 body（meal-set 结果通道）', async () => {
+    const { wrapper, fetchMock } = await mountAt('meal-set');
     await wrapper.findAll('input[type="checkbox"]')[0].setValue(true);
     await wrapper
       .findAll('button')
@@ -507,8 +762,8 @@ describe('推荐页食用者选择', () => {
   });
 });
 
-// Case A7：空态/初始态不再暗示「摇一摇」，引导语与「转一下」控件一致
-describe('空态引导文案（UXA-005）', () => {
+// UXA-005 / UXB-006：空态与文案清理——不再出现「摇一摇/Decision helper/店铺」，引导与转盘控件一致
+describe('空态引导文案（UXA-005 / UXB-006）', () => {
   it('初始空态不包含「摇一摇」，引导用户点「转一下」', async () => {
     const { wrapper } = await mountAt('random');
     expect(wrapper.text()).not.toContain('摇一摇');
@@ -516,21 +771,30 @@ describe('空态引导文案（UXA-005）', () => {
     expect(wrapper.text()).toContain('今天吃什么');
   });
 
-  it('生成推荐后结果为空时同样不出现「摇一摇」', async () => {
-    const { wrapper, fetchMock } = await mountAt('random');
-    fetchMock.mockImplementation((input: unknown, init?: { method?: string }) => {
+  it('随机通道转盘无结果时同样不出现「摇一摇」，且给出原因而不是静默空态', async () => {
+    // 候选池非空（按钮可点），但服务端返回空 results → 必须给出原因
+    const emptyResultFetch = vi.fn().mockImplementation((input: unknown) => {
       const path = new URL(String(input)).pathname;
       if (path.endsWith('/diners')) return Promise.resolve(jsonResponse({ items: diners }));
-      if (path.endsWith('/recommendations/random') && (init?.method ?? 'GET') === 'POST')
+      if (path.endsWith('/recipes'))
+        return Promise.resolve(jsonResponse({ items: [candidate('a', '菜A', true, ['DINNER'])], total: 1 }));
+      if (path.endsWith('/recommendations/random'))
         return Promise.resolve(jsonResponse({ historyId: 'history-1', results: [] }));
       return Promise.resolve(jsonResponse({ items: [] }));
     });
-    await wrapper
-      .findAll('button')
-      .find((b) => b.text().includes('生成推荐'))!
-      .trigger('click');
+    const { wrapper } = await mountSpinPage(emptyResultFetch, { reducedMotion: true });
+    await clickButton(wrapper, '转一下');
     await flushPromises();
     expect(wrapper.text()).not.toContain('摇一摇');
-    expect(wrapper.text()).toContain('转一下');
+    expect(wrapper.text()).toContain('候选池暂无可用结果');
+  });
+
+  it('页面不再残留英文 eyebrow 与工程术语（UXB-006 文案清理）', async () => {
+    const { wrapper } = await mountAt('random');
+    expect(wrapper.text()).not.toContain('Decision helper');
+    expect(wrapper.text()).not.toContain('DRAFT');
+    expect(wrapper.text()).not.toContain('CONFIRMED');
+    // 用户语言：候选计数直接为「晚餐候选：N 道」
+    expect(wrapper.text()).toContain('候选：');
   });
 });
