@@ -217,9 +217,12 @@ export async function randomRecommendation(
   random: () => number = Math.random
 ) {
   const resolved = await resolveInput(database, input);
-  const all = await candidates(database, resolved);
+  // UXA-006 冻结收口：UX-A 转盘只处理 RECIPE。服务端候选层强制排除 STORE，
+  // 不信任客户端传入的 sourceTypes，避免转出店铺后前端按菜谱处理（storeId 被当 recipeId）导致 404/错链。
+  const effective = { ...resolved, sourceTypes: ['RECIPE'] as Array<'RECIPE' | 'STORE'> };
+  const all = await candidates(database, effective);
   const selected = selectWeightedCandidate(all, random);
-  return save(database, 'SINGLE', resolved, selected ? [selected] : [], all.length);
+  return save(database, 'SINGLE', effective, selected ? [selected] : [], all.length);
 }
 export async function mealSetRecommendation(database: PrismaClient, input: RecommendationInput) {
   const resolved = await resolveInput(database, input);

@@ -217,3 +217,59 @@ describe('验收过滤-食用者偏好硬过滤与库存推荐', () => {
     expect(unfiltered.items.some((x) => x.recipe.id === peanutChickenId)).toBe(true);
   });
 });
+
+// UXA-006 冻结收口：UX-A 转盘（random）只处理 RECIPE
+describe('UX-A 转盘只处理 RECIPE（UXA-006）', () => {
+  it('Case A6：DB 中存在 Store 时，random 无论是否传 sourceTypes 都只可能返回 RECIPE', async () => {
+    // 清理本用例历史残留，保证断言只针对本轮写入的数据
+    const staleStoreIds = (
+      await database.store.findMany({ where: { name: { startsWith: '验收转盘-' } }, select: { id: true } })
+    ).map((store) => store.id);
+    if (staleStoreIds.length) {
+      await database.storeMealType.deleteMany({ where: { storeId: { in: staleStoreIds } } });
+      await database.store.deleteMany({ where: { id: { in: staleStoreIds } } });
+    }
+    const staleRecipeIds = (
+      await database.recipe.findMany({ where: { name: { startsWith: '验收转盘-' } }, select: { id: true } })
+    ).map((recipe) => recipe.id);
+    if (staleRecipeIds.length) {
+      await database.recipeMealType.deleteMany({ where: { recipeId: { in: staleRecipeIds } } });
+      await database.recipe.deleteMany({ where: { id: { in: staleRecipeIds } } });
+    }
+
+    await database.store.create({
+      data: {
+        name: '验收转盘-黄焖鸡米饭',
+        supportsDineIn: true,
+        rating: 5,
+        mealTypes: { create: { mealType: 'DINNER' } }
+      }
+    });
+    await database.recipe.create({
+      data: { name: '验收转盘-番茄炒蛋', mealTypes: { create: { mealType: 'DINNER' } } }
+    });
+
+    // 客户端默认不传 sourceTypes；恶意/误用客户端显式传入 STORE 也必须被服务端候选层忽略
+    const attemptSources: Array<Array<'RECIPE' | 'STORE'> | undefined> = [
+      undefined,
+      ['STORE'],
+      ['RECIPE', 'STORE'],
+      []
+    ];
+    for (const sourceTypes of attemptSources) {
+      const result = await randomRecommendation(
+        database,
+        { mealType: 'DINNER', ...(sourceTypes ? { sourceTypes } : {}) },
+        () => 0
+      );
+      expect(result.results.length).toBeGreaterThan(0);
+      for (const item of result.results) expect(item.resultType).toBe('RECIPE');
+      const history = await database.recommendationHistory.findUniqueOrThrow({ where: { id: result.historyId } });
+      const stored = JSON.parse(history.resultJson) as Array<{ resultType: string }>;
+      expect(stored.length).toBeGreaterThan(0);
+      expect(stored.every((item) => item.resultType === 'RECIPE')).toBe(true);
+      // filtersJson 记录的是实际生效的候选来源
+      expect(JSON.parse(history.filtersJson).sourceTypes).toEqual(['RECIPE']);
+    }
+  });
+});

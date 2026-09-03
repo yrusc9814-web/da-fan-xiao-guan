@@ -32,6 +32,19 @@ const recommendationBodySchema = {
   }
 };
 
+// UXA-006 冻结收口：UX-A 转盘（random）请求契约只保留菜谱相关过滤；
+// STORE 专属参数（sourceTypes / acquisitionModes）不进入转盘，与服务端候选层强制 RECIPE 保持一致。
+const randomBodySchema = {
+  type: 'object',
+  properties: {
+    mealType: mealTypeSchema,
+    dinerIds: stringListSchema,
+    inventoryOnly: booleanSchema,
+    favoriteOnly: booleanSchema,
+    repeatDays: { ...integerSchema, minimum: 0, maximum: 365 }
+  }
+};
+
 const addToPlanBodySchema = {
   type: 'object',
   required: ['planDate', 'mealType', 'dinerCount'],
@@ -46,7 +59,7 @@ const addToPlanBodySchema = {
 export async function registerRecommendationRoutes(app: FastifyInstance, database: PrismaClient) {
   app.post<{ Body: RecommendationInput }>(
     '/api/v1/recommendations/random',
-    { schema: { body: recommendationBodySchema } },
+    { schema: { body: randomBodySchema } },
     async (r) => success(await randomRecommendation(database, r.body ?? {}))
   );
   app.post<{ Body: RecommendationInput }>(

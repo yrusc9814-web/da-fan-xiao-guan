@@ -4,6 +4,7 @@ export interface SpinCandidate {
   name: string;
   enabledForRecommendation: boolean;
   version: number;
+  mealTypes?: string[];
 }
 export interface SpinResultLike {
   resultType: string;
@@ -12,14 +13,18 @@ export interface SpinResultLike {
 }
 /**
  * 「换一个」确定性兜底：从参与随机的候选池中选取一个与当前结果不同的候选。
- * - 候选池存在 != currentId 的候选时，保证返回不同的候选（不依赖概率）。
- * - 候选池只有 1 个（或没有别的候选）时返回 null，由调用方给出「暂时没有别的候选」语义。
+ * - 传入 mealType 时（UXA-002）只在「当前餐次 + enabledForRecommendation」的候选集合中选择，不跨餐次。
+ * - 候选池存在 != currentId 的合法候选时，保证返回不同的候选（不依赖概率）。
+ * - 当前餐次没有其他合法候选时返回 null，由调用方给出「暂时没有其他候选」语义。
  */
 export function pickDifferentCandidate(
   candidates: SpinCandidate[],
-  currentId: string | undefined
+  currentId: string | undefined,
+  mealType?: string
 ): SpinResultLike | null {
-  const enabled = candidates.filter((r) => r.enabledForRecommendation);
+  const enabled = candidates.filter(
+    (r) => r.enabledForRecommendation && (!mealType || (r.mealTypes ?? []).includes(mealType))
+  );
   const other = enabled.find((r) => r.id !== currentId);
   if (!other) return null;
   return { resultType: 'RECIPE', resultId: other.id, title: other.name };
@@ -65,10 +70,10 @@ const planDate = ref(new Date().toLocaleDateString('sv-SE')),
 const visibleDiners = computed(() => withSelected(diners.value, selectedDinerIds.value, dinerCache.value));
 const dinerSequence = createRequestSequence();
 
-// 候选池
-const candidateRecipes = ref<Array<{ id: string; name: string; enabledForRecommendation: boolean; version: number }>>(
-  []
-);
+// 候选池（UXA-001：候选池按当前餐次过滤，与服务端随机候选 mealTypes.some(mealType) 同语义）
+const candidateRecipes = ref<
+  Array<{ id: string; name: string; enabledForRecommendation: boolean; version: number; mealTypes: string[] }>
+>([]);
 const candidateLoading = ref(false);
 const showCandidatePanel = ref(false);
 const candidateCount = computed(() => candidateRecipes.value.filter((r) => r.enabledForRecommendation).length);
@@ -79,6 +84,7 @@ const resultReady = ref(false);
 const spinResult = ref<{ resultType: string; resultId: string; title: string } | null>(null);
 const spinHistoryId = ref('');
 const cyclingName = ref('');
+const spinSequence = createRequestSequence();
 let spinTimer: ReturnType<typeof setTimeout> | null = null;
 
 function validMode(value: unknown): value is RecommendationMode {
@@ -116,9 +122,23 @@ const searchDiners = debounce(() => {
 async function loadCandidates() {
   candidateLoading.value = true;
   try {
-    const data = await apiRequest<unknown>('/recipes', { query: { pageSize: 100 } });
-    const items = itemsFrom<{ id: string; name: string; enabledForRecommendation: boolean; version: number }>(data);
-    candidateRecipes.value = items;
+    // UXA-001：服务端 GET /recipes 本身支持 mealType 过滤（mealTypes.some），
+    // 候选池请求按当前餐次过滤，保证 UI 候选数量/列表与真正参与 spin 的候选同语义。
+    const data = await apiRequest<unknown>('/recipes', { query: { pageSize: 100, mealType: mealType.value } });
+    const items = itemsFrom<{
+      id: string;
+      name: string;
+      enabledForRecommendation: boolean;
+      version: number;
+      mealTypes?: Array<{ mealType: string } | string>;
+    }>(data);
+    candidateRecipes.value = items.map((item) => ({
+      id: item.id,
+      name: item.name,
+      enabledForRecommendation: item.enabledForRecommendation,
+      version: item.version,
+      mealTypes: (item.mealTypes ?? []).map((m) => (typeof m === 'string' ? m : m.mealType))
+    }));
   } catch {
     // 候选池加载失败不影响主体功能
   } finally {
@@ -187,6 +207,11 @@ async function spin(excludeId?: string) {
   resultReady.value = false;
   spinResult.value = null;
   spinHistoryId.value = '';
+  error.value = '';
+  message.value = '';
+  const sequence = spinSequence.next();
+  // UXA-002：fallback 只能在发起 spin 时的当前餐次候选集合内选择
+  const spinMealType = mealType.value;
   try {
     // 「换一个」重试：不超过 4 次 API 请求
     const maxRetries = excludeId ? 4 : 1;
@@ -198,9 +223,12 @@ async function spin(excludeId?: string) {
         results: Array<{ resultType: string; resultId: string; title: string }>;
       }>('/recommendations/random', {
         method: 'POST',
-        body: JSON.stringify({ mealType: mealType.value, dinerIds: [...selectedDinerIds.value] })
+        body: JSON.stringify({ mealType: spinMealType, dinerIds: [...selectedDinerIds.value] })
       });
-      const candidate = data.results[0];
+      // 餐次已切换或页面已卸载：丢弃过期请求结果
+      if (!spinSequence.isCurrent(sequence)) return;
+      // UXA-006：转盘只接受 RECIPE 结果（服务端已强制 RECIPE，这里防御性过滤 STORE）
+      const candidate = data.results.find((item) => item.resultType === 'RECIPE');
       if (!candidate) {
         spinning.value = false;
         error.value = '候选池暂无可用结果，请先调整候选菜或餐次。';
@@ -210,18 +238,19 @@ async function spin(excludeId?: string) {
       // 跳过与当前结果相同的候选（仅前 3 次重试）
       if (excludeId && candidate.resultId === excludeId && attempt < maxRetries - 1) {
         await new Promise((resolve) => setTimeout(resolve, 200 + attempt * 100));
+        if (!spinSequence.isCurrent(sequence)) return;
         continue;
       }
       result = candidate;
       break;
     }
-    // 确定性 fallback：API 重试全部返回相同结果时，从候选池取一个不同的候选
+    // 确定性 fallback：API 重试全部返回相同结果时，从当前餐次候选池取一个不同的候选
     let usedFallback = false;
     if (result && excludeId && result.resultId === excludeId) {
-      const fallback = pickDifferentCandidate(candidateRecipes.value, excludeId);
+      const fallback = pickDifferentCandidate(candidateRecipes.value, excludeId, spinMealType);
       if (!fallback) {
         spinning.value = false;
-        error.value = '暂时没有别的候选：候选池中没有与当前不同的菜谱，请先调整候选菜或餐次。';
+        error.value = '这个餐次暂时没有其他候选菜。可以更换餐次，或在候选管理中为当前餐次增加候选菜谱。';
         return;
       }
       // fallback 结果来自候选池而非本次服务端推荐，无对应 historyId，清空以防「加入计划」误加当前结果
@@ -230,7 +259,7 @@ async function spin(excludeId?: string) {
     }
     if (!result) {
       spinning.value = false;
-      error.value = '暂时没有别的候选：候选池中没有与当前不同的菜谱，请先调整候选菜或餐次。';
+      error.value = '这个餐次暂时没有其他候选菜。可以更换餐次，或在候选管理中为当前餐次增加候选菜谱。';
       return;
     }
     spinHistoryId.value = usedFallback ? '' : lastHistoryId;
@@ -259,6 +288,7 @@ async function spin(excludeId?: string) {
     }
     animate();
   } catch (e) {
+    if (!spinSequence.isCurrent(sequence)) return;
     spinning.value = false;
     error.value = e instanceof Error ? e.message : '转盘失败，请重试';
   }
@@ -266,7 +296,8 @@ async function spin(excludeId?: string) {
 async function reroll() {
   const excluded = spinResult.value?.resultId;
   if (candidateRecipes.value.filter((r) => r.enabledForRecommendation).length <= 1) {
-    error.value = '候选池只有一道菜，无法换一个，请先增加更多候选菜谱。';
+    // UXA-002：当前餐次没有其他候选时不跨餐次补位，给出明确提示
+    error.value = '这个餐次暂时没有其他候选菜。可以更换餐次，或在候选管理中为当前餐次增加候选菜谱。';
     return;
   }
   await spin(excluded);
@@ -275,20 +306,40 @@ function eatThis(recipeId: string) {
   router.push({ name: 'complete-meal', query: { recipeId } });
 }
 async function addToPlanFromSpin() {
-  if (!spinHistoryId.value || !spinResult.value) return;
+  if (!spinResult.value) {
+    // 防御：没有结果时给出明确提示，禁止任何「点按钮无反应」
+    error.value = '还没有转盘结果，请先点「转一下」。';
+    return;
+  }
   loading.value = true;
   error.value = '';
   message.value = '';
   try {
-    await apiRequest(`/recommendations/${spinHistoryId.value}/add-to-plan`, {
-      method: 'POST',
-      body: JSON.stringify({
-        planDate: planDate.value,
-        mealType: mealType.value,
-        dinerCount: Number(dinerCount.value),
-        dinerIds: [...selectedDinerIds.value]
-      })
-    });
+    if (spinHistoryId.value) {
+      // 正常 spin：结果已存入 RecommendationHistory，按服务端存储加入计划
+      await apiRequest(`/recommendations/${spinHistoryId.value}/add-to-plan`, {
+        method: 'POST',
+        body: JSON.stringify({
+          planDate: planDate.value,
+          mealType: mealType.value,
+          dinerCount: Number(dinerCount.value),
+          dinerIds: [...selectedDinerIds.value]
+        })
+      });
+    } else {
+      // UXA-003：fallback 结果没有 RecommendationHistory，不能伪造 historyId；
+      // 走标准的「直接创建计划」数据链（POST /plans，与「整组加入计划」无 history 时同一条合法链路）。
+      await apiRequest('/plans', {
+        method: 'POST',
+        body: JSON.stringify({
+          planDate: planDate.value,
+          mealType: mealType.value,
+          dinerCount: Number(dinerCount.value),
+          items: [{ itemType: 'RECIPE', recipeId: spinResult.value.resultId, mealRole: 'MAIN', sortOrder: 0 }],
+          dinerIds: [...selectedDinerIds.value]
+        })
+      });
+    }
     message.value = `已加入 ${planDate.value} 的计划`;
   } catch (e) {
     error.value = e instanceof Error ? e.message : '加入计划失败';
@@ -304,6 +355,7 @@ onMounted(() => {
 onUnmounted(() => {
   dinerSequence.next();
   searchDiners.cancel();
+  spinSequence.next();
   if (spinTimer) clearTimeout(spinTimer);
 });
 watch(
@@ -313,6 +365,20 @@ watch(
   },
   { immediate: true }
 );
+// UXA-001：餐次变化时候选池同步刷新；同时清空旧餐次的转盘结果与 historyId，
+// 避免「旧餐次的结果」被加入新餐次计划。进行中的 spin 请求一并作废。
+watch(mealType, () => {
+  spinSequence.next();
+  if (spinTimer) {
+    clearTimeout(spinTimer);
+    spinTimer = null;
+  }
+  spinning.value = false;
+  resultReady.value = false;
+  spinResult.value = null;
+  spinHistoryId.value = '';
+  void loadCandidates();
+});
 async function generate() {
   loading.value = true;
   error.value = '';
@@ -441,7 +507,7 @@ async function addMissingToShopping() {
     <div class="app-card candidate-pool">
       <div class="candidate-pool__header">
         <span class="candidate-pool__count">
-          当前参与随机的候选数量：
+          当前餐次（{{ displayLabel(mealType) }}）参与随机的候选数量：
           <strong>{{ candidateLoading ? '…' : candidateCount }}</strong> 道菜参与随机
         </span>
         <AppButton variant="secondary" size="sm" @click="showCandidatePanel = !showCandidatePanel">
@@ -451,6 +517,9 @@ async function addMissingToShopping() {
       <div v-if="showCandidatePanel" class="candidate-pool__body">
         <p v-if="candidateLoading" class="candidate-pool__hint">加载中…</p>
         <template v-else-if="candidateRecipes.length">
+          <p class="candidate-pool__hint">
+            仅显示适用于「{{ displayLabel(mealType) }}」的菜谱；参与随机还需勾选「参与推荐」。
+          </p>
           <div v-for="recipe in candidateRecipes" :key="recipe.id" class="candidate-item">
             <label class="candidate-item__label">
               <input
@@ -462,7 +531,9 @@ async function addMissingToShopping() {
             </label>
           </div>
         </template>
-        <p v-else class="candidate-pool__hint">还未录入菜谱，请先新增。</p>
+        <p v-else class="candidate-pool__hint">
+          当前餐次暂无候选菜谱。可为已有菜谱在编辑页补充「{{ displayLabel(mealType) }}」餐次，或新增菜谱。
+        </p>
         <div class="candidate-pool__actions">
           <RouterLink class="text-button" to="/recipes/new">新增菜谱 →</RouterLink>
         </div>
@@ -496,12 +567,12 @@ async function addMissingToShopping() {
       </div>
 
       <p v-if="candidateCount === 0 && !candidateLoading && !spinning" class="spin-section__hint">
-        候选池为空，请先
+        当前餐次候选池为空，请先
         <RouterLink to="/recipes/new">新增菜谱</RouterLink>
         或在候选管理中启用已有菜谱的「参与推荐」。
       </p>
       <p v-if="candidateCount === 1 && !resultReady && !spinning" class="spin-section__hint">
-        候选池仅 1 道菜，转盘结果将直接是该菜谱。
+        当前餐次仅 1 道候选菜，转盘结果将直接是该菜谱。
       </p>
     </div>
 
@@ -538,8 +609,8 @@ async function addMissingToShopping() {
     <p v-if="message" class="business-success">{{ message }}</p>
     <AppErrorState v-if="error" title="暂时无法推荐" :description="error" @retry="generate" /><AppEmptyState
       v-else-if="!results.length && !loading"
-      title="准备好摇一摇了吗"
-      description="选择推荐方式，系统会解释每个结果为什么适合。"
+      title="今天吃什么？"
+      description="点「转一下」随机决定，或选择推荐方式，系统会解释每个结果为什么适合。"
     /><template v-else
       ><div class="business-card__actions">
         <AppButton v-if="historyId" variant="secondary" @click="accept">喜欢这组结果</AppButton
