@@ -8,6 +8,8 @@ import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
 import { apiRequest, ApiRequestError } from '../services/api';
 import { displayLabel } from '../utils/display';
+import { isIsoDate } from '../utils/validation';
+import { createRequestSequence } from '../utils/request-sequence';
 
 interface RecipeBrief {
   id: string;
@@ -28,7 +30,19 @@ interface RecipeBrief {
   tools: Array<{ id: string; toolNameSnapshot: string; required: boolean }>;
 }
 
+/** 计划上下文：从计划页进入时读取计划，锁定餐次/日期并由服务端收口计划。 */
+interface PlanContext {
+  id: string;
+  planDate: string;
+  mealType: string;
+  status: string;
+  version: number;
+  items: Array<{ id: string; recipe?: { id: string; name: string } | null }>;
+}
+
 type PageState = 'prompt' | 'loading' | 'error' | 'preview' | 'success';
+
+const MEAL_TYPES = ['BREAKFAST', 'LUNCH', 'DINNER', 'AFTERNOON_TEA'];
 
 const route = useRoute();
 const router = useRouter();
@@ -41,23 +55,76 @@ const preview = ref<ImmediateMealPreviewDto | null>(null);
 const successMessage = ref('');
 const cookingOpen = ref(false);
 
-// Form fields with auto-detected defaults
-const mealType = ref(inferMealType());
-const sourceType = ref('HOMEMADE');
-const notes = ref('');
-const usedSelections = ref<Record<string, string[]>>({});
+// UXB-003：进入「完成这一餐」时继承入口的餐次与计划上下文
+const requestedPlanId = computed(() => String(route.query.planId ?? ''));
+const planMode = computed(() => Boolean(requestedPlanId.value));
+const planContext = ref<PlanContext | null>(null);
+// 计划不可完成（已取消/已完成/不存在）时给出只能返回计划页的错误态
+const planBroken = ref(false);
 
+// Form fields with auto-detected defaults
 function inferMealType(): string {
+  const requested = String(route.query.mealType ?? '');
+  if (MEAL_TYPES.includes(requested)) return requested;
   const hour = new Date().getHours();
   if (hour < 11) return 'BREAKFAST';
   if (hour < 14) return 'LUNCH';
   if (hour < 17) return 'AFTERNOON_TEA';
   return 'DINNER';
 }
+const mealType = ref(inferMealType());
+const sourceType = ref('HOMEMADE');
+const notes = ref('');
+const usedSelections = ref<Record<string, string[]>>({});
+const todayIso = new Date().toLocaleDateString('sv-SE');
+const queryDate = String(route.query.date ?? '');
+const recordDate = ref(isIsoDate(queryDate) ? queryDate : todayIso);
+
+// UXB-003：计划/推荐/详情多入口可能重复进入「完成这一餐」，用请求序号丢弃过期响应
+const pageSequence = createRequestSequence();
+
+/** 进入入口来源提示：计划完成 / 明确餐次推荐 / 菜谱页 */
+const contextHint = computed(() => {
+  if (requestedPlanId.value) return '正在完成饮食计划中的这餐；确认后会标记计划为已完成。';
+  if (MEAL_TYPES.includes(String(route.query.mealType ?? ''))) return '从「今天吃什么」进入，完成时会记入这一餐次。';
+  return '完成后会记入这一餐，并同步到首页、日历与统计。';
+});
+
+/** 即时用餐 preview/confirm 共用的请求体；计划完成时携带 relatedPlanId 收口计划。 */
+function immediateMealBody(extra: Record<string, unknown> = {}) {
+  return {
+    recipeId: recipe.value!.id,
+    mealType: mealType.value,
+    sourceType: sourceType.value,
+    recordDate: recordDate.value,
+    notes: notes.value || null,
+    ...(requestedPlanId.value ? { relatedPlanId: requestedPlanId.value } : {}),
+    ...extra
+  };
+}
 
 function hasStructuredIngredients(): boolean {
   if (!recipe.value) return false;
   return recipe.value.ingredients.some((ing) => ing.quantity != null && ing.unit != null);
+}
+
+async function loadPlanContext(): Promise<void> {
+  if (!requestedPlanId.value) return;
+  const plan = await apiRequest<PlanContext>(`/plans/${requestedPlanId.value}`);
+  if (plan.status === 'COMPLETED' || plan.status === 'CANCELLED') {
+    throw new ApiRequestError(
+      409,
+      'PLAN_NOT_ACTIONABLE',
+      plan.status === 'COMPLETED' ? '该计划已经完成，无需重复记录' : '该计划已取消，不能完成'
+    );
+  }
+  const first = plan.items[0];
+  if (plan.items.length !== 1 || !first?.recipe) {
+    throw new ApiRequestError(409, 'PLAN_NOT_SINGLE_RECIPE', '该计划包含多个项目，请在计划页完成这一餐');
+  }
+  planContext.value = plan;
+  mealType.value = plan.mealType;
+  recordDate.value = plan.planDate;
 }
 
 async function loadRecipe(): Promise<void> {
@@ -67,46 +134,51 @@ async function loadRecipe(): Promise<void> {
     return;
   }
   loading.value = true;
+  const sequence = pageSequence.next();
   try {
-    recipe.value = await apiRequest<RecipeBrief>(`/recipes/${recipeId.value}`);
+    const [fetchedRecipe] = await Promise.all([
+      apiRequest<RecipeBrief>(`/recipes/${recipeId.value}`),
+      planMode.value ? loadPlanContext() : Promise.resolve()
+    ]);
+    if (!pageSequence.isCurrent(sequence)) return;
+    recipe.value = fetchedRecipe;
   } catch (e) {
-    pageError.value = e instanceof Error ? e.message : '菜谱读取失败';
+    if (!pageSequence.isCurrent(sequence)) return;
+    if (planMode.value) {
+      // 计划状态不可完成（已取消/已完成/多项目）或不存在 → 只能回计划页，不提供重试
+      planBroken.value = true;
+      pageError.value = e instanceof Error ? e.message : '计划读取失败';
+    } else {
+      pageError.value = e instanceof Error ? e.message : '菜谱读取失败';
+    }
     pageState.value = 'error';
   } finally {
-    loading.value = false;
+    if (pageSequence.isCurrent(sequence)) loading.value = false;
+  }
+}
+
+/** 计划完成链路中的不可恢复冲突（计划已取消/已完成/已生成记录）→ 只回计划页 */
+function markBrokenOnPlanConflict(e: unknown): void {
+  if (e instanceof ApiRequestError && e.status === 409 && planMode.value && /计划/.test(e.message)) {
+    planBroken.value = true;
   }
 }
 
 /**
- * 获取库存预览：直接在服务端内存计算，不创建任何记录。
- * 用户取消或离开页面都不会留下未完成的记录。
+ * 开始完成这一餐：先取库存预览（服务端内存计算，不创建任何记录）。
+ * - 有结构化食材 / 来自计划：走 preview → 确认，库存按安全链扣减；
+ * - 无结构化食材且非计划：直接创建正式记录（原一步直记路径，不扣库存）。
  */
 async function startEat(): Promise<void> {
   if (!recipe.value) return;
   pageState.value = 'loading';
   pageError.value = '';
-
   try {
-    if (hasStructuredIngredients()) {
-      // Path A: structured ingredients → in-memory preview → 确认时才创建记录
-      preview.value = await apiRequest<ImmediateMealPreviewDto>('/consumption/preview-from-recipe', {
-        method: 'POST',
-        body: JSON.stringify({
-          recipeId: recipe.value.id,
-          mealType: mealType.value,
-          sourceType: sourceType.value,
-          recordDate: new Date().toLocaleDateString('sv-SE'),
-          notes: notes.value || null
-        })
-      });
-      usedSelections.value = {};
-      pageState.value = 'preview';
-    } else {
-      // Path B: no structured ingredients → 直接创建正式记录
+    if (!hasStructuredIngredients() && !planMode.value) {
       await apiRequest('/records', {
         method: 'POST',
         body: JSON.stringify({
-          recordDate: new Date().toLocaleDateString('sv-SE'),
+          recordDate: recordDate.value,
           mealType: mealType.value,
           sourceType: sourceType.value,
           notes: notes.value || null,
@@ -122,8 +194,16 @@ async function startEat(): Promise<void> {
       });
       successMessage.value = '这餐已记录';
       pageState.value = 'success';
+      return;
     }
+    preview.value = await apiRequest<ImmediateMealPreviewDto>('/consumption/preview-from-recipe', {
+      method: 'POST',
+      body: JSON.stringify(immediateMealBody())
+    });
+    usedSelections.value = {};
+    pageState.value = 'preview';
   } catch (e) {
+    markBrokenOnPlanConflict(e);
     pageError.value = e instanceof Error ? e.message : '操作失败';
     pageState.value = 'error';
   }
@@ -143,17 +223,11 @@ async function refreshPreview(): Promise<void> {
   try {
     preview.value = await apiRequest<ImmediateMealPreviewDto>('/consumption/preview-from-recipe', {
       method: 'POST',
-      body: JSON.stringify({
-        recipeId: recipe.value.id,
-        mealType: mealType.value,
-        sourceType: sourceType.value,
-        recordDate: new Date().toLocaleDateString('sv-SE'),
-        notes: notes.value || null,
-        selections: usedSelections.value
-      })
+      body: JSON.stringify(immediateMealBody({ selections: usedSelections.value }))
     });
     pageState.value = 'preview';
   } catch (e) {
+    markBrokenOnPlanConflict(e);
     pageError.value = e instanceof Error ? e.message : '预览失败，请重试';
     pageState.value = 'error';
   }
@@ -181,22 +255,20 @@ async function confirmConsumption(): Promise<void> {
   try {
     await apiRequest('/consumption/confirm-from-recipe', {
       method: 'POST',
-      body: JSON.stringify({
-        recipeId: recipe.value.id,
-        mealType: mealType.value,
-        sourceType: sourceType.value,
-        recordDate: new Date().toLocaleDateString('sv-SE'),
-        notes: notes.value || null,
-        previewToken: preview.value.previewToken,
-        operationId: crypto.randomUUID(),
-        selections: usedSelections.value
-      })
+      body: JSON.stringify(
+        immediateMealBody({
+          previewToken: preview.value.previewToken,
+          operationId: crypto.randomUUID(),
+          selections: usedSelections.value
+        })
+      )
     });
-    successMessage.value = '这餐已记录';
+    successMessage.value = planMode.value ? '计划已完成，这餐已记录' : '这餐已记录';
     pageState.value = 'success';
   } catch (e) {
+    markBrokenOnPlanConflict(e);
     if (e instanceof ApiRequestError && e.status === 409) {
-      pageError.value = '库存已变化，请重新预览';
+      pageError.value = e.message || '库存已变化，请重新预览';
     } else {
       pageError.value = e instanceof Error ? e.message : '确认失败';
     }
@@ -205,7 +277,9 @@ async function confirmConsumption(): Promise<void> {
 }
 
 function goBack(): void {
-  if (recipe.value) {
+  if (planMode.value) {
+    router.push({ name: 'plans' });
+  } else if (recipe.value) {
     router.push({ name: 'recipe-detail', params: { id: recipe.value.id } });
   } else {
     router.push({ name: 'home' });
@@ -227,22 +301,26 @@ onMounted(() => {
   void loadRecipe();
 });
 </script>
-
 <template>
   <section class="business-page complete-meal-page">
     <!-- Loading: recipe fetch -->
     <AppSkeleton v-if="loading && !recipe" :lines="6" />
 
-    <!-- Error state -->
+    <!-- 计划不可完成（已取消/已完成/多项目/不存在） -->
+    <AppErrorState v-if="planBroken" title="无法完成这一餐" :description="pageError">
+      <AppButton @click="router.push({ name: 'plans' })">返回饮食计划</AppButton>
+    </AppErrorState>
+
+    <!-- Error state (recipe not loaded yet) -->
     <AppErrorState
-      v-if="pageState === 'error' && !recipe"
+      v-else-if="pageState === 'error' && !recipe"
       title="出错了"
       :description="pageError"
       @retry="loadRecipe"
     />
 
     <!-- Step 1: Prompt / Confirm the meal -->
-    <template v-if="recipe && pageState === 'prompt'">
+    <template v-if="recipe && pageState === 'prompt' && (!planMode || planContext)">
       <header class="business-hero">
         <div>
           <p class="business-eyebrow">还差一步</p>
@@ -252,14 +330,21 @@ onMounted(() => {
       </header>
 
       <div class="app-card complete-meal-form">
+        <p v-if="requestedPlanId" class="complete-meal-context complete-meal-context--plan">{{ contextHint }}</p>
+
         <label class="app-field">
           <span class="app-field__label">餐次</span>
-          <select v-model="mealType">
+          <select v-model="mealType" :disabled="planMode">
             <option value="BREAKFAST">早餐</option>
             <option value="LUNCH">午餐</option>
             <option value="DINNER">晚餐</option>
             <option value="AFTERNOON_TEA">下午茶</option>
           </select>
+        </label>
+
+        <label class="app-field">
+          <span class="app-field__label">日期</span>
+          <input v-model="recordDate" type="date" :disabled="planMode" />
         </label>
 
         <label class="app-field">
@@ -300,6 +385,7 @@ onMounted(() => {
         <div>
           <p class="business-eyebrow">还差一步</p>
           <h1>{{ recipe.name }}</h1>
+          <p v-if="requestedPlanId" class="complete-meal-context-line">来自饮食计划，确认后计划会标记为已完成</p>
         </div>
       </header>
 
@@ -358,6 +444,7 @@ onMounted(() => {
               </label>
             </div>
           </article>
+          <p v-if="preview.items.length === 0" class="preview-empty">这个菜谱没有需要核对库存的食材。</p>
         </div>
 
         <div class="complete-meal-actions">
@@ -385,7 +472,7 @@ onMounted(() => {
     </template>
 
     <!-- Error in flow (with retry) -->
-    <AppErrorState v-if="pageState === 'error' && recipe" title="操作未完成" :description="pageError">
+    <AppErrorState v-if="pageState === 'error' && recipe && !planBroken" title="操作未完成" :description="pageError">
       <div class="complete-meal-actions">
         <AppButton variant="ghost" @click="goBack">返回</AppButton>
         <AppButton @click="startEat">重试</AppButton>
@@ -397,7 +484,11 @@ onMounted(() => {
       <div class="success-icon">✓</div>
       <h2>{{ successMessage }}</h2>
       <p>这餐已经记下来了，可以去首页或日历查看。</p>
-      <div class="complete-meal-actions">
+      <div v-if="planMode" class="complete-meal-actions complete-meal-actions--center">
+        <AppButton @click="router.push({ name: 'plans' })">回饮食计划</AppButton>
+        <AppButton variant="secondary" @click="router.push({ name: 'home' })">回首页</AppButton>
+      </div>
+      <div v-else class="complete-meal-actions">
         <AppButton @click="goBack">回到菜谱</AppButton>
         <AppButton variant="secondary" @click="router.push({ name: 'home' })">回首页</AppButton>
       </div>
@@ -414,11 +505,34 @@ onMounted(() => {
   max-width: 480px;
 }
 
+.complete-meal-context {
+  padding: var(--space-3);
+  border-radius: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0;
+}
+
+.complete-meal-context--plan {
+  background: #eef6ff;
+  border: 1px solid #bcd9ff;
+  color: #1f4e8c;
+}
+
+.complete-meal-context-line {
+  color: var(--color-text-muted);
+  font-size: 13px;
+}
+
 .complete-meal-actions {
   display: flex;
   gap: var(--space-3);
   justify-content: flex-end;
   margin-top: var(--space-4);
+}
+
+.complete-meal-actions--center {
+  justify-content: center;
 }
 
 .complete-meal-cooking-link {
@@ -476,6 +590,14 @@ onMounted(() => {
   border: 1px solid #ffd6a5;
   color: #e65100;
   font-size: 13px;
+}
+
+.preview-empty {
+  color: var(--color-text-muted);
+  font-size: 13px;
+  text-align: center;
+  padding: var(--space-4) 0;
+  margin: 0;
 }
 
 .preview-items {

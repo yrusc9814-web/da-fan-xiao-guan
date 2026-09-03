@@ -48,6 +48,8 @@ export interface ImmediateMealInput {
   sourceType: RecordSourceType;
   notes?: string | null;
   dinerIds?: string[];
+  /** 完成该计划（POST /plans/:id/complete）后收口计划时，把正式记录关联回原计划。 */
+  relatedPlanId?: string | null;
 }
 
 function httpError(statusCode: number, message: string): Error {
@@ -360,6 +362,39 @@ export async function confirmConsumption(
   });
 }
 
+interface PlanMealContext {
+  mealType: MealType;
+  recordDate: string;
+  dinerCount: number;
+  dinerIds: string[];
+}
+
+/**
+ * 计划完成语义：从饮食计划收口（relatedPlanId）时，记录必须以计划为准——
+ * 餐次、记录日期取计划值；人数按计划人数缩放；完成后把计划置为已完成。
+ * 仅允许「单条 RECIPE 计划」走即时用餐链路（与计划页/推荐入计划的口径一致），
+ * 多项目计划仍由 MealPlansPage 走既有 completePlan（DRAFT + 后续确认）。
+ */
+async function resolvePlanCompletion(database: Database, planId: string, recipeId: string): Promise<PlanMealContext> {
+  const plan = await database.mealPlan.findFirst({
+    where: { id: planId, deletedAt: null },
+    include: { items: true, diners: true }
+  });
+  if (!plan) throw httpError(404, '计划不存在');
+  if (plan.status === 'CANCELLED') throw httpError(409, '该计划已取消，不能完成');
+  if (plan.status === 'COMPLETED') throw httpError(409, '该计划已完成，无需重复记录');
+  const singleItem = plan.items[0];
+  if (plan.items.length !== 1 || singleItem.itemType !== 'RECIPE' || singleItem.recipeId !== recipeId) {
+    throw httpError(409, '该计划包含多个项目，请在计划页完成这一餐');
+  }
+  return {
+    mealType: plan.mealType,
+    recordDate: plan.planDate,
+    dinerCount: Math.max(plan.dinerCount ?? 1, 1),
+    dinerIds: plan.diners.map((link) => link.dinerId).filter((id): id is string => Boolean(id))
+  };
+}
+
 export async function getImmediateMealPreview(
   database: PrismaClient,
   input: ImmediateMealInput & { recipeId: string; selections?: BatchSelections }
@@ -369,7 +404,10 @@ export async function getImmediateMealPreview(
     include: { ingredients: { orderBy: { sortOrder: 'asc' } } }
   });
   if (!recipe) throw httpError(404, '菜谱不存在');
-  const dinerCount = Math.max(input.dinerIds?.length ?? 1, 1);
+  const planContext = input.relatedPlanId
+    ? await resolvePlanCompletion(database, input.relatedPlanId, input.recipeId)
+    : null;
+  const dinerCount = Math.max(planContext?.dinerCount ?? input.dinerIds?.length ?? 1, 1);
   const items = await buildPreviewForRecipe(database, recipe, dinerCount, input.selections);
   const previewToken = previewHash({ recipeId: input.recipeId, dinerCount, items });
   return { recipeId: input.recipeId, dinerCount, previewToken, items };
@@ -397,29 +435,47 @@ export async function confirmImmediateMeal(
       include: { ingredients: { orderBy: { sortOrder: 'asc' } } }
     });
     if (!recipe) throw httpError(404, '菜谱不存在');
-    const dinerCount = Math.max(input.dinerIds?.length ?? 1, 1);
+    const planContext = input.relatedPlanId
+      ? await resolvePlanCompletion(tx, input.relatedPlanId, input.recipeId)
+      : null;
+    const dinerCount = Math.max(planContext?.dinerCount ?? input.dinerIds?.length ?? 1, 1);
     const items = await buildPreviewForRecipe(tx, recipe, dinerCount, input.selections);
     const previewToken = previewHash({ recipeId: input.recipeId, dinerCount, items });
     if (previewToken !== input.previewToken) throw httpError(409, '库存已变化，请重新预览后确认');
     if (items.some((item) => item.requiresManualSelection))
       throw httpError(422, '存在多个可用库存批次，请先明确选择批次');
+    if (planContext) {
+      const duplicate = await tx.mealRecord.findUnique({ where: { sourceMealPlanId: input.relatedPlanId! } });
+      if (duplicate) throw httpError(409, '该计划已生成记录，请勿重复完成');
+    }
 
-    // 真正确认时才创建正式记录，避免留下 DRAFT 幽灵记录
+    // 真正确认时才创建正式记录，避免留下 DRAFT 幽灵记录；
+    // 计划完成场景（relatedPlanId）以计划为准收口：记录关联原计划并置为已完成。
     const record = await tx.mealRecord.create({
       data: {
-        recordDate: input.recordDate,
+        recordDate: planContext?.recordDate ?? input.recordDate,
         recordTime: input.recordTime ?? null,
-        mealType: input.mealType,
+        mealType: planContext?.mealType ?? input.mealType,
         sourceType: input.sourceType,
         status: 'CONFIRMED',
         confirmedAt: new Date(),
         notes: input.notes ?? null,
+        relatedPlanId: input.relatedPlanId ?? null,
+        sourceMealPlanId: input.relatedPlanId ?? null,
         items: {
           create: [{ itemType: 'RECIPE', recipeId: input.recipeId, mealRole: 'MAIN', sortOrder: 0 }]
         },
-        diners: { create: [...new Set(input.dinerIds ?? [])].map((dinerId) => ({ dinerId })) }
+        diners: {
+          create: [...new Set(planContext?.dinerIds ?? input.dinerIds ?? [])].map((dinerId) => ({ dinerId }))
+        }
       }
     });
+    if (input.relatedPlanId) {
+      await tx.mealPlan.updateMany({
+        where: { id: input.relatedPlanId, status: { in: ['PLANNED', 'UNPLANNED'] }, deletedAt: null },
+        data: { status: 'COMPLETED', completedAt: new Date(), version: { increment: 1 } }
+      });
+    }
 
     const { logIds, shoppingListId } = await applyConsumption(tx, items, record.id);
 

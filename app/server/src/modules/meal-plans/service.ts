@@ -248,6 +248,12 @@ export async function completePlan(database: PrismaClient, id: string, version: 
       }),
       tx.settings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {}, select: { autoDeductInventory: true } })
     ]);
-    return { plan, record, idempotent: false, inventoryDeductionPromptEnabled: settings.autoDeductInventory };
+    return {
+      plan,
+      record,
+      idempotent: false,
+      inventoryDeductionPromptEnabled: settings.autoDeductInventory,
+      pendingDraftRecordId: record.id
+    };
   });
 }

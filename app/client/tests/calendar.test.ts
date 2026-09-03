@@ -4,6 +4,7 @@ import { createMemoryHistory, createRouter } from 'vue-router';
 
 import CalendarPage from '../src/pages/CalendarPage.vue';
 import MealPlansPage from '../src/pages/MealPlansPage.vue';
+import CompleteMealPage from '../src/pages/CompleteMealPage.vue';
 import { buildMonthGrid, monthRange, parseLocalIsoDate, toLocalIsoDate } from '../src/utils/calendar';
 
 function weekdayIndex(date: string): number {
@@ -322,5 +323,141 @@ describe('MealPlansPage date query', () => {
     expect(completeCalls[0]![1]!.body).toBe(JSON.stringify({ version: 1 }));
     // 完成后回到列表，该计划不再展示完成/取消动作
     expect(wrapper.findAll('button').find((button) => button.text() === '完成这一餐')).toBeUndefined();
+  });
+});
+
+function recipeBrief(id = 'recipe-1') {
+  return {
+    id,
+    name: 'UXB完成页测试菜',
+    imagePath: null,
+    cookingTimeMinutes: 20,
+    difficulty: null,
+    servings: 2,
+    ingredients: [],
+    steps: [{ id: `${id}-s1`, stepNo: 1, content: '做' }],
+    tools: []
+  };
+}
+
+function createCompleteRouter(routeQuery: Record<string, string>) {
+  const router = createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/complete-meal', component: CompleteMealPage }]
+  });
+  const query = new URLSearchParams(routeQuery).toString();
+  return router.push(`/complete-meal?${query}`).then(() => router);
+}
+
+describe('CompleteMealPage 完成上下文继承（UXB-003）', () => {
+  it('无结构化食材的菜谱：direct 记录保留入口 mealType，计划入口携带 relatedPlanId', async () => {
+    const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn((input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === 'POST') {
+        posts.push({ url, body: JSON.parse(init.body as string) as Record<string, unknown> });
+        return jsonOk({ id: 'record-1', version: 1 });
+      }
+      if (url.includes('/recipes/')) return jsonOk(recipeBrief());
+      return jsonOk([]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = await createCompleteRouter({ recipeId: 'recipe-1', mealType: 'DINNER' });
+    const wrapper = mount(CompleteMealPage, { global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.text()).toContain('UXB完成页测试菜');
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === '确认并完成')!
+      .trigger('click');
+    await flushPromises();
+    const create = posts.find((p) => p.url.includes('/records'));
+    expect(create).toBeTruthy();
+    // mealType 继承自推荐入口，未按时间推断漂移
+    expect(create!.body.mealType).toBe('DINNER');
+    expect(create!.body.relatedPlanId).toBeUndefined();
+    expect(wrapper.text()).toContain('这餐已记录');
+  });
+
+  it('计划入口（planId）：preview 与 confirm 都携带 relatedPlanId，锁定餐次/日期', async () => {
+    const posts: Array<{ url: string; body: Record<string, unknown> }> = [];
+    const fetchMock = vi.fn((input: unknown, init?: RequestInit) => {
+      const url = String(input);
+      if (url.includes('/plans/plan-1') && !String(init?.method).includes('POST')) {
+        return jsonOk({
+          id: 'plan-1',
+          planDate: '2046-08-20',
+          mealType: 'DINNER',
+          dinerCount: 1,
+          status: 'PLANNED',
+          version: 1,
+          items: [{ id: 'pi-1', recipe: { id: 'recipe-1', name: 'UXB完成页测试菜' } }]
+        });
+      }
+      if (url.includes('/recipes/recipe-1')) return jsonOk(recipeBrief());
+      if (url.includes('/consumption/preview-from-recipe')) {
+        return jsonOk({ recipeId: 'recipe-1', dinerCount: 1, previewToken: 'tok-1', items: [] });
+      }
+      if (url.includes('/consumption/confirm-from-recipe')) {
+        posts.push({ url, body: JSON.parse(init!.body as string) as Record<string, unknown> });
+        return jsonOk({ recordId: 'record-1', recordVersion: 1 });
+      }
+      return jsonOk([]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = await createCompleteRouter({ recipeId: 'recipe-1', planId: 'plan-1' });
+    const wrapper = mount(CompleteMealPage, { global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.text()).toContain('饮食计划');
+
+    // 餐次/日期被计划锁定
+    expect((wrapper.get('select').element as HTMLSelectElement).value).toBe('DINNER');
+    expect((wrapper.get('input[type="date"]').element as HTMLInputElement).value).toBe('2046-08-20');
+
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === '确认并完成')!
+      .trigger('click');
+    await flushPromises();
+    // 计划入口 + 无结构化食材 → 走库存核对 preview，确认按钮在核对页
+    expect(wrapper.text()).toContain('库存核对');
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text() === '确认并完成')!
+      .trigger('click');
+    await flushPromises();
+    const confirm = posts.find((p) => p.url.includes('/confirm-from-recipe'));
+    expect(confirm).toBeTruthy();
+    expect(confirm!.body.relatedPlanId).toBe('plan-1');
+    expect(confirm!.body.mealType).toBe('DINNER');
+    expect(wrapper.text()).toContain('计划已完成，这餐已记录');
+  });
+
+  it('计划不可完成（已取消/已完成）时展示返回计划页，不进入完成流程', async () => {
+    const fetchMock = vi.fn((input: unknown) => {
+      const url = String(input);
+      if (url.includes('/plans/plan-x')) {
+        return Promise.resolve({
+          ok: false,
+          status: 409,
+          json: async () => ({
+            success: false,
+            data: null,
+            error: { code: 'PLAN_NOT_ACTIONABLE', message: '该计划已经完成，无需重复记录' }
+          })
+        });
+      }
+      if (url.includes('/recipes/recipe-x')) return jsonOk(recipeBrief('recipe-x'));
+      return jsonOk([]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const router = await createCompleteRouter({ recipeId: 'recipe-x', planId: 'plan-x' });
+    const wrapper = mount(CompleteMealPage, { global: { plugins: [router] } });
+    await flushPromises();
+    expect(wrapper.text()).toContain('无法完成这一餐');
+    expect(wrapper.text()).toContain('该计划已经完成');
+    expect(wrapper.findAll('button').find((b) => b.text() === '确认并完成')).toBeUndefined();
+    expect(wrapper.findAll('button').find((b) => b.text() === '返回饮食计划')).toBeDefined();
   });
 });

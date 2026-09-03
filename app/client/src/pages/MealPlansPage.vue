@@ -25,9 +25,12 @@ interface Plan {
   items: Array<{
     id: string;
     customName: string | null;
-    recipe?: { name: string } | null;
+    recipe?: { id: string; name: string } | null;
     store?: { name: string } | null;
   }>;
+}
+interface CompletePlanResult {
+  pendingDraftRecordId?: string;
 }
 const plans = ref<Plan[]>([]),
   loading = ref(true),
@@ -35,6 +38,8 @@ const plans = ref<Plan[]>([]),
   error = ref(''),
   conflict = ref(''),
   showForm = ref(false);
+// UXB-003：完成计划后指向刚生成的「待完成」记录，引导确认库存扣减（无 DRAFT 术语）
+const completedDraftLink = ref('');
 const recipes = ref<Array<{ id: string; name: string }>>([]),
   stores = ref<Array<{ id: string; name: string }>>([]),
   diners = ref<Array<{ id: string; name: string }>>([]),
@@ -217,9 +222,17 @@ async function createPlan() {
 }
 async function action(plan: Plan, type: 'complete' | 'cancel') {
   conflict.value = '';
+  completedDraftLink.value = '';
   try {
-    await apiRequest(`/plans/${plan.id}/${type}`, { method: 'POST', body: JSON.stringify({ version: plan.version }) });
+    const data = await apiRequest<CompletePlanResult>(`/plans/${plan.id}/${type}`, {
+      method: 'POST',
+      body: JSON.stringify({ version: plan.version })
+    });
     await load();
+    // UXB-003：完成计划后把生成的「待完成」记录链接出来，用户可直接去确认库存
+    if (type === 'complete' && data?.pendingDraftRecordId) {
+      completedDraftLink.value = data.pendingDraftRecordId;
+    }
   } catch (e) {
     if (e instanceof ApiRequestError && e.status === 409) conflict.value = e.message;
     else error.value = e instanceof Error ? e.message : '操作失败';
@@ -255,6 +268,10 @@ onUnmounted(() => {
       </div>
       <AppButton @click="showForm = !showForm">{{ showForm ? '收起' : '安排一餐' }}</AppButton>
     </header>
+    <div v-if="completedDraftLink" class="business-guide" role="status">
+      <span>这一餐已生成记录，去核对食材并完成记录：</span>
+      <RouterLink :to="{ name: 'records', query: { focus: completedDraftLink } }">去饮食记录确认 →</RouterLink>
+    </div>
     <form v-if="showForm" class="business-form app-card" @submit.prevent="createPlan">
       <label class="app-field"
         ><span class="app-field__label">日期</span><input v-model="form.planDate" type="date" /></label
@@ -366,6 +383,23 @@ onUnmounted(() => {
 }
 .business-card--selected {
   outline: 2px solid var(--color-primary);
+}
+.business-guide {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  flex-wrap: wrap;
+  padding: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+  border-radius: 12px;
+  background: #eef6ff;
+  border: 1px solid #bcd9ff;
+  color: #1f4e8c;
+  font-size: 14px;
+}
+.business-guide a {
+  color: var(--color-primary-hover);
+  font-weight: var(--font-weight-bold);
 }
 @media (max-width: 1023px) {
   .plan-options {

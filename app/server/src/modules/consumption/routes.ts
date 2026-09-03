@@ -44,6 +44,7 @@ const immediateMealBaseProperties = {
   recordTime: nullableStringSchema,
   notes: nullableStringSchema,
   dinerIds: stringListSchema,
+  relatedPlanId: nullableStringSchema,
   selections: consumptionSelectionsSchema
 };
 
@@ -71,6 +72,7 @@ interface ImmediateMealBody {
   recordTime?: string | null;
   notes?: string | null;
   dinerIds?: string[];
+  relatedPlanId?: string | null;
   selections?: BatchSelections;
 }
 
@@ -95,14 +97,15 @@ export async function registerConsumptionRoutes(app: FastifyInstance, database: 
     '/api/v1/consumption/preview-from-recipe',
     { schema: { body: immediateMealPreviewBodySchema } },
     async (request) => {
-      const { recordDate, recordTime, notes, dinerIds, ...rest } = request.body;
+      const { recordDate, recordTime, notes, dinerIds, relatedPlanId, ...rest } = request.body;
       return success(
         await getImmediateMealPreview(database, {
           ...rest,
           recordDate: recordDate ?? new Date().toLocaleDateString('sv-SE'),
           recordTime,
           notes,
-          dinerIds
+          dinerIds,
+          relatedPlanId
         })
       );
     }
@@ -113,14 +116,15 @@ export async function registerConsumptionRoutes(app: FastifyInstance, database: 
     '/api/v1/consumption/confirm-from-recipe',
     { schema: { body: immediateMealConfirmBodySchema } },
     async (request) => {
-      const { recordDate, recordTime, notes, dinerIds, ...rest } = request.body;
+      const { recordDate, recordTime, notes, dinerIds, relatedPlanId, ...rest } = request.body;
       return success(
         await confirmImmediateMeal(database, {
           ...rest,
           recordDate: recordDate ?? new Date().toLocaleDateString('sv-SE'),
           recordTime,
           notes,
-          dinerIds
+          dinerIds,
+          relatedPlanId
         })
       );
     }
