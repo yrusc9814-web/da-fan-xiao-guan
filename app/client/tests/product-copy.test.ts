@@ -118,6 +118,49 @@ describe('BackupPage 用户语言', () => {
     expect(document.body.textContent).toContain('回退');
     expectNoDeveloperCopy({ text: () => `${wrapper.text()}${document.body.textContent ?? ''}` });
   });
+
+  it('恢复成功后明确提示「恢复成功 + 需要重新验证」，且不含实现词', async () => {
+    const filePayload = new File(['zip'], 'backup.zip');
+    const fetchMock = vi.fn().mockImplementation((input: unknown, init?: { method?: string }) => {
+      const url = new URL(String(input));
+      const method = init?.method ?? 'GET';
+      if (method === 'POST' && url.pathname.endsWith('/settings/high-risk/authorize')) {
+        return Promise.resolve(jsonResponse({ token: 'auth-token' }));
+      }
+      if (method === 'POST' && url.pathname.endsWith('/backups/restore')) {
+        return Promise.resolve(jsonResponse({ restored: true }));
+      }
+      return Promise.resolve(jsonResponse({ pinEnabled: false }));
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const wrapper = mount(BackupPage);
+    await flushPromises();
+
+    const input = wrapper.find('input[type="file"]');
+    Object.defineProperty(input.element, 'files', { value: [filePayload] });
+    await input.trigger('change');
+    await wrapper
+      .findAll('button')
+      .find((b) => b.text().includes('校验并恢复'))!
+      .trigger('click');
+    await flushPromises();
+    // 无 PIN 时走确认勾选路径
+    const confirmLabel = document.body.querySelector('.backup-confirmation') as HTMLLabelElement;
+    expect(confirmLabel).not.toBeNull();
+    const checkbox = confirmLabel.querySelector('input[type="checkbox"]') as HTMLInputElement;
+    checkbox.click();
+    await wrapper.vm.$nextTick();
+    await [...document.body.querySelectorAll('button')].find((b) => b.textContent?.includes('二次验证并恢复'))!.click();
+    await flushPromises();
+
+    // 恢复成功后用户必须看到「数据已恢复」和「需要重新验证」的业务解释
+    expect(wrapper.text()).toContain('数据已恢复');
+    expect(wrapper.text()).toContain('重新验证');
+    const visibleText = `${wrapper.text()}${document.body.textContent ?? ''}`;
+    for (const term of ['token', 'Token', 'session', 'Session', 'SQLite', 'SHA', 'staging', 'hash', 'Hash']) {
+      expect(visibleText, `恢复成功提示不应出现实现词“${term}”`).not.toContain(term);
+    }
+  });
 });
 
 describe('DeletedItemsPage 用户语言', () => {

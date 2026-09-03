@@ -92,6 +92,9 @@ describe('public component states', () => {
     await flushPromises();
     expect(wrapper.emitted('unlocked')).toHaveLength(1);
     expect(fetchMock).toHaveBeenCalledTimes(2);
+    // 首次配置不再提供「头像路径」输入；契约保持提交 userAvatarPath: null（等价于原来的跳过）
+    const onboardingBody = JSON.parse(String(fetchMock.mock.calls[1]?.[1]?.body));
+    expect(onboardingBody.userAvatarPath).toBeNull();
   });
   it('PIN 启用时 pin/session 返回 token 则恢复并持久化本地会话', async () => {
     localStorage.removeItem('dafan-pin-token');

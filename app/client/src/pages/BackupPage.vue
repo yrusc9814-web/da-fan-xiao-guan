@@ -66,7 +66,7 @@ async function authorizeAndRestore(): Promise<void> {
     });
     setPinToken(null);
     authorizeDialogOpen.value = false;
-    message.value = '恢复成功，建议重启小馆后继续使用。';
+    message.value = '数据已恢复。为了保护你的数据，需要重新验证访问 PIN 后继续使用。';
   } catch (reason) {
     error.value = reason instanceof Error ? reason.message : '恢复失败，当前数据已回滚';
   } finally {
