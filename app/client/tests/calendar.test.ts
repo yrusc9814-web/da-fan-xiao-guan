@@ -269,4 +269,58 @@ describe('MealPlansPage date query', () => {
     await wrapper.get('button').trigger('click');
     expect((wrapper.get('input[type="date"]').element as HTMLInputElement).value).toBe('2026-08-29');
   });
+
+  it('K：用户界面使用普通用户语言，完成动作仍然可用', async () => {
+    const planned = {
+      id: 'plan-aug',
+      planDate: '2026-08-29',
+      mealType: 'DINNER',
+      dinerCount: 2,
+      status: 'PLANNED',
+      notes: null,
+      version: 1,
+      items: []
+    };
+    let completed = false;
+    const router = createRouterWithPlans();
+    const fetchMock = vi.fn((input: RequestInfo | URL, init?: RequestInit) => {
+      const url = String(input);
+      if (init?.method === 'POST' && url.includes('/plans/plan-aug/complete')) {
+        completed = true;
+        return jsonOk({ ...planned, status: 'COMPLETED', version: 2 });
+      }
+      if (url.includes('/plans')) {
+        return jsonOk([
+          completed ? { ...planned, status: 'COMPLETED', version: 2 } : planned,
+          { ...planned, id: 'plan-draft', planDate: '2026-08-30', status: 'DRAFT' }
+        ]);
+      }
+      if (url.includes('/recipes') || url.includes('/stores') || url.includes('/diners')) {
+        return jsonOk({ items: [] });
+      }
+      return jsonOk([]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await router.push('/plans?date=2026-08-29');
+    const wrapper = mount(MealPlansPage, { global: { plugins: [router] } });
+    await flushPromises();
+
+    const visibleText = wrapper.text();
+    expect(visibleText).not.toMatch(/草稿|已确认|原子生成/);
+    expect(visibleText).not.toMatch(/DRAFT|CONFIRMED/);
+    // 后端返回的 DRAFT 计划在界面上仍以用户语言呈现
+    expect(wrapper.get('[data-plan-date="2026-08-30"]').text()).toContain('待完成');
+
+    const completeButton = wrapper.findAll('button').find((button) => button.text() === '完成这一餐');
+    expect(completeButton).toBeDefined();
+    await completeButton!.trigger('click');
+    await flushPromises();
+    const completeCalls = fetchMock.mock.calls.filter(
+      ([input, init]) => init?.method === 'POST' && String(input).includes('/plans/plan-aug/complete')
+    );
+    expect(completeCalls).toHaveLength(1);
+    expect(completeCalls[0]![1]!.body).toBe(JSON.stringify({ version: 1 }));
+    // 完成后回到列表，该计划不再展示完成/取消动作
+    expect(wrapper.findAll('button').find((button) => button.text() === '完成这一餐')).toBeUndefined();
+  });
 });

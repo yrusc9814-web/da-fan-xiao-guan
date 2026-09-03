@@ -251,7 +251,7 @@ onUnmounted(() => {
       <div>
         <p class="business-eyebrow">Meal planner</p>
         <h1>饮食计划</h1>
-        <p>一餐可包含多道菜、店铺和自定义项目；完成后原子生成日记草稿。</p>
+        <p>一餐可包含多道菜、店铺和自定义项目；吃完后在这里记录这一餐。</p>
       </div>
       <AppButton @click="showForm = !showForm">{{ showForm ? '收起' : '安排一餐' }}</AppButton>
     </header>
@@ -342,7 +342,7 @@ onUnmounted(() => {
         </div>
         <div v-if="plan.status === 'PLANNED' || plan.status === 'UNPLANNED'" class="business-card__actions">
           <button class="text-button" @click="action(plan, 'cancel')">取消计划</button
-          ><AppButton size="sm" @click="action(plan, 'complete')">完成并生成草稿</AppButton>
+          ><AppButton size="sm" @click="action(plan, 'complete')">完成这一餐</AppButton>
         </div>
       </article>
     </div>
