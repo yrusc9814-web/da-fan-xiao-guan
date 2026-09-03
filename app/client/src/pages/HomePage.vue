@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import type { RouteLocationRaw } from 'vue-router';
 import { computed, onMounted, ref, watch } from 'vue';
 
 import AppIcon from '../components/AppIcon.vue';
@@ -9,9 +10,9 @@ import AppEmptyState from '../components/ui/AppEmptyState.vue';
 import AppErrorState from '../components/ui/AppErrorState.vue';
 import AppSectionHeader from '../components/ui/AppSectionHeader.vue';
 import AppSkeleton from '../components/ui/AppSkeleton.vue';
+import { fetchCalendar } from '../services/api';
 import { useAppStore } from '../stores/app';
 import { useDashboardStore } from '../stores/dashboard';
-import { fetchCalendar } from '../services/api';
 import type { DashboardCalendarDay, DashboardMealSlot, DashboardRecipe } from '../../../shared/types';
 
 import tomatoEggsImage from '../assets/recipe-photos/tomato-eggs.png';
@@ -132,6 +133,18 @@ function mealIcon(mealType: DashboardMealSlot['mealType']): 'meal-breakfast' | '
   if (mealType === 'BREAKFAST') return 'meal-breakfast';
   if (mealType === 'LUNCH') return 'meal-lunch';
   return 'meal-dinner';
+}
+
+function mealRecordRoute(meal: DashboardMealSlot): RouteLocationRaw {
+  return { path: '/records', query: { mealType: meal.mealType } };
+}
+
+function mealQuickRecordRoute(meal: DashboardMealSlot): RouteLocationRaw {
+  return { path: '/records', query: { mealType: meal.mealType } };
+}
+
+function calendarDayRoute(day: DashboardCalendarDay): RouteLocationRaw {
+  return { path: '/plans', query: { date: day.date } };
 }
 
 function calendarMark(day: DashboardCalendarDay): string {
@@ -329,29 +342,40 @@ onMounted(() => {
       <section class="dashboard-info-grid" aria-label="今日概览">
         <AppCard class="dashboard-card today-records-card">
           <AppSectionHeader title="今日饮食记录" description="记录每一餐，慢慢找到适合自己的节奏。">
-            <template #actions
-              ><span class="section-count"
+            <template #actions>
+              <span class="section-count"
                 >{{ dashboard.todayRecords.filter((meal) => meal.recorded).length }}/3 餐</span
-              ></template
-            >
+              >
+              <RouterLink
+                v-if="dashboard.todayRecords.length"
+                class="record-add-button"
+                :to="mealQuickRecordRoute(dashboard.todayRecords[0])"
+                aria-label="快速记录一餐"
+              >
+                <AppIcon name="plus" :size="18" /><span>记录</span>
+              </RouterLink>
+            </template>
           </AppSectionHeader>
           <div class="meal-slots">
-            <div
+            <RouterLink
               v-for="meal in dashboard.todayRecords"
               :key="meal.mealType"
               class="meal-slot"
+              :class="{ 'meal-slot--empty': !meal.recorded }"
+              :to="mealRecordRoute(meal)"
               :data-recorded="meal.recorded"
               :data-meal-type="meal.mealType"
             >
               <span class="meal-slot__icon" aria-hidden="true"
                 ><AppIcon :name="mealIcon(meal.mealType)" :size="21"
               /></span>
-              <div class="meal-slot__content">
+              <span class="meal-slot__content">
                 <strong>{{ meal.label }}</strong>
-                <p>{{ meal.title ?? '还没有记录' }}</p>
-              </div>
+                <span>{{ meal.title ?? '还没有记录，点击记录' }}</span>
+              </span>
               <time v-if="meal.time">{{ meal.time }}</time>
-            </div>
+              <span v-else class="meal-slot__add" aria-hidden="true"><AppIcon name="plus" :size="14" /></span>
+            </RouterLink>
           </div>
           <RouterLink class="inline-action" to="/records"
             >查看饮食记录 <AppIcon name="arrow-right" :size="14"
@@ -440,20 +464,138 @@ onMounted(() => {
           <AppButton size="sm" @click="loadCalendarWeek(calendarOffset)">重新加载</AppButton>
         </AppErrorState>
         <div v-else-if="visibleCalendarDays.length" class="calendar-week">
-          <div
+          <RouterLink
             v-for="day in visibleCalendarDays"
             :key="day.date"
             class="calendar-day"
             :class="{ 'calendar-day--today': day.isToday }"
+            :to="calendarDayRoute(day)"
+            :aria-label="`查看 ${day.date}${day.isToday ? '（今天）' : ''}的饮食日历`"
             :data-status="day.status"
           >
             <span>周{{ day.weekday }}</span>
             <strong>{{ day.dayOfMonth }}</strong>
             <small>{{ calendarMark(day) }}</small>
-          </div>
+          </RouterLink>
         </div>
         <AppEmptyState v-else title="日历暂无内容" description="有计划或记录后会显示在这里。" />
       </section>
     </template>
   </section>
 </template>
+
+<style scoped>
+/* 让今日饮食记录卡、餐次行与日历格成为真实入口所需的局部覆盖；
+   布局与其余外观沿用全局 homepage.css */
+
+/* 卡片头部右侧：计数与「记录」新增钮并排 */
+.today-records-card .app-section-header__actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* 新增钮：桌面为文字按钮；移动端收为圆形图标钮 */
+.record-add-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-input);
+  color: var(--color-primary-hover);
+  background: var(--color-card);
+  font-size: 13px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.record-add-button:hover {
+  border-color: var(--color-primary);
+  background: var(--color-primary-soft);
+}
+
+/* 早餐/午餐/晚餐行是可点链接：空行给出可点外观 */
+.meal-slot {
+  border-radius: var(--radius-input);
+}
+
+.meal-slot--empty:hover,
+.meal-slot--empty:focus-visible {
+  background: var(--color-primary-soft);
+}
+
+/* 原正文 <p> 改为 <span> 后补齐省略与正文样式 */
+.meal-slot__content span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 1px;
+  color: var(--color-text-secondary);
+  font-size: 12px;
+}
+
+/* 空餐次的「+」指示 */
+.meal-slot__add {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border-radius: 50%;
+  color: #e08ca4;
+  background: rgba(253, 228, 235, 0.72);
+}
+
+.meal-slot--empty:hover .meal-slot__add {
+  color: var(--color-card);
+  background: var(--color-primary);
+}
+
+/* 日历格是可点链接 */
+.calendar-day:hover:not(.calendar-day--today) {
+  border-color: var(--color-primary);
+  background: var(--color-card);
+}
+
+.meal-slot:focus-visible,
+.calendar-day:focus-visible {
+  outline: 2px solid var(--color-primary);
+  outline-offset: -2px;
+}
+
+@media (max-width: 1023px) {
+  /* 移除旧的纯装饰 ::after 加号，真实「记录」入口已接管 */
+  .today-records-card::after {
+    content: none;
+  }
+
+  .record-add-button {
+    display: inline-grid;
+    width: 36px;
+    height: 36px;
+    min-width: 36px;
+    padding: 0;
+    place-items: center;
+    border-radius: 50%;
+  }
+
+  .record-add-button span {
+    display: none;
+  }
+
+  /* 行级触控目标达到 44px（agent.md 手机交互规则），并补移动正文样式 */
+  .meal-slot {
+    min-height: 44px;
+    border-radius: 10px;
+  }
+
+  .meal-slot__content span {
+    color: var(--mobile-text-secondary);
+    font-size: 13px;
+    font-weight: 400;
+  }
+}
+</style>

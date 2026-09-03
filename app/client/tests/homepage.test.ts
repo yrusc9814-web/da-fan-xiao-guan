@@ -182,3 +182,52 @@ describe('正式首页结构', () => {
     expect(wrapper.text()).toContain('8/10');
   });
 });
+
+describe('首页今日饮食记录卡真实动作', () => {
+  it('顶部的「记录」是真实 RouterLink，而不是伪元素加号', async () => {
+    const wrapper = await mountHomepage();
+    const addButton = wrapper.get('.record-add-button');
+
+    expect(addButton.element.tagName).toBe('A');
+    expect(addButton.attributes('href')).toBe('/records?mealType=BREAKFAST');
+    expect(addButton.attributes('aria-label')).toContain('记录');
+  });
+
+  it('早餐、午餐、晚餐每一行都是可点击的记录动作，未记录行显示真实「+」', async () => {
+    const wrapper = await mountHomepage();
+    const slots = wrapper.findAll('.meal-slot');
+
+    expect(slots).toHaveLength(3);
+    for (const slot of slots) {
+      expect(slot.element.tagName).toBe('A');
+      expect(slot.attributes('href')).toMatch(/^\/records\?mealType=(BREAKFAST|LUNCH|DINNER)$/);
+    }
+    expect(wrapper.findAll('.meal-slot--empty')).toHaveLength(2);
+    expect(wrapper.findAll('.meal-slot--empty .meal-slot__add')).toHaveLength(2);
+    expect(wrapper.text()).toContain('还没有记录，点击记录');
+  });
+
+  it('未记录行的 aria 内容引导用户点击记录', async () => {
+    const wrapper = await mountHomepage();
+    const lunch = wrapper.findAll('.meal-slot').find((slot) => slot.attributes('href') === '/records?mealType=LUNCH');
+
+    expect(lunch).toBeDefined();
+    expect(lunch?.text()).toContain('午餐');
+    expect(lunch?.text()).toContain('点击记录');
+  });
+});
+
+describe('首页饮食日历格与正式日历语义一致', () => {
+  it('每个日历日格都是 RouterLink，指向 /plans?date= 与正式日历页一致', async () => {
+    const wrapper = await mountHomepage();
+    const dayCells = wrapper.findAll('.calendar-day');
+
+    expect(dayCells.length).toBeGreaterThanOrEqual(7);
+    for (const day of dayCells) {
+      expect(day.element.tagName).toBe('A');
+      expect(day.attributes('href')).toMatch(/^\/plans\?date=\d{4}-\d{2}-\d{2}$/);
+    }
+    expect(dayCells[0]?.attributes('href')).toBe('/plans?date=2026-08-03');
+    expect(dayCells[3]?.attributes('href')).toBe('/plans?date=2026-08-06');
+  });
+});
