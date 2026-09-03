@@ -17,6 +17,8 @@ import StatisticsPage from '../pages/StatisticsPage.vue';
 import DeletedItemsPage from '../pages/DeletedItemsPage.vue';
 import RecipeDetailPage from '../pages/RecipeDetailPage.vue';
 import CompleteMealPage from '../pages/CompleteMealPage.vue';
+import ChefHubPage from '../pages/ChefHubPage.vue';
+import JournalHubPage from '../pages/JournalHubPage.vue';
 
 const router = createRouter({
   history: createWebHistory(),
@@ -34,7 +36,7 @@ const router = createRouter({
     { path: '/recipes/:id/edit', name: 'recipe-edit', component: RecipeEditorPage, meta: { title: '编辑菜谱' } },
     { path: '/complete-meal', name: 'complete-meal', component: CompleteMealPage, meta: { title: '完成这一餐' } },
     { path: '/inventory', name: 'inventory', component: InventoryPage, meta: { title: '食材库存' } },
-    { path: '/chef', name: 'chef', component: InventoryPage, meta: { title: '厨师' } },
+    { path: '/chef', name: 'chef', component: ChefHubPage, meta: { title: '厨师' } },
     {
       path: '/discovery',
       name: 'discovery',
@@ -47,7 +49,7 @@ const router = createRouter({
     { path: '/plans', name: 'plans', component: MealPlansPage, meta: { title: '饮食计划' } },
     { path: '/recommendations', name: 'recommendations', component: RecommendationsPage, meta: { title: '菜谱推荐' } },
     { path: '/records', name: 'records', component: RecordsPage, meta: { title: '饮食记录' } },
-    { path: '/journal', name: 'journal', component: RecordsPage, meta: { title: '日记' } },
+    { path: '/journal', name: 'journal', component: JournalHubPage, meta: { title: '日记' } },
     { path: '/calendar', name: 'calendar', component: CalendarPage, meta: { title: '饮食日历' } },
     { path: '/statistics', name: 'statistics', component: StatisticsPage, meta: { title: '统计分析' } },
     { path: '/shopping', name: 'shopping', component: ShoppingPage, meta: { title: '购物清单' } },
