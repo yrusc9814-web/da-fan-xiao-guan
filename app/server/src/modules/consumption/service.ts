@@ -367,6 +367,8 @@ interface PlanMealContext {
   recordDate: string;
   dinerCount: number;
   dinerIds: string[];
+  /** 复用既有 MealPlan.version 乐观锁：preview 与 confirm 之间计划任何变更都会使 token 失效。 */
+  planVersion: number;
 }
 
 /**
@@ -391,8 +393,32 @@ async function resolvePlanCompletion(database: Database, planId: string, recipeI
     mealType: plan.mealType,
     recordDate: plan.planDate,
     dinerCount: Math.max(plan.dinerCount ?? 1, 1),
-    dinerIds: plan.diners.map((link) => link.dinerId).filter((id): id is string => Boolean(id))
+    dinerIds: plan.diners.map((link) => link.dinerId).filter((id): id is string => Boolean(id)),
+    planVersion: plan.version
   };
+}
+
+/**
+ * 即时用餐 previewToken：完整绑定会影响最终完成语义的上下文——
+ * 菜谱、关联计划（relatedPlanId + planVersion）、餐次、记录日期、人数与库存快照。
+ * Preview 与 Confirm 必须逐字段一致，否则 409，杜绝「Preview 计划 A / Confirm 计划 B」
+ * 或「Preview 晚餐 / Confirm 早餐」的静默错配。
+ */
+function immediatePreviewToken(
+  input: Pick<ImmediateMealInput, 'mealType' | 'recordDate' | 'relatedPlanId'> & { recipeId: string },
+  planContext: PlanMealContext | null,
+  dinerCount: number,
+  items: PreviewItem[]
+): string {
+  return previewHash({
+    recipeId: input.recipeId,
+    relatedPlanId: input.relatedPlanId ?? null,
+    planVersion: planContext?.planVersion ?? null,
+    mealType: input.mealType,
+    recordDate: input.recordDate,
+    dinerCount,
+    items
+  });
 }
 
 export async function getImmediateMealPreview(
@@ -409,7 +435,7 @@ export async function getImmediateMealPreview(
     : null;
   const dinerCount = Math.max(planContext?.dinerCount ?? input.dinerIds?.length ?? 1, 1);
   const items = await buildPreviewForRecipe(database, recipe, dinerCount, input.selections);
-  const previewToken = previewHash({ recipeId: input.recipeId, dinerCount, items });
+  const previewToken = immediatePreviewToken(input, planContext, dinerCount, items);
   return { recipeId: input.recipeId, dinerCount, previewToken, items };
 }
 
@@ -440,8 +466,8 @@ export async function confirmImmediateMeal(
       : null;
     const dinerCount = Math.max(planContext?.dinerCount ?? input.dinerIds?.length ?? 1, 1);
     const items = await buildPreviewForRecipe(tx, recipe, dinerCount, input.selections);
-    const previewToken = previewHash({ recipeId: input.recipeId, dinerCount, items });
-    if (previewToken !== input.previewToken) throw httpError(409, '库存已变化，请重新预览后确认');
+    const previewToken = immediatePreviewToken(input, planContext, dinerCount, items);
+    if (previewToken !== input.previewToken) throw httpError(409, '库存或计划上下文已变化，请重新预览后确认');
     if (items.some((item) => item.requiresManualSelection))
       throw httpError(422, '存在多个可用库存批次，请先明确选择批次');
     if (planContext) {
