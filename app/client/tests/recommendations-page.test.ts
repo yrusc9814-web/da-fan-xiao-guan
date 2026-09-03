@@ -3,6 +3,8 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
 import RecommendationsPage, {
+  buildEatThisQuery,
+  EAT_THIS_MEAL_TYPES,
   pickDifferentCandidate,
   sectorCenterDeg,
   sectorIndexAtPointer,
@@ -206,6 +208,38 @@ describe('真圆形转盘几何（UXB-004 单元）', () => {
   });
 });
 
+describe('「就吃这个」上下文 query（UXB-003 closure 单元）', () => {
+  it('Case A：DINNER 推荐 → 导航 query 显式带 mealType=DINNER', () => {
+    expect(buildEatThisQuery('recipe-1', 'DINNER')).toEqual({ recipeId: 'recipe-1', mealType: 'DINNER' });
+  });
+
+  it('Case B：LUNCH 推荐 → 导航 query 显式带 mealType=LUNCH', () => {
+    expect(buildEatThisQuery('recipe-2', 'LUNCH')).toEqual({ recipeId: 'recipe-2', mealType: 'LUNCH' });
+  });
+
+  it('白名单覆盖接收端实际接受的 4 个餐次', () => {
+    expect(EAT_THIS_MEAL_TYPES).toEqual(['BREAKFAST', 'LUNCH', 'DINNER', 'AFTERNOON_TEA']);
+    for (const mealType of EAT_THIS_MEAL_TYPES) {
+      const query = buildEatThisQuery('recipe-x', mealType);
+      expect(query.recipeId).toBe('recipe-x');
+      expect(query.mealType).toBe(mealType);
+    }
+  });
+
+  it('Case C：非法 / 缺失 mealType → 不制造错误值，query 只有 recipeId，接收端可 fallback', () => {
+    for (const invalid of [undefined, null, '', 'BREAKFAST_TEA', 'SOUP', 'INVALID']) {
+      expect(buildEatThisQuery('recipe-9', invalid)).toEqual({ recipeId: 'recipe-9' });
+      expect(buildEatThisQuery('recipe-9', invalid).mealType).toBeUndefined();
+    }
+  });
+
+  it('始终保留 recipeId（就吃这个的目标菜不能丢）', () => {
+    for (const mealType of ['DINNER', undefined, 'WHATEVER']) {
+      expect(buildEatThisQuery('recipe-target', mealType).recipeId).toBe('recipe-target');
+    }
+  });
+});
+
 /**
  * 构造「餐次感知」的 fetch mock：/recipes 按 mealType 查询参数过滤（模拟服务端
  * GET /recipes?mealType=... 的 mealTypes.some 过滤），/recommendations/random 恒定返回指定结果。
@@ -263,7 +297,11 @@ async function mountSpinPage(fetchMock: ReturnType<typeof vi.fn>, options: { red
   }
   const router = createRouter({
     history: createMemoryHistory(),
-    routes: [{ path: '/recommendations', component: RecommendationsPage }]
+    routes: [
+      { path: '/recommendations', component: RecommendationsPage },
+      // 就吃这个会 push 到 complete-meal：注册桩路由让导航成功并读取 query
+      { path: '/complete-meal', name: 'complete-meal', component: { template: '<div class="stub-page" />' } }
+    ]
   });
   await router.push('/recommendations?mode=random');
   const wrapper = mount(RecommendationsPage, { global: { plugins: [router] } });
@@ -617,6 +655,81 @@ describe('转盘结果加入计划（UXA-003）', () => {
     };
     expect(body.mealType).toBe('DINNER');
     expect(wrapper.text()).toContain('已加入');
+  });
+});
+
+describe('「就吃这个」显式餐次跳转（UXB-003 closure 集成）', () => {
+  async function spinTo(wrapper: MountWheelReturn, expectedText: string) {
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain(expectedText);
+  }
+
+  it('Case A：DINNER 上下文点「就吃这个」→ 导航到 complete-meal 且 query.mealType=DINNER', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' }
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await spinTo(wrapper, '菜A');
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({ recipeId: 'a', mealType: 'DINNER' });
+  });
+
+  it('Case B：LUNCH 上下文点「就吃这个」→ query.mealType=LUNCH（不是当前时间推断值）', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['LUNCH']), candidate('b', '菜B', true, ['LUNCH'])],
+      randomResult: { resultId: 'b', title: '菜B' }
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+
+    // 先切到 LUNCH：候选池刷新为 LUNCH 候选
+    const mealSelect = wrapper.findAll('select')[1]!;
+    await mealSelect.setValue('LUNCH');
+    await flushPromises();
+    await spinTo(wrapper, '菜B');
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({ recipeId: 'b', mealType: 'LUNCH' });
+  });
+
+  it('Case D：就吃这个的菜 = 转盘视觉/业务落点菜，且结果后仍停在正确扇区', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'b', title: '菜B' }
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await spinTo(wrapper, '菜B');
+    // 视觉 == 业务：盘面停在菜B 扇区
+    expect(sectorIndexAtPointer(discRotationDeg(wrapper), 2)).toBe(1);
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    // 传过去的正是落点菜 b
+    expect(router.currentRoute.value.query.recipeId).toBe('b');
+  });
+
+  it('Case E：换一个后再「就吃这个」→ 传的是换过的新结果与同一餐次上下文', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' } // API 恒返回菜A → 换一个走确定性兜底到菜B
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await spinTo(wrapper, '菜A');
+
+    await clickButton(wrapper, '换一个');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜B');
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({ recipeId: 'b', mealType: 'DINNER' });
   });
 });
 

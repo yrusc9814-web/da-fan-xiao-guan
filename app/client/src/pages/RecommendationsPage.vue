@@ -68,6 +68,20 @@ export function sectorIndexAtPointer(rotation: number, count: number): number {
   const originalAngle = (360 - normalized) % 360; // 顶部指针此时正对的原扇区角
   return Math.max(0, Math.min(count - 1, Math.floor(originalAngle / span)));
 }
+
+/** CompleteMealPage 表单实际接受的餐次集合（与接收端 option 一致）。 */
+export const EAT_THIS_MEAL_TYPES = ['BREAKFAST', 'LUNCH', 'DINNER', 'AFTERNOON_TEA'];
+/**
+ * 「就吃这个」→ CompleteMeal 的导航 query：
+ * 只在当前餐次是合法/明确值时附带 mealType，让接收端优先采用显式上下文；
+ * 非法或缺失时不制造错误值——省略该字段，由接收端按当前时间 fallback。
+ */
+export function buildEatThisQuery(recipeId: string, mealType: string | null | undefined): Record<string, string> {
+  const query: Record<string, string> = { recipeId };
+  const normalized = mealType ?? '';
+  if (EAT_THIS_MEAL_TYPES.includes(normalized)) query.mealType = normalized;
+  return query;
+}
 </script>
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, ref, watch } from 'vue';
@@ -446,8 +460,10 @@ async function reroll() {
   }
   await spin(excluded);
 }
+// 「就吃这个」→ 完成这一餐：把推荐上下文显式传给 CompleteMealPage，
+// 让它优先采用当前餐次，而不是按当前时间重新推断（避免「晚餐转盘选出 → 被推断成下午茶」）。
 function eatThis(recipeId: string) {
-  router.push({ name: 'complete-meal', query: { recipeId } });
+  router.push({ name: 'complete-meal', query: buildEatThisQuery(recipeId, mealType.value) });
 }
 async function addToPlanFromSpin() {
   if (!spinResult.value) {
