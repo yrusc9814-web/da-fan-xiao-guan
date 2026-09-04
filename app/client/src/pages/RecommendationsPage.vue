@@ -73,13 +73,21 @@ export function sectorIndexAtPointer(rotation: number, count: number): number {
 export const EAT_THIS_MEAL_TYPES = ['BREAKFAST', 'LUNCH', 'DINNER', 'AFTERNOON_TEA'];
 /**
  * 「就吃这个」→ CompleteMeal 的导航 query：
- * 只在当前餐次是合法/明确值时附带 mealType，让接收端优先采用显式上下文；
- * 非法或缺失时不制造错误值——省略该字段，由接收端按当前时间 fallback。
+ * - mealType 只在当前餐次是合法/明确值时附带，让接收端优先采用显式上下文；
+ *   非法或缺失时不制造错误值——省略该字段，由接收端按当前时间 fallback。
+ * - planId 只在当前结果已成功加入计划时附带（后端真实返回的 plan id），
+ *   让 CompleteMeal 走计划收口（relatedPlanId）；未加入计划时不携带，保持 direct completion。
  */
-export function buildEatThisQuery(recipeId: string, mealType: string | null | undefined): Record<string, string> {
+export function buildEatThisQuery(
+  recipeId: string,
+  mealType: string | null | undefined,
+  planId?: string | null
+): Record<string, string> {
   const query: Record<string, string> = { recipeId };
   const normalized = mealType ?? '';
   if (EAT_THIS_MEAL_TYPES.includes(normalized)) query.mealType = normalized;
+  const normalizedPlanId = planId ?? '';
+  if (normalizedPlanId) query.planId = normalizedPlanId;
   return query;
 }
 </script>
@@ -147,6 +155,10 @@ const spinning = ref(false);
 const resultReady = ref(false);
 const spinResult = ref<{ resultType: string; resultId: string; title: string } | null>(null);
 const spinHistoryId = ref('');
+// UXB-003：当前结果「加入计划」成功后由后端真实返回的 planId。
+// 只属于当前这条 result：任何使结果失效/变化的路径（重转/换一个/切餐次/候选变化）都必须先清空，
+// 保证「就吃这个」要么带真实 planId，要么不带，绝不把旧结果的计划带给新结果。
+const spinPlanId = ref('');
 const rotation = ref(0);
 const lastRotation = ref(0);
 const spinSequence = createRequestSequence();
@@ -348,6 +360,8 @@ async function spin(excludeId?: string) {
   resultReady.value = false;
   spinResult.value = null;
   spinHistoryId.value = '';
+  // UXB-003：新结果即将产生，上一个结果的 planId 立即作废（换一个/再转一次都经过这里）
+  spinPlanId.value = '';
   error.value = '';
   message.value = '';
   const sequence = spinSequence.next();
@@ -462,8 +476,10 @@ async function reroll() {
 }
 // 「就吃这个」→ 完成这一餐：把推荐上下文显式传给 CompleteMealPage，
 // 让它优先采用当前餐次，而不是按当前时间重新推断（避免「晚餐转盘选出 → 被推断成下午茶」）。
+// UXB-003：当前结果已成功加入计划时显式携带真实 planId，CompleteMeal 据此收口该计划；
+// 未加入计划时不携带（direct completion），也不会把旧结果的 planId 带给新结果（spin 时已清空）。
 function eatThis(recipeId: string) {
-  router.push({ name: 'complete-meal', query: buildEatThisQuery(recipeId, mealType.value) });
+  router.push({ name: 'complete-meal', query: buildEatThisQuery(recipeId, mealType.value, spinPlanId.value) });
 }
 async function addToPlanFromSpin() {
   if (!spinResult.value) {
@@ -474,10 +490,12 @@ async function addToPlanFromSpin() {
   loading.value = true;
   error.value = '';
   message.value = '';
+  // UXB-003：只有本次加入成功才允许持有 planId；失败不得留下伪造/过期值
+  spinPlanId.value = '';
   try {
     if (spinHistoryId.value) {
       // 正常 spin：结果已存入 RecommendationHistory，按服务端存储加入计划
-      await apiRequest(`/recommendations/${spinHistoryId.value}/add-to-plan`, {
+      const data = await apiRequest<{ plan: { id: string } }>(`/recommendations/${spinHistoryId.value}/add-to-plan`, {
         method: 'POST',
         body: JSON.stringify({
           planDate: planDate.value,
@@ -486,10 +504,11 @@ async function addToPlanFromSpin() {
           dinerIds: [...selectedDinerIds.value]
         })
       });
+      spinPlanId.value = data.plan?.id ?? '';
     } else {
       // UXA-003：fallback 结果没有 RecommendationHistory，不能伪造 historyId；
       // 走标准的「直接创建计划」数据链（POST /plans，与「整组加入计划」无 history 时同一条合法链路）。
-      await apiRequest('/plans', {
+      const plan = await apiRequest<{ id: string }>('/plans', {
         method: 'POST',
         body: JSON.stringify({
           planDate: planDate.value,
@@ -499,9 +518,16 @@ async function addToPlanFromSpin() {
           dinerIds: [...selectedDinerIds.value]
         })
       });
+      spinPlanId.value = plan?.id ?? '';
+    }
+    if (!spinPlanId.value) {
+      // 防御：后端响应缺少 plan id 时不得假装已绑定计划，「就吃这个」将保持 direct completion
+      error.value = '已加入计划，但未取得计划标识，请到计划页完成这一餐。';
+      return;
     }
     message.value = `已加入 ${planDate.value} 的计划`;
   } catch (e) {
+    spinPlanId.value = '';
     error.value = e instanceof Error ? e.message : '加入计划失败';
   } finally {
     loading.value = false;
@@ -533,6 +559,7 @@ watch(mealType, () => {
   resultReady.value = false;
   spinResult.value = null;
   spinHistoryId.value = '';
+  spinPlanId.value = '';
   void loadCandidates();
 });
 // UXB-004：候选集合（增删/启用切换）变化会改变扇区角度，旧落点不再成立，
@@ -543,6 +570,7 @@ watch(wheelSignature, () => {
   resultReady.value = false;
   spinResult.value = null;
   spinHistoryId.value = '';
+  spinPlanId.value = '';
 });
 async function generate() {
   if (mode.value === 'random') return; // 随机决策统一走转盘，避免「生成推荐/转一下」双重入口

@@ -238,16 +238,35 @@ describe('「就吃这个」上下文 query（UXB-003 closure 单元）', () => 
       expect(buildEatThisQuery('recipe-target', mealType).recipeId).toBe('recipe-target');
     }
   });
+
+  it('planId：只在有值时携带；非法/缺失 mealType 不影响 planId 传递（计划模式由服务端锁定餐次）', () => {
+    expect(buildEatThisQuery('recipe-1', 'DINNER', 'plan-A')).toEqual({
+      recipeId: 'recipe-1',
+      mealType: 'DINNER',
+      planId: 'plan-A'
+    });
+    // 缺失 / 空串：direct completion，不带 planId
+    for (const empty of [undefined, null, '']) {
+      expect(buildEatThisQuery('recipe-1', 'DINNER', empty)).toEqual({ recipeId: 'recipe-1', mealType: 'DINNER' });
+      expect(buildEatThisQuery('recipe-1', 'DINNER', empty).planId).toBeUndefined();
+    }
+    // mealType 非法但 planId 有效：仍传 planId（绝不因为字段裁剪丢掉计划绑定）
+    expect(buildEatThisQuery('recipe-1', 'INVALID', 'plan-B')).toEqual({ recipeId: 'recipe-1', planId: 'plan-B' });
+  });
 });
 
 /**
  * 构造「餐次感知」的 fetch mock：/recipes 按 mealType 查询参数过滤（模拟服务端
  * GET /recipes?mealType=... 的 mealTypes.some 过滤），/recommendations/random 恒定返回指定结果。
+ * 加入计划两条链路（add-to-plan / POST /plans）返回真实 plan 形状，供 UXB-003 planId 断言。
  */
 function buildCandidateAwareFetch(options: {
   recipes: SpinCandidate[];
   randomResult: { resultId: string; title: string };
   randomHistoryId?: string;
+  addToPlanPlanId?: string;
+  createPlanId?: string;
+  addToPlanError?: { status: number; code: string; message: string };
 }) {
   return vi.fn().mockImplementation((input: unknown) => {
     const url = new URL(String(input));
@@ -275,6 +294,23 @@ function buildCandidateAwareFetch(options: {
           ]
         })
       );
+    if (path.includes('/add-to-plan')) {
+      if (options.addToPlanError)
+        return Promise.resolve({
+          ok: false,
+          status: options.addToPlanError.status,
+          json: async () => ({
+            success: false,
+            data: null,
+            error: { code: options.addToPlanError!.code, message: options.addToPlanError!.message }
+          })
+        });
+      return Promise.resolve(
+        jsonResponse({ plan: { id: options.addToPlanPlanId ?? 'plan-from-history' }, historyId: 'plan-bound' })
+      );
+    }
+    if (path.endsWith('/plans'))
+      return Promise.resolve(jsonResponse({ id: options.createPlanId ?? 'plan-created', planDate: '2026-09-04' }));
     return Promise.resolve(jsonResponse({ items: [] }));
   });
 }
@@ -730,6 +766,221 @@ describe('「就吃这个」显式餐次跳转（UXB-003 closure 集成）', () 
     await flushPromises();
     expect(router.currentRoute.value.name).toBe('complete-meal');
     expect(router.currentRoute.value.query).toMatchObject({ recipeId: 'b', mealType: 'DINNER' });
+  });
+});
+
+// UXB-003 closure：加入计划成功后 planId 必须随「就吃这个」显式传递；结果失效时不得遗留
+describe('「就吃这个」plan identity 传递（UXB-003 closure）', () => {
+  async function spinAndAddToPlan(wrapper: MountWheelReturn, expectedPill: string) {
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain(expectedPill);
+    await clickButton(wrapper, '加入计划');
+    await flushPromises();
+    expect(wrapper.text()).toContain('已加入');
+  }
+
+  it('Case A：DINNER 加入计划成功返回 planId=A → 就吃这个 携带 recipeId+mealType=DINNER+planId=A', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' },
+      randomHistoryId: 'history-a',
+      addToPlanPlanId: 'plan-A'
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await spinAndAddToPlan(wrapper, '菜A');
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({
+      recipeId: 'a',
+      mealType: 'DINNER',
+      planId: 'plan-A'
+    });
+  });
+
+  it('Case B：LUNCH 同样保持 LUNCH + 正确 planId', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['LUNCH']), candidate('b', '菜B', true, ['LUNCH'])],
+      randomResult: { resultId: 'b', title: '菜B' },
+      randomHistoryId: 'history-lunch',
+      addToPlanPlanId: 'plan-lunch-1'
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    const mealSelect = wrapper.findAll('select')[1]!;
+    await mealSelect.setValue('LUNCH');
+    await flushPromises();
+    await spinAndAddToPlan(wrapper, '菜B');
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({
+      recipeId: 'b',
+      mealType: 'LUNCH',
+      planId: 'plan-lunch-1'
+    });
+  });
+
+  it('Case C：没有加入计划 → 就吃这个 无 planId（direct completion），且未发起任何计划请求', async () => {
+    const mock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' }
+    });
+    const { wrapper, router, fetchMock } = await mountSpinPage(mock, { reducedMotion: true });
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({ recipeId: 'a', mealType: 'DINNER' });
+    expect(router.currentRoute.value.query.planId).toBeUndefined();
+    // direct completion：不应有任何计划写入
+    const planWrites = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        (init?.method ?? 'GET') === 'POST' &&
+        (String(input).includes('/add-to-plan') || new URL(String(input)).pathname.endsWith('/plans'))
+    );
+    expect(planWrites).toHaveLength(0);
+  });
+
+  it('Case D：加入计划后「换一个」→ 新结果不得继承旧 planId', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' }, // 换一个走确定性兜底到菜B
+      randomHistoryId: 'history-d',
+      addToPlanPlanId: 'plan-D-old'
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await spinAndAddToPlan(wrapper, '菜A');
+
+    await clickButton(wrapper, '换一个');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜B');
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({ recipeId: 'b', mealType: 'DINNER' });
+    expect(router.currentRoute.value.query.planId).toBeUndefined();
+  });
+
+  it('Case E1：加入计划后切换餐次重新生成 → 新结果不继承旧 planId，餐次随新上下文', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER', 'LUNCH']), candidate('b', '菜B', true, ['LUNCH'])],
+      randomResult: { resultId: 'a', title: '菜A' },
+      randomHistoryId: 'history-e',
+      addToPlanPlanId: 'plan-E-old'
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await spinAndAddToPlan(wrapper, '菜A'); // DINNER 计划 plan-E-old
+
+    const mealSelect = wrapper.findAll('select')[1]!;
+    await mealSelect.setValue('LUNCH');
+    await flushPromises();
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({ recipeId: 'a', mealType: 'LUNCH' });
+    expect(router.currentRoute.value.query.planId).toBeUndefined();
+  });
+
+  it('Case E2：加入计划后「再转一次」重新生成 → 不继承旧 planId', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' },
+      randomHistoryId: 'history-e2',
+      addToPlanPlanId: 'plan-E2-old'
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await spinAndAddToPlan(wrapper, '菜A');
+
+    await clickButton(wrapper, '再转一次');
+    await settleSpin(wrapper);
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({ recipeId: 'a', mealType: 'DINNER' });
+    expect(router.currentRoute.value.query.planId).toBeUndefined();
+  });
+
+  it('Case F：加入计划失败 → 不留下 planId，就吃这个保持 direct completion', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' },
+      randomHistoryId: 'history-f',
+      addToPlanError: { status: 409, code: 'PLAN_EXISTS', message: '该日期和餐次已存在计划' }
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+    await clickButton(wrapper, '加入计划');
+    await flushPromises();
+    // 失败如实呈现，且不显示「已加入」成功话术
+    expect(wrapper.text()).toContain('该日期和餐次已存在计划');
+    expect(wrapper.text()).not.toContain('已加入');
+    // 失败后再点就吃这个：无 planId，不伪造计划绑定
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({ recipeId: 'a', mealType: 'DINNER' });
+    expect(router.currentRoute.value.query.planId).toBeUndefined();
+  });
+
+  it('fallback 结果（POST /plans 链路）加入计划后，planId 同样显式传递', async () => {
+    const fetchMock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'a', title: '菜A' }, // 换一个 → fallback 菜B（无 historyId）
+      createPlanId: 'plan-fallback-9'
+    });
+    const { wrapper, router } = await mountSpinPage(fetchMock, { reducedMotion: true });
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+    await clickButton(wrapper, '换一个');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜B');
+    await clickButton(wrapper, '加入计划');
+    await flushPromises();
+    expect(wrapper.text()).toContain('已加入');
+
+    await clickButton(wrapper, '就吃这个');
+    await flushPromises();
+    expect(router.currentRoute.value.name).toBe('complete-meal');
+    expect(router.currentRoute.value.query).toMatchObject({
+      recipeId: 'b',
+      mealType: 'DINNER',
+      planId: 'plan-fallback-9'
+    });
+  });
+
+  it('Case G：现有转盘保护不受影响——加计划前后视觉落点始终等于业务结果，historyId 链路不变', async () => {
+    const mock = buildCandidateAwareFetch({
+      recipes: [candidate('a', '菜A', true, ['DINNER']), candidate('b', '菜B', true, ['DINNER'])],
+      randomResult: { resultId: 'b', title: '菜B' },
+      randomHistoryId: 'history-g',
+      addToPlanPlanId: 'plan-G'
+    });
+    const { wrapper, fetchMock } = await mountSpinPage(mock, { reducedMotion: true });
+    await clickButton(wrapper, '转一下');
+    await settleSpin(wrapper);
+    expect(resultPillText(wrapper)).toContain('菜B');
+    expect(sectorIndexAtPointer(discRotationDeg(wrapper), 2)).toBe(1);
+
+    await clickButton(wrapper, '加入计划');
+    await flushPromises();
+    // 加入计划只捕获 planId，不改结果、不动盘面落点，仍走 RecommendationHistory 链路
+    expect(resultPillText(wrapper)).toContain('菜B');
+    expect(sectorIndexAtPointer(discRotationDeg(wrapper), 2)).toBe(1);
+    const addCalls = fetchMock.mock.calls.filter(
+      ([input, init]) =>
+        (init?.method ?? 'GET') === 'POST' && String(input).includes('/recommendations/history-g/add-to-plan')
+    );
+    expect(addCalls).toHaveLength(1);
   });
 });
 
