@@ -56,6 +56,7 @@ const successMessage = ref('');
 const cookingOpen = ref(false);
 
 // UXB-003：进入「完成这一餐」时继承入口的餐次与计划上下文
+const requestedMealType = computed(() => String(route.query.mealType ?? ''));
 const requestedPlanId = computed(() => String(route.query.planId ?? ''));
 const planMode = computed(() => Boolean(requestedPlanId.value));
 const planContext = ref<PlanContext | null>(null);
@@ -64,8 +65,7 @@ const planBroken = ref(false);
 
 // Form fields with auto-detected defaults
 function inferMealType(): string {
-  const requested = String(route.query.mealType ?? '');
-  if (MEAL_TYPES.includes(requested)) return requested;
+  if (MEAL_TYPES.includes(requestedMealType.value)) return requestedMealType.value;
   const hour = new Date().getHours();
   if (hour < 11) return 'BREAKFAST';
   if (hour < 14) return 'LUNCH';
@@ -86,8 +86,20 @@ const pageSequence = createRequestSequence();
 /** 进入入口来源提示：计划完成 / 明确餐次推荐 / 菜谱页 */
 const contextHint = computed(() => {
   if (requestedPlanId.value) return '正在完成饮食计划中的这餐；确认后会标记计划为已完成。';
-  if (MEAL_TYPES.includes(String(route.query.mealType ?? ''))) return '从「今天吃什么」进入，完成时会记入这一餐次。';
+  if (MEAL_TYPES.includes(requestedMealType.value)) return '从「今天吃什么」进入，完成时会记入这一餐次。';
   return '完成后会记入这一餐，并同步到首页、日历与统计。';
+});
+
+/**
+ * 「开始制作 → Cooking → 完成这一餐」往返时透传的正式上下文：
+ * 只回传入口 query 里确实存在的 mealType/planId，不凭 recipeId/日期反查或猜计划。
+ * mealType 缺失/非法时保持原样缺失（返回后仍走时间推断 fallback）。
+ */
+const cookingCompletionQuery = computed<Record<string, string>>(() => {
+  const query: Record<string, string> = {};
+  if (MEAL_TYPES.includes(requestedMealType.value)) query.mealType = requestedMealType.value;
+  if (requestedPlanId.value) query.planId = requestedPlanId.value;
+  return query;
 });
 
 /** 即时用餐 preview/confirm 共用的请求体；计划完成时携带 relatedPlanId 收口计划。 */
@@ -494,7 +506,7 @@ onMounted(() => {
       </div>
     </div>
 
-    <CookingView v-model="cookingOpen" :recipe="recipe" />
+    <CookingView v-model="cookingOpen" :recipe="recipe" :completion-query="cookingCompletionQuery" />
   </section>
 </template>
 

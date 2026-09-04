@@ -349,6 +349,99 @@ function createCompleteRouter(routeQuery: Record<string, string>) {
   return router.push(`/complete-meal?${query}`).then(() => router);
 }
 
+/** 带结构化食材的菜谱：使「开始制作这个菜谱」入口可用（触发 CookingView 流程） */
+function structuredRecipeBrief(id = 'recipe-1') {
+  return {
+    ...recipeBrief(id),
+    ingredients: [
+      {
+        id: `${id}-i1`,
+        ingredientNameSnapshot: '土豆',
+        quantity: 2,
+        unit: 'PIECE',
+        optional: false,
+        ingredientId: 'ing-1'
+      }
+    ]
+  };
+}
+
+function planPayload(recipeId: string) {
+  return {
+    id: 'plan-1',
+    planDate: '2046-08-20',
+    mealType: 'DINNER',
+    dinerCount: 1,
+    status: 'PLANNED',
+    version: 1,
+    items: [{ id: 'pi-1', recipe: { id: recipeId, name: 'UXB完成页测试菜' } }]
+  };
+}
+
+/**
+ * UXB Closure：CompleteMeal → 开始制作 → Cooking → 完成这一餐 往返上下文透传。
+ * 通过 spy router.push 精确断言 CookingView「完成这一餐」构造的 query。
+ */
+async function mountAndFinishViaCooking(routeQuery: Record<string, string>) {
+  const fetchMock = vi.fn((input: unknown) => {
+    const url = String(input);
+    if (url.includes('/recipes/')) return jsonOk(structuredRecipeBrief());
+    if (url.includes('/plans/plan-1')) return jsonOk(planPayload('recipe-1'));
+    return jsonOk([]);
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  const router = await createCompleteRouter(routeQuery);
+  const pushSpy = vi.spyOn(router, 'push').mockResolvedValue(undefined);
+  const wrapper = mount(CompleteMealPage, {
+    global: { plugins: [router], stubs: { teleport: true } }
+  });
+  await flushPromises();
+  // 进入 Cooking 对话框
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text() === '开始制作这个菜谱')!
+    .trigger('click');
+  await flushPromises();
+  // 对话框内点「完成这一餐」
+  await wrapper
+    .findAll('button')
+    .find((b) => b.text().includes('完成这一餐'))!
+    .trigger('click');
+  await flushPromises();
+  const pushes = pushSpy.mock.calls.map((call) => call[0] as { name?: string; query?: Record<string, string> });
+  return { pushes, fetchMock, wrapper };
+}
+
+describe('Cooking 完成这一餐上下文透传（UXB Closure）', () => {
+  it('A：带计划入口（DINNER + planId）经 Cooking 完成后 query 完整保留 recipeId/mealType/planId', async () => {
+    const { pushes } = await mountAndFinishViaCooking({ recipeId: 'recipe-1', mealType: 'DINNER', planId: 'plan-1' });
+    const finishPush = pushes.at(-1)!;
+    expect(finishPush.name).toBe('complete-meal');
+    expect(finishPush.query).toEqual({ recipeId: 'recipe-1', mealType: 'DINNER', planId: 'plan-1' });
+  });
+
+  it('B：LUNCH 同样保持 mealType + planId', async () => {
+    const { pushes } = await mountAndFinishViaCooking({ recipeId: 'recipe-1', mealType: 'LUNCH', planId: 'plan-1' });
+    expect(pushes.at(-1)!.query).toEqual({ recipeId: 'recipe-1', mealType: 'LUNCH', planId: 'plan-1' });
+  });
+
+  it('C：direct completion（无 planId）经 Cooking 完成后仍无 planId，不绑定任何计划', async () => {
+    const { pushes, fetchMock } = await mountAndFinishViaCooking({ recipeId: 'recipe-1', mealType: 'LUNCH' });
+    expect(pushes.at(-1)!.query).toEqual({ recipeId: 'recipe-1', mealType: 'LUNCH' });
+    // 全程未请求任何计划接口（不凭 recipeId/日期反查 planId）
+    const planCalls = fetchMock.mock.calls.filter(([input]) => String(input).includes('/plans'));
+    expect(planCalls).toHaveLength(0);
+  });
+
+  it('D：非法/缺失 mealType 不进入透传，保持既有时间推断 fallback，不扩大行为', async () => {
+    const { pushes, wrapper } = await mountAndFinishViaCooking({ recipeId: 'recipe-1', mealType: 'SUPPER' });
+    expect(pushes.at(-1)!.query).toEqual({ recipeId: 'recipe-1' });
+    // 页面内部餐次仍为合法推断值（时间推断 fallback 未被本次修复改变）
+    const selectValue = (wrapper.get('select').element as HTMLSelectElement).value;
+    expect(['BREAKFAST', 'LUNCH', 'DINNER', 'AFTERNOON_TEA']).toContain(selectValue);
+  });
+});
+
 describe('CompleteMealPage 完成上下文继承（UXB-003）', () => {
   it('无结构化食材的菜谱：direct 记录保留入口 mealType，计划入口携带 relatedPlanId', async () => {
     const posts: Array<{ url: string; body: Record<string, unknown> }> = [];

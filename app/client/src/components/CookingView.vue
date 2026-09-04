@@ -38,10 +38,19 @@ export interface CookingRecipe {
   tools: CookingTool[];
 }
 
-const props = withDefaults(defineProps<{ modelValue: boolean; recipe: CookingRecipe | null }>(), {
-  modelValue: false,
-  recipe: null
-});
+const props = withDefaults(
+  defineProps<{
+    modelValue: boolean;
+    recipe: CookingRecipe | null;
+    /** 完成这一餐时随 recipeId 显式透传的正式上下文（如 mealType/planId），由宿主页面提供。 */
+    completionQuery?: Record<string, string>;
+  }>(),
+  {
+    modelValue: false,
+    recipe: null,
+    completionQuery: undefined
+  }
+);
 const emit = defineEmits<{ 'update:modelValue': [value: boolean] }>();
 
 const router = useRouter();
@@ -56,7 +65,11 @@ function updateOpen(value: boolean): void {
 function finishMeal(): void {
   if (!props.recipe) return;
   updateOpen(false);
-  void router.push({ name: 'complete-meal', query: { recipeId: props.recipe.id } });
+  // 透传宿主页面的正式完成上下文（mealType/planId），不凭 recipeId/日期反查计划
+  void router.push({
+    name: 'complete-meal',
+    query: { recipeId: props.recipe.id, ...(props.completionQuery ?? {}) }
+  });
 }
 </script>
 
