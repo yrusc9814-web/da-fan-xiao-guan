@@ -38,25 +38,34 @@ export async function apiRequest<T>(
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value !== undefined && value !== null && value !== '') url.searchParams.set(key, String(value));
   }
-  const response = await fetch(url, {
-    ...options,
-    headers: {
-      ...(options.body instanceof FormData ? {} : { 'Content-Type': 'application/json' }),
-      ...(localStorage.getItem(pinTokenKey) ? { 'X-App-Pin-Token': localStorage.getItem(pinTokenKey)! } : {}),
-      ...options.headers
-    }
-  });
-  const payload = (await response.json()) as ApiResponse<T>;
-  if (!response.ok || !payload.success) {
-    const error = payload.success ? null : payload.error;
+  const headers: Record<string, string> = { ...(options.headers as Record<string, string> | undefined) };
+  const hasBody = options.body !== undefined && options.body !== null;
+  if (
+    hasBody &&
+    !(options.body instanceof FormData) &&
+    !Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')
+  ) {
+    headers['Content-Type'] = 'application/json';
+  }
+  const token = localStorage.getItem(pinTokenKey);
+  if (token) headers['X-App-Pin-Token'] = token;
+  const response = await fetch(url, { ...options, headers });
+  const payload = (
+    typeof response.text === 'function'
+      ? (() => response.text().then((text) => (text ? JSON.parse(text) : null)))()
+      : response.json()
+  ) as Promise<ApiResponse<T> | null>;
+  const resolvedPayload = await payload;
+  if (!response.ok || !resolvedPayload || !resolvedPayload.success) {
+    const error = resolvedPayload && !resolvedPayload.success ? resolvedPayload.error : null;
     throw new ApiRequestError(
       response.status,
       error?.code ?? 'INTERNAL_ERROR',
-      error?.message ?? '请求失败',
+      error?.message ?? `请求失败（${response.status}）`,
       error?.details
     );
   }
-  return payload.data;
+  return resolvedPayload.data;
 }
 
 export async function fetchHealth(): Promise<HealthResponse['data']> {

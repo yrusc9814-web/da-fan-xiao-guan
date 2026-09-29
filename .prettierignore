@@ -7,3 +7,4 @@ docs
 agent.md
 package-lock.json
 app/client/src/assets
+app/client/index.html

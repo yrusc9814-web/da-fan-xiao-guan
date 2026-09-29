@@ -1,0 +1,406 @@
+{
+  "sourceSha256": "0c6f65473399a4ea0a708495b40cdd8f606b252dcb32055b0032d53596180f16",
+  "captureMethod": "Playwright + Chrome headless; deterministic URL/data-theme setup; DOM assertions captured before screenshot",
+  "screenshots": [
+    {
+      "file": "home-light.png",
+      "expectedState": {
+        "name": "Home",
+        "url": "/",
+        "theme": "light",
+        "viewport": "1440x900"
+      },
+      "observedState": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "light",
+        "viewport": "1440x900",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": false
+      },
+      "assertions": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "light",
+        "viewport": "1440x900",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": false,
+        "activePageIsExpected": true,
+        "homeIsActive": true,
+        "homeIsInactive": false
+      },
+      "bytes": 572970,
+      "sha256": "b5f10b3bba1efaf342b92030f758b7d4a765d32634411728db07c3a9e21bc260",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "home-dark.png",
+      "expectedState": {
+        "name": "Home",
+        "url": "/",
+        "theme": "dark",
+        "viewport": "1440x900"
+      },
+      "observedState": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "dark",
+        "viewport": "1440x900",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": false
+      },
+      "assertions": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "dark",
+        "viewport": "1440x900",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": false,
+        "activePageIsExpected": true,
+        "homeIsActive": true,
+        "homeIsInactive": false
+      },
+      "bytes": 561870,
+      "sha256": "237a87fb110cac15059738a047182626418797b3d90c115583c0f51072f6bbcd",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "recommendations-light.png",
+      "expectedState": {
+        "name": "Recommendations",
+        "url": "/recommendations",
+        "theme": "light",
+        "viewport": "1440x900"
+      },
+      "observedState": {
+        "url": "/recommendations",
+        "activePageId": "/recommendations",
+        "activeText": "菜谱推荐",
+        "heading": [
+          "今天吃什么"
+        ],
+        "theme": "light",
+        "viewport": "1440x900",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": true
+      },
+      "assertions": {
+        "url": "/recommendations",
+        "activePageId": "/recommendations",
+        "activeText": "菜谱推荐",
+        "heading": [
+          "今天吃什么"
+        ],
+        "theme": "light",
+        "viewport": "1440x900",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": true,
+        "activePageIsExpected": true,
+        "homeIsActive": false,
+        "homeIsInactive": true
+      },
+      "bytes": 187026,
+      "sha256": "1c636cb472277ee6a6b3ec6d06787103ec1b630025a9e1bfa5890661f757dc64",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "recommendations-dark.png",
+      "expectedState": {
+        "name": "Recommendations",
+        "url": "/recommendations",
+        "theme": "dark",
+        "viewport": "1440x900"
+      },
+      "observedState": {
+        "url": "/recommendations",
+        "activePageId": "/recommendations",
+        "activeText": "菜谱推荐",
+        "heading": [
+          "今天吃什么"
+        ],
+        "theme": "dark",
+        "viewport": "1440x900",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": true
+      },
+      "assertions": {
+        "url": "/recommendations",
+        "activePageId": "/recommendations",
+        "activeText": "菜谱推荐",
+        "heading": [
+          "今天吃什么"
+        ],
+        "theme": "dark",
+        "viewport": "1440x900",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": true,
+        "activePageIsExpected": true,
+        "homeIsActive": false,
+        "homeIsInactive": true
+      },
+      "bytes": 180539,
+      "sha256": "fff231a37fcccd1f025c5df550825db4d6573ee3b96d7150b8c06fb22c9ea559",
+      "width": 1440,
+      "height": 900
+    },
+    {
+      "file": "mobile-dark.png",
+      "expectedState": {
+        "name": "mobile Home",
+        "url": "/",
+        "theme": "dark",
+        "viewport": "390x844"
+      },
+      "observedState": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "dark",
+        "viewport": "390x844",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": true,
+        "homeInactive": false
+      },
+      "assertions": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "dark",
+        "viewport": "390x844",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": true,
+        "homeInactive": false,
+        "activePageIsExpected": true,
+        "homeIsActive": true,
+        "homeIsInactive": false
+      },
+      "bytes": 161518,
+      "sha256": "1e81916c0a37f39830e148d81ef6df32140060b3a67a02cb8da515d06f5c5fd7",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "mobile-dock.png",
+      "expectedState": {
+        "name": "mobile dock",
+        "url": "/",
+        "theme": "light",
+        "viewport": "390x844"
+      },
+      "observedState": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "light",
+        "viewport": "390x844",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": true,
+        "homeInactive": false
+      },
+      "assertions": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "light",
+        "viewport": "390x844",
+        "dialogVisible": false,
+        "drawerVisible": false,
+        "mobileDockVisible": true,
+        "homeInactive": false,
+        "activePageIsExpected": true,
+        "homeIsActive": true,
+        "homeIsInactive": false
+      },
+      "bytes": 162357,
+      "sha256": "ff5d3cb2a28010e18dda75ab7cfa1b8c0bc7dc9a2fc8ffcaaf63f2544842b155",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "mobile-drawer.png",
+      "expectedState": {
+        "name": "mobile drawer",
+        "url": "/",
+        "theme": "light",
+        "viewport": "390x844"
+      },
+      "observedState": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "light",
+        "viewport": "390x844",
+        "dialogVisible": false,
+        "drawerVisible": true,
+        "mobileDockVisible": true,
+        "homeInactive": false,
+        "drawer": {
+          "id": "mobileDrawerRoot",
+          "class": "absolute inset-0 z-[100] flex",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1",
+          "ariaHidden": null,
+          "rect": {
+            "x": 17,
+            "y": 254.5,
+            "width": 356,
+            "height": 881
+          }
+        }
+      },
+      "assertions": {
+        "url": "/",
+        "activePageId": "/",
+        "activeText": "首页",
+        "heading": [
+          "早上好，厨房伙伴"
+        ],
+        "theme": "light",
+        "viewport": "390x844",
+        "dialogVisible": false,
+        "drawerVisible": true,
+        "mobileDockVisible": true,
+        "homeInactive": false,
+        "activePageIsExpected": true,
+        "drawerId": "mobileDrawerRoot",
+        "drawerGeometry": {
+          "x": 17,
+          "y": 254.5,
+          "width": 356,
+          "height": 881
+        },
+        "drawerDisplay": "flex",
+        "drawerHashDifferentFromDock": true,
+        "mobileDockHash": "ff5d3cb2a28010e18dda75ab7cfa1b8c0bc7dc9a2fc8ffcaaf63f2544842b155",
+        "drawerHash": "d8d890050445f921a1f472ed715de1a1f3b21db8f220ebb587918bae972bd21c",
+        "homeIsActive": true,
+        "homeIsInactive": false
+      },
+      "bytes": 82960,
+      "sha256": "46b504a1cc7bf2e6dfc59c927835ff33aca05e3623d564c88844f9f0d29dec1f",
+      "width": 390,
+      "height": 844
+    },
+    {
+      "file": "modal.png",
+      "expectedState": {
+        "name": "modal",
+        "url": "/records",
+        "theme": "light",
+        "viewport": "1440x900"
+      },
+      "observedState": {
+        "url": "/records",
+        "activePageId": "/records",
+        "activeText": "饮食记录",
+        "heading": [
+          "饮食日记"
+        ],
+        "theme": "light",
+        "viewport": "1440x900",
+        "dialogVisible": true,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": true,
+        "modal": {
+          "id": "modalRecordForm",
+          "class": "fixed inset-0 z-[130] flex items-center justify-center p-3 sm:p-4 overflow-y-auto",
+          "display": "flex",
+          "visibility": "visible",
+          "opacity": "1",
+          "ariaHidden": null,
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 1440,
+            "height": 900
+          }
+        }
+      },
+      "assertions": {
+        "url": "/records",
+        "activePageId": "/records",
+        "activeText": "饮食记录",
+        "heading": [
+          "饮食日记"
+        ],
+        "theme": "light",
+        "viewport": "1440x900",
+        "dialogVisible": true,
+        "drawerVisible": false,
+        "mobileDockVisible": false,
+        "homeInactive": true,
+        "activePageIsExpected": true,
+        "modalId": "modalRecordForm",
+        "modalGeometry": {
+          "x": 0,
+          "y": 0,
+          "width": 1440,
+          "height": 900
+        },
+        "modalDisplay": "flex",
+        "modalHasConcreteGeometry": true,
+        "homeIsActive": false,
+        "homeIsInactive": true
+      },
+      "bytes": 188027,
+      "sha256": "f07b4512772fd318645023ca33bd41d5d5f9ff9947e155491051c33b0ef33934",
+      "width": 1440,
+      "height": 900
+    }
+  ]
+}
