@@ -72,7 +72,7 @@ describe('Google2 legacy entry adapter', () => {
   });
 
   it('Dashboard 非空 DTO 精确映射推荐/统计/日历/临期，随后空 DTO 全清理', () => {
-    document.body.innerHTML = `<div data-binding="recommendedRecipes"><div><b data-business-value="name"></b><i data-business-value="tags"></i><i data-business-value="time"></i><i data-business-value="rating"></i></div></div><div data-binding="todayRecords"><div data-binding="todayRecord-0"><span data-business-value="title"></span><span data-business-value="status"></span></div></div><span data-binding="todayRecordsCount"></span><span data-binding="inventory-totalIngredients"></span><span data-binding="weeklyStat-totalMeals"></span><div data-binding="calendarDays"><div data-binding="calendarDay-0"><span data-business-value="weekday"></span><span data-business-value="dayOfMonth"></span><span data-business-value="label"></span></div></div><div data-binding="expiringIngredients"><div data-binding="expiringIngredient-0"><span data-business-value="name"></span><span data-business-value="expiry"></span></div></div>`;
+    document.body.innerHTML = `<div data-binding="recommendedRecipes"><div><b data-business-value="name"></b><i data-business-value="tags"></i><i data-business-value="time"></i><i data-business-value="rating"></i></div></div><div data-binding="todayRecords"><div data-binding="todayRecord-0"><span data-business-value="title"></span><span data-business-value="status"></span></div></div><span data-binding="todayRecordsCount"></span><span data-binding="inventory-totalIngredients"></span><span data-binding="weeklyStat-totalMeals"></span><div data-binding="calendarDays">${Array.from({ length: 3 }, (_, i) => `<div data-binding="calendarDay-${i}"><span data-business-value="weekday"></span><span data-business-value="dayOfMonth"></span><span data-business-value="label"></span></div>`).join('')}</div><div data-binding="expiringIngredients"><div data-binding="expiringIngredient-0"><span data-business-value="name"></span><span data-business-value="expiry"></span></div></div>`;
     window.eval(adapter);
     const map = (window as any).DafanDashboardAdapter.mapDashboard;
     map({
@@ -80,7 +80,11 @@ describe('Google2 legacy entry adapter', () => {
       todayRecords: [{ title: '午餐', recorded: true }],
       inventory: { totalIngredients: 3, expiringIngredients: [{ id: 'i', name: '葱', expireDaysLeft: 2 }] },
       weeklyStats: { totalMeals: 8 },
-      calendarDays: [{ weekday: '周一', dayOfMonth: 1, label: '今天', date: '2026-09-28', status: 'done' }]
+      calendarDays: [
+        { weekday: '一', dayOfMonth: 28, isToday: true, date: '2026-09-28', status: 'recorded' },
+        { weekday: '二', dayOfMonth: 29, isToday: false, date: '2026-09-29', status: 'planned' },
+        { weekday: '三', dayOfMonth: 30, isToday: false, date: '2026-09-30', status: 'empty' }
+      ]
     });
     expect(document.querySelector('[data-business-value="name"]')?.textContent).toBe('菜');
     expect(document.querySelector('[data-business-value="tags"]')?.textContent).toBe('快手');
@@ -90,6 +94,24 @@ describe('Google2 legacy entry adapter', () => {
     expect(document.querySelector('[data-binding="inventory-totalIngredients"]')?.textContent).toBe('3');
     expect(document.querySelector('[data-binding="weeklyStat-totalMeals"]')?.textContent).toBe('8');
     expect(document.querySelector('[data-binding="calendarDay-0"]')?.dataset.date).toBe('2026-09-28');
+    expect(document.querySelector('[data-binding="calendarDay-0"] [data-business-value="weekday"]')?.textContent).toBe(
+      '今天'
+    );
+    expect(
+      document.querySelector('[data-binding="calendarDay-0"] [data-business-value="dayOfMonth"]')?.textContent
+    ).toBe('28');
+    expect(document.querySelector('[data-binding="calendarDay-0"] [data-business-value="label"]')?.textContent).toBe(
+      '1餐已记录'
+    );
+    expect(document.querySelector('[data-binding="calendarDay-1"] [data-business-value="weekday"]')?.textContent).toBe(
+      '周二'
+    );
+    expect(document.querySelector('[data-binding="calendarDay-1"] [data-business-value="label"]')?.textContent).toBe(
+      '已排餐'
+    );
+    expect(document.querySelector('[data-binding="calendarDay-2"] [data-business-value="label"]')?.textContent).toBe(
+      ''
+    );
     expect(
       document.querySelector('[data-binding="expiringIngredient-0"] [data-business-value="expiry"]')?.textContent
     ).toBe('2天后到期');
@@ -142,12 +164,12 @@ describe('Google2 legacy entry adapter', () => {
     const base = { branding: {}, recommendedRecipes: [], todayRecords: [], inventory: {}, weeklyStats: {} };
     map({
       ...base,
-      calendarDays: [{ date: '2026-09-01', weekday: '周二', dayOfMonth: '1', label: '旧' }],
+      calendarDays: [{ date: '2026-09-01', weekday: '二', dayOfMonth: '1', status: 'recorded' }],
       inventory: { expiringIngredients: [{ id: 'old-id', name: '旧食材', expireDaysLeft: 1 }] }
     });
     map({
       ...base,
-      calendarDays: [{ date: '2026-09-02', weekday: '周三', dayOfMonth: '2', label: '新' }],
+      calendarDays: [{ date: '2026-09-02', weekday: '三', dayOfMonth: '2', status: 'planned' }],
       inventory: { expiringIngredients: [{ id: 'new-id', name: '新食材', expireDaysLeft: 2 }] }
     });
     document.querySelector('[data-binding="calendarDay-0"]')?.dispatchEvent(new MouseEvent('click'));
@@ -171,6 +193,178 @@ describe('Google2 legacy entry adapter', () => {
     expect(parsed.querySelectorAll('[data-binding^="calendarDay-"][onclick]').length).toBe(0);
     expect(parsed.querySelectorAll('[data-binding^="expiringIngredient-"]').length).toBe(2);
     expect(parsed.querySelectorAll('[data-binding^="expiringIngredient-"][onclick]').length).toBe(0);
+  });
+
+  it('正式入口周打卡区域（桌面 + 移动）不残留任何演示假数据', () => {
+    const parsed = new DOMParser().parseFromString(html, 'text/html');
+    expect(parsed.querySelectorAll('.mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]').length).toBe(7);
+    expect(
+      parsed.querySelectorAll('.mobile-week-calendar-list [data-binding^="mobileCalendarDay-"][onclick]').length
+    ).toBe(0);
+    const weekArea = parsed.querySelector('[data-binding="calendarDays"]')?.textContent || '';
+    const mobileArea = parsed.querySelector('.mobile-week-calendar-list')?.textContent || '';
+    for (const demo of ['周一 9/1', '周二 9/2', '3餐已完成', '2/3餐进行中', '已达标', '记录中', '3餐完成', '进行中']) {
+      expect(`${weekArea}${mobileArea}`).not.toContain(demo);
+    }
+    // 每个周历槽位都有 data-business-value 叶子绑定，供 adapter 写入真实数据
+    parsed.querySelectorAll('[data-binding^="calendarDay-"]').forEach((card) => {
+      expect(
+        card.querySelectorAll(
+          '[data-business-value="weekday"], [data-business-value="dayOfMonth"], [data-business-value="label"]'
+        ).length
+      ).toBe(3);
+    });
+    parsed.querySelectorAll('.mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]').forEach((row) => {
+      expect(
+        row.querySelectorAll(
+          '[data-business-value="dateBadge"], [data-business-value="statusText"], [data-business-value="statusPill"]'
+        ).length
+      ).toBe(3);
+    });
+  });
+
+  it('移动端周打卡列表由真实 calendarDays 填充，空态隐藏行并清理演示内容', () => {
+    document.body.innerHTML = `
+      <div data-binding="calendarDays">
+        ${Array.from(
+          { length: 7 },
+          (_, i) =>
+            `<div data-binding="calendarDay-${i}"><span data-business-value="weekday">mock</span><span data-business-value="dayOfMonth">mock</span><span data-business-value="label">mock</span></div>`
+        ).join('')}
+      </div>
+      <div class="mobile-week-calendar-list">
+        ${Array.from(
+          { length: 7 },
+          (_, i) =>
+            `<div data-binding="mobileCalendarDay-${i}"><div><span data-business-value="dateBadge">周一 9/1</span><span data-business-value="statusText">3餐已完成</span></div><span data-business-value="statusPill">已达标</span></div>`
+        ).join('')}
+      </div>`;
+    const open = vi.fn();
+    (window as any).BentoModal = { open };
+    window.eval(adapter);
+    const map = (window as any).DafanDashboardAdapter.mapDashboard;
+    const base = { branding: {}, recommendedRecipes: [], inventory: {}, weeklyStats: {} };
+    map({
+      ...base,
+      todayRecords: [{ recorded: true }, { recorded: false }],
+      calendarDays: [
+        { weekday: '一', dayOfMonth: 28, isToday: true, date: '2026-09-28', status: 'recorded' },
+        { weekday: '二', dayOfMonth: 29, isToday: false, date: '2026-09-29', status: 'empty' }
+      ]
+    });
+    const row0 = document.querySelector('[data-binding="mobileCalendarDay-0"]');
+    expect(row0?.hidden).toBe(false);
+    expect(row0?.querySelector('[data-business-value="dateBadge"]')?.textContent).toBe('今天 9/28');
+    expect(row0?.querySelector('[data-business-value="statusText"]')?.textContent).toBe('1餐已记录');
+    expect(row0?.querySelector('[data-business-value="statusPill"]')?.textContent).toBe('1餐 ✓');
+    const row1 = document.querySelector('[data-binding="mobileCalendarDay-1"]');
+    expect(row1?.querySelector('[data-business-value="dateBadge"]')?.textContent).toBe('周二 9/29');
+    expect(row1?.querySelector('[data-business-value="statusText"]')?.textContent).toBe('');
+    expect(row1?.querySelector('[data-business-value="statusPill"]')?.textContent).toBe('未记录');
+    row0?.dispatchEvent(new MouseEvent('click'));
+    expect(open).toHaveBeenCalledWith('dailyDiary', '2026-09-28');
+    // 桌面与移动是并行视图：两套行各自按 days[i] 独立索引填充
+    const desktop0 = document.querySelector('[data-binding="calendarDay-0"]');
+    expect(desktop0?.hidden).toBe(false);
+    expect(desktop0?.querySelector('[data-business-value="weekday"]')?.textContent).toBe('今天');
+    expect(desktop0?.querySelector('[data-business-value="label"]')?.textContent).toBe('1餐已记录');
+    map({ ...base, todayRecords: [], calendarDays: [] });
+    expect(document.querySelector('[data-binding="mobileCalendarDay-0"]')?.hidden).toBe(true);
+    expect(document.querySelector('[data-binding="mobileCalendarDay-0"]')?.onclick).toBeNull();
+    expect(document.querySelector('[data-binding="mobileCalendarDay-0"]')?.dataset.date).toBeUndefined();
+  });
+
+  it('正式入口转盘落点由 recommendation API 驱动：命中当前扇区返回真实索引', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const toast = vi.fn();
+    (window as any).showToast = toast;
+    const items = [
+      { id: 'r1', title: '菜一', type: 'recipe' },
+      { id: 's1', title: '店一', type: 'store' },
+      { id: 'r2', title: '菜二', type: 'recipe' }
+    ];
+    (window as any).getDynamicWheelItems = () => items;
+    const renderWheelSlices = vi.fn();
+    (window as any).renderWheelSlices = renderWheelSlices;
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(
+      arrayJson({ historyId: 'h1', type: 'SINGLE', results: [{ resultType: 'RECIPE', resultId: 'r2', title: '菜二' }] })
+    );
+    const randomSpy = vi.spyOn(Math, 'random');
+    const index = await (window as any).DafanWheelAdapter.resolveTargetIndex('all');
+    expect(index).toBe(2);
+    expect(randomSpy).not.toHaveBeenCalled();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/recommendations/random');
+    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({});
+    expect(renderWheelSlices).not.toHaveBeenCalled();
+    randomSpy.mockRestore();
+  });
+
+  it('推荐结果不在当前扇区时映射进最后一个扇区并重渲染，模式映射到精确请求体', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const items = [
+      { id: 'r1', title: '菜一', type: 'recipe', sub: 'A · 10分钟' },
+      { id: 's1', title: '店一', type: 'store', sub: 'B · 人均¥30' },
+      { id: 'r2', title: '菜二', type: 'recipe', sub: '' }
+    ];
+    (window as any).getDynamicWheelItems = () => items;
+    const renderWheelSlices = vi.fn();
+    (window as any).renderWheelSlices = renderWheelSlices;
+    (window as any).BentoService = { stores: { data: [] }, recipes: { data: [] } };
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    (window as any).BentoService.stores.data = [
+      { id: 's9', name: '推荐新店', category: '轻食', price: 28, supportsDineIn: true }
+    ];
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(
+      arrayJson({
+        historyId: 'h2',
+        type: 'SINGLE',
+        results: [{ resultType: 'STORE', resultId: 's9', title: '推荐新店' }]
+      })
+    );
+    const index = await (window as any).DafanWheelAdapter.resolveTargetIndex('takeout');
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/recommendations/random');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+      sourceTypes: ['STORE'],
+      acquisitionModes: ['TAKEOUT']
+    });
+    expect(index).toBe(2);
+    expect(items[2]).toMatchObject({ id: 's9', type: 'store', title: '推荐新店', sub: '轻食 · 人均¥28' });
+    expect(renderWheelSlices).toHaveBeenCalledTimes(1);
+  });
+
+  it('推荐 API 无结果或失败时 fail-closed：返回 null、toast 提示、不伪造落点', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const toast = vi.fn();
+    (window as any).showToast = toast;
+    (window as any).getDynamicWheelItems = () => [{ id: 'r1', title: '菜一', type: 'recipe' }];
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchMock.mockReset();
+    fetchMock.mockResolvedValueOnce(arrayJson({ historyId: 'h3', type: 'SINGLE', results: [] }));
+    const emptyIndex = await (window as any).DafanWheelAdapter.resolveTargetIndex('cook');
+    expect(emptyIndex).toBeNull();
+    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/recommendations/random');
+    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ sourceTypes: ['RECIPE'] });
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('暂无符合条件'), 'info');
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      text: async () => JSON.stringify({ success: false, error: { code: 'UNAVAILABLE' } })
+    });
+    const failIndex = await (window as any).DafanWheelAdapter.resolveTargetIndex('cook');
+    expect(failIndex).toBeNull();
+    expect(toast).toHaveBeenCalledWith(expect.stringContaining('503'), 'error');
+    expect(Math.random).toBeTypeOf('function');
   });
 
   it('Settings 通过真实备份响应触发下载并在失败时显示 error toast', async () => {

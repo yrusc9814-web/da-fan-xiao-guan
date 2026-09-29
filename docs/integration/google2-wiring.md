@@ -138,18 +138,24 @@ UI DTO → UI 映射（`mapShoppingItem`）：`name ← ingredientNameSnapshot`�
 
 ### 收口轮新登记的未接线区域与行为差异
 
-- 移动端周打卡列表（`mobile-week-calendar-list` 7 条目）：dashboard `GET /dashboard` 已返回 calendarDays 数据，但 adapter 仅接线桌面 `calendarDay-0..6`，移动端列表无 data-binding、未接线，条目保留原版静态演示内容（周一 9/1 … 今天 9/7），移动端视口可见、条目点击无响应（原 onclick 已按接线约定移除）。按「UI 冻结不改」边界与用户决策登记为 gap，不在本轮补接线。
-- 转盘落点：原版 `Math.floor(Math.random() * items.length)` 在假数据清零中改为 `targetIndex = 0`，候选来自真实 stores/recipes，但每次旋转固定停在第一项。属行为差异（非视觉/DOM/CSS），登记待后续决策（恢复随机或接后端推荐）。
 - 设置页文案：原版演示文案（忌口关联、最近备份日期、风格生效声明）改为「暂无可用数据」「视觉风格已启用」诚实空态；「修改 →」（忌口偏好编辑，后端无对应能力）按钮无动作，属 fail-closed；「立即备份 →」由 adapter 接 `GET /backups/export`。
 - Dashboard `greetingTitle`（问候卡主标题）：后端 dashboard 无该字段（仅有 `greetingText`，进提示气泡 `tip` 槽位），主标题在正式运行中为诚实空态，不伪造问候语。
-- `git diff --check`：30 条 trailing whitespace 警告全部位于 `app/client/index.html`，与原版源文件的 30 行行尾空格逐行一致（零新增），属冻结源文件固有属性，不做清洗。
+- `git diff --check`：首收口轮曾报 30 条 trailing whitespace 警告（全部位于 `app/client/index.html`，与原版源文件的 30 行行尾空格逐行一致，零新增）；提交 2906d69（CRLF→LF 归一入库）后这些行不再出现在 diff 中，当前 `git diff --check` 干净（仅 CRLF 提示性 notice）。
+- `resultBanner`（命中横幅，`resultDishText` 静态演示文案）：原版 CSS `display:none`，正式运行从不展示（结果展示走 `wheelWinner` Modal），其静态文本属不可见冻结死模板；`BentoModal.handleWheelResult` 读该隐藏横幅的 legacy 路径因此不可达，保留原状。
+
+### 二次收口轮（2026-09-29，用户指令清零的两项）
+
+- **周打卡区域（桌面 + 移动）假数据清零并接真实数据**：复查发现桌面 `calendarDay-0..6` 卡片的内部槽位（周几/日期/状态标签）此前并无 `data-business-value` 叶子绑定，adapter 的 setText 找不到目标——桌面卡在真实数据下显示的也是原版演示内容（周一/1/3餐完成）；移动端 7 条目同此。处理：桌面卡 3 槽位与移动行 3 槽位（dateBadge/statusText/statusPill）全部补 `data-binding`/`data-business-value` 属性级绑定并清空演示文本（结构/class/层级不动）；adapter `mapDashboard` 以真实 `calendarDays`（weekday/dayOfMonth/isToday/status）+ `todayRecords` 记录数统一填充两套视图（两套行各自独立按 days[i] 索引——首版曾误合并单循环导致移动行取到 days[7..13] 全被隐藏，已修复并以含双视图的测试用例固化），无数据日隐藏行；sanitize 同步覆盖移动行并清空槽位文本。真实文案映射：周X M/D、今日「N餐已记录/N餐 ✓」（无记录时「今天还没有记录/去打卡 +」，N 来自 todayRecords 实测）、非今日按 status 映射「已记录 ✓/已排餐/未记录」。点击行为与桌面一致（open dailyDiary 真实日期）。
+- **转盘落点接正式 recommendation API**：`triggerSpin` 改 async，起转前经 adapter 新增的 `DafanWheelAdapter.resolveTargetIndex(mode)` 调 `POST /api/v1/recommendations/random`（随机加权选择在后端完成，前端无 Math.random），模式映射精确请求体（cook→`{sourceTypes:['RECIPE']}`、dinein/takeout→`{sourceTypes:['STORE'],acquisitionModes:[...]}`、all→`{}`）；推荐结果按 (resultType,resultId) 映射到当前扇区索引，命中则原动画精确停在该扇区；不在当前扇区时把真实推荐对象映射进最后一个扇区（扇区数与设计不变，`renderWheelSlices` 重绘）；API 无结果/失败/无法映射时 fail-closed 不起转并 toast，不伪造落点。SVG/结构/样式/动画形态零改动。顺带清零转盘候选 sub 标签的假数值 fallback（`|| 35`、`|| '15分钟'`、`|| '家常私房'`、`|| '精选觅食'`）——改用真实字段（`cookTimeMinutes`→「N分钟」、`cuisine`、`price`），无值时留空。
+- **plans 种子补漏清零**：复查发现 `plans` 域初始 `data` 仍是演示种子 IIFE（plan-1..3，演示标题 + `targetId: 'recipe-4'`），adapter boot 的 clearMockState 虽会清掉它，但 DOMContentLoaded 首帧仍会渲染演示计划、且 `PlanReminderScheduler.checkAndDispatch` 在 adapter 清理前运行，晚间启动可能对演示计划弹过期提醒。已与其余域一致清空为 `data: []`（纯数据初始化代码，无视觉影响；其他域种子在上一轮已清空，此处为漏项补齐）。
+- 冒烟实测（隔离库 smoke-app.db，生产模式 8899）：周历桌面/移动 7+7 行全部真实数据（今天 9/30 · 3餐已记录、非今日已记录 ✓/未记录）；转盘两次实测均精确落在推荐结果扇区（蒜蓉豆腐/麻婆豆腐，expectedIndex=landedIndex，winner Modal 显示同一真实结果与真实时长）；console 无错误；`mochi_tools` localStorage 为 null；演示内容关键词全页面零残留。
 
 ## 修改文件
 
 - `app/client/public/google2-adapter.js`
 - `app/client/tests/google2-adapter.test.ts`
 - `docs/integration/google2-wiring.md`
-- `app/client/index.html`：仅收口轮上述 DOM 结构还原（+行尾 CRLF 修正），视觉结构回到原版；另有前序接线轮的 data-binding 属性、mock 种子清空（`data: []`）、本地 id/固定日期改真实值、adapter `<script>` 引用。
+- `app/client/index.html`：仅收口轮上述 DOM 结构还原（+行尾 CRLF 修正），视觉结构回到原版；二次收口轮周历槽位属性级绑定与演示文本清空、`triggerSpin` 接推荐 API、候选 sub 假数值 fallback 清零、plans 演示种子清空；另有前序接线轮的 data-binding 属性、mock 种子清空（`data: []`）、本地 id/固定日期改真实值、adapter `<script>` 引用。
 - `app/client/src/services/api.ts`：apiRequest 容错增强（非 JSON/空响应解析、Content-Type 头合并、错误信息含状态码），非视觉。
 - `.prettierignore`：排除 `app/client/index.html`（保护冻结源文件不被 prettier 重排）。
 - 既有入口/视觉基线保持不变；CompleteMealPage.vue 与 uxa-journey.test.ts 无修改。
@@ -166,4 +172,5 @@ UI DTO → UI 映射（`mapShoppingItem`）：`name ← ingredientNameSnapshot`�
 - 扫描结果：`mochi_theme` 与 PIN token 的 localStorage 保留；`mochi_tools` localStorage 的 mock 读写路径已随 tools 接线整体失效（getAll 不再读取、save/delete 不再写入，index.html 中的 legacy 代码按视觉冻结不改、运行时不再触达）。legacy `handleToolFormSubmit` 的 `tool-${Date.now()}` 本地 id 路径、legacy `handlePlanPickerSubmit` 的 `plan-${Date.now()}` 路径、legacy `handleRecordFormSubmit` 的 `rec-${Date.now()}` 与 `new Date().toISOString()` 本地 id/日期路径均已由 adapter 真实 submit 覆盖失效。彩带 `Math.random` 仅用于纯视觉动画。本轮实际修改仅 `app/client/public/google2-adapter.js`、`app/client/tests/google2-adapter.test.ts`、`docs/integration/google2-wiring.md` 三个文件；`CompleteMealPage.vue`、`uxa-journey.test.ts`、`app/server/**`、入口 HTML、`docs/visual-baseline`、`.prettierignore`、`package.json` 均无本轮改动。
 - 浏览器端到端冒烟（主代理执行，2026-09-29）：`npm run seed:dev`（DATABASE_URL=file:../../../data/app.db，幂等 seed）+ `npm run dev:server` + `npm run dev:client`，经 Vite (5173) 打开 Google2 入口：adapter 成功 boot（`DafanDomainAdapter` 就绪、写入口封堵标记生效），七域全部加载真实后端数据——stores 1（审计小馆）、recipes 7、pantry 14（含 expireDaysLeft 派生值 93/10）、shopping 1（审计苹果 1个）、plans 2（isCompleted 状态正确）、records 16、tools 0；`mochi_tools` localStorage 保持空（mock 写路径未触达）；页面无 console 错误、无页面异常；`/api/v1/stores` 经 Vite 代理返回真实种子数据。环境备注：直接访问 8787 返回 API 404 是既有设计（静态托管仅 production 模式）；本机 5173/8787 的 127.0.0.1 监听被其他会话进程占用，冒烟经 192.168.5.9:5173 完成。
 - 收口轮复验（2026-09-29，DOM 修复后重新执行）：`npm test` 全绿（client 14 文件 135/135、server 30 文件 150/150，含 adapter 定向 71/71；run-tests.mjs 的 data/app.db SHA-256/mtime 前后一致守卫通过）；`npm run typecheck`/`lint`/`build` 通过；`npm run format:check` 仍仅两个既有禁改文件失败；`git diff --check` 仅上述 30 条继承自原版的行尾空白警告，其余修改文件干净。冒烟轮使用隔离测试数据库，未触碰 data/app.db。
+- 二次收口轮复验（2026-09-29，周历/转盘清零后重新执行）：adapter 定向测试 76/76（71 基线 + 新增 5 例：正式入口周历区域演示内容清零断言、移动端周历真实数据填充（fixture 含桌面+移动双视图，覆盖两套行独立索引契约）、转盘推荐命中扇区（含 Math.random 未调用断言）、推荐结果扇区映射+模式请求体、推荐无结果/503 fail-closed）；`npm test` 全绿（client 14 文件 140/140、server 30 文件 150/150，run-tests.mjs 的 data/app.db 指纹守卫通过）；`npm run typecheck`/`lint`/`build` 通过；`npm run format:check` 仍仅两个既有禁改文件失败；`git diff --check` 干净（仅 CRLF notice）。生产模式冒烟（隔离 smoke-app.db、8899 端口）实测周历双视图真实数据、转盘两次落点与推荐结果一致、console 无错误。备注：根 `npm test` 的 `prisma generate` 步骤与运行中的冒烟服务器进程冲突（query engine DLL 文件锁，EPERM），须先停冒烟服务器再跑测试。
 - 以上命令均为本轮实际执行结果；format:check 的两个既有失败项是已知限制，不能宣称全套格式检查通过。

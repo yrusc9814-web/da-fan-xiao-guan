@@ -984,12 +984,19 @@
         node.textContent = '';
       });
     });
-    document.querySelectorAll('[data-binding="calendarDays"] [data-binding^="calendarDay-"]').forEach((day) => {
-      day.hidden = true;
-      day.onclick = null;
-      delete day.dataset.date;
-      delete day.dataset.status;
-    });
+    document
+      .querySelectorAll(
+        '[data-binding="calendarDays"] [data-binding^="calendarDay-"], .mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]'
+      )
+      .forEach((day) => {
+        day.hidden = true;
+        day.onclick = null;
+        delete day.dataset.date;
+        delete day.dataset.status;
+        day.querySelectorAll('[data-business-value]').forEach((node) => {
+          node.textContent = '';
+        });
+      });
     document.querySelectorAll('[data-binding^="expiringIngredient-"]').forEach((row) => {
       row.hidden = true;
       row.onclick = null;
@@ -1042,18 +1049,54 @@
     setBinding('weeklyStat-averageRating', stats.averageRating ?? '');
     setBinding('weeklyStat-consumedIngredientCount', stats.consumedIngredientCount ?? '');
     const days = data.calendarDays || [];
-    document.querySelectorAll('[data-binding="calendarDays"] [data-binding^="calendarDay-"]').forEach((day, i) => {
-      const value = days[i];
-      day.hidden = !value;
-      if (value) {
-        setText('[data-business-value="weekday"]', value.weekday || '', day);
-        setText('[data-business-value="dayOfMonth"]', value.dayOfMonth ?? '', day);
-        setText('[data-business-value="label"]', value.label || '', day);
-        day.dataset.date = value.date || '';
-        day.dataset.status = value.status || '';
-        day.onclick = () => window.BentoModal?.open('dailyDiary', value.date);
+    const todayRecorded = (data.todayRecords || []).filter((x) => x.recorded).length;
+    const fillWeekRow = (row, value) => {
+      const setValue = (slot, text) => {
+        const node = row.querySelector(`[data-business-value="${slot}"]`);
+        if (node) node.textContent = text;
+      };
+      row.hidden = !value;
+      if (!value) {
+        row.onclick = null;
+        delete row.dataset.date;
+        delete row.dataset.status;
+        return;
       }
-    });
+      const weekdayText = value.isToday ? '今天' : `周${value.weekday || ''}`;
+      const monthDay = /-(\d{2})-(\d{2})$/.exec(value.date || '');
+      const dateBadge = monthDay ? `${weekdayText} ${Number(monthDay[1])}/${Number(monthDay[2])}` : weekdayText;
+      let statusText;
+      let statusPill;
+      if (value.isToday) {
+        statusText = todayRecorded > 0 ? `${todayRecorded}餐已记录` : '今天还没有记录';
+        statusPill = todayRecorded > 0 ? `${todayRecorded}餐 ✓` : '去打卡 +';
+      } else if (value.status === 'recorded') {
+        statusText = '已记录';
+        statusPill = '已记录 ✓';
+      } else if (value.status === 'planned') {
+        statusText = '已排餐';
+        statusPill = '已排餐';
+      } else {
+        statusText = '';
+        statusPill = '未记录';
+      }
+      setValue('weekday', weekdayText);
+      setValue('dayOfMonth', value.dayOfMonth == null ? '' : String(value.dayOfMonth));
+      setValue('label', statusText);
+      setValue('dateBadge', dateBadge);
+      setValue('statusText', statusText);
+      setValue('statusPill', statusPill);
+      row.dataset.date = value.date || '';
+      row.dataset.status = value.status || '';
+      row.onclick = () => window.BentoModal?.open('dailyDiary', value.date);
+    };
+    // 桌面网格与移动列表是两套并行视图：各自独立按 days[i] 索引，不能合并成一个循环
+    document
+      .querySelectorAll('[data-binding="calendarDays"] [data-binding^="calendarDay-"]')
+      .forEach((row, i) => fillWeekRow(row, days[i]));
+    document
+      .querySelectorAll('.mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]')
+      .forEach((row, i) => fillWeekRow(row, days[i]));
     const expiring = inventory.expiringIngredients || [];
     document.querySelectorAll('[data-binding^="expiringIngredient-"]').forEach((row, i) => {
       const value = expiring[i];
@@ -1423,10 +1466,83 @@
     loadDashboard().catch(fail);
     wireSettings().catch(fail);
   }
+  function wheelRecommendationBody(mode) {
+    const body = {};
+    if (mode === 'cook') body.sourceTypes = ['RECIPE'];
+    else if (mode === 'dinein') {
+      body.sourceTypes = ['STORE'];
+      body.acquisitionModes = ['DINE_IN'];
+    } else if (mode === 'takeout') {
+      body.sourceTypes = ['STORE'];
+      body.acquisitionModes = ['TAKEOUT'];
+    }
+    return body;
+  }
+  async function resolveWheelTargetIndex(mode) {
+    const items = window.getDynamicWheelItems ? window.getDynamicWheelItems() : [];
+    if (!items.length) {
+      toast('转盘候选为空，先去添加菜谱或店铺吧', 'info');
+      return null;
+    }
+    let payload;
+    try {
+      payload = await ApiClient.post('/recommendations/random', wheelRecommendationBody(mode));
+    } catch (error) {
+      fail(error);
+      return null;
+    }
+    const pick = (payload?.results || [])[0];
+    if (!pick) {
+      toast('暂无符合条件的真实推荐结果，稍后再试', 'info');
+      return null;
+    }
+    const expectedType = pick.resultType === 'STORE' ? 'store' : 'recipe';
+    let index = items.findIndex((item) => item && item.type === expectedType && item.id === pick.resultId);
+    if (index >= 0) return index;
+    // 真实推荐结果不在当前扇区时，将其映射进当前候选扇区（替换最后一个扇区，扇区数与设计不变）
+    const remoteService = pick.resultType === 'STORE' ? window.BentoService?.stores : window.BentoService?.recipes;
+    const cached = remoteService?.getById ? remoteService.getById(pick.resultId) : null;
+    if (!cached) {
+      toast('推荐结果无法映射到当前转盘候选', 'error');
+      return null;
+    }
+    const sector =
+      pick.resultType === 'STORE'
+        ? {
+            id: cached.id,
+            title: cached.name,
+            type: 'store',
+            sub: [cached.category, cached.price ? `人均¥${cached.price}` : null].filter(Boolean).join(' · '),
+            icon: cached.icon || '🍜',
+            supportsDineIn: !!cached.supportsDineIn,
+            supportsTakeout: !!cached.supportsTakeout
+          }
+        : {
+            id: cached.id,
+            title: cached.name,
+            type: 'recipe',
+            sub: [
+              cached.cuisine,
+              cached.cookTimeMinutes !== undefined && cached.cookTimeMinutes !== null && cached.cookTimeMinutes !== ''
+                ? `${cached.cookTimeMinutes}分钟`
+                : null
+            ]
+              .filter(Boolean)
+              .join(' · '),
+            icon: cached.icon || '🍱'
+          };
+    items[items.length - 1] = sector;
+    window.renderWheelSlices?.();
+    return items.length - 1;
+  }
   sanitizeStaticBusinessState();
   window.DafanApiClient = ApiClient;
   window.DafanDashboardAdapter = { mapDashboard, loadDashboard };
   window.DafanSettingsAdapter = { loadSettings, wireSettings };
+  window.DafanWheelAdapter = {
+    resolveTargetIndex: resolveWheelTargetIndex,
+    recommendationBody: wheelRecommendationBody
+  };
   window.DafanDomainAdapter = {
     mapStore,
     mapRecipe,
