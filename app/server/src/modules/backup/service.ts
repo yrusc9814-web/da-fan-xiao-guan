@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
-import { dirname, join, posix, resolve, sep } from 'node:path';
+import { dirname, join, parse, posix, resolve, sep } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import type { PrismaClient } from '@prisma/client';
@@ -87,6 +89,114 @@ function databasePath(): string {
   const path = filePathFromDatabaseUrl(resolveDatabaseUrl());
   if (!path) throw Object.assign(new Error('仅支持备份本地 SQLite 数据库'), { statusCode: 409 });
   return path;
+}
+
+const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
+const migrationsDirectory = resolve(projectRoot, 'app/server/prisma/migrations');
+
+function restoreValidationError(message: string): Error & { statusCode: number } {
+  return Object.assign(new Error(message), { statusCode: 422 });
+}
+
+function assertSameStorageVolume(paths: string[]): void {
+  const roots = new Set(paths.map((path) => parse(resolve(path)).root.toLowerCase()));
+  if (roots.size > 1) throw restoreValidationError('恢复暂存区、回滚区与正式数据必须位于同一磁盘卷');
+}
+
+async function localMigrationNames(): Promise<Set<string>> {
+  const entries = await readdir(migrationsDirectory, { withFileTypes: true });
+  return new Set(entries.filter((entry) => entry.isDirectory()).map((entry) => entry.name));
+}
+
+async function deployStagedMigrations(stagedDatabase: string): Promise<void> {
+  const cli = resolve(projectRoot, 'node_modules/prisma/build/index.js');
+  const environment = { ...process.env };
+  delete environment.DAFAN_ISOLATION_ROOT;
+  delete environment.DAFAN_DATABASE_PATH;
+  delete environment.DAFAN_UPLOADS_PATH;
+  delete environment.DAFAN_BACKUPS_PATH;
+  environment.NODE_ENV = 'production';
+  environment.DATABASE_URL = `file:${stagedDatabase}`;
+  environment.TEST_DATABASE_URL = `file:${stagedDatabase}`;
+  await new Promise<void>((resolveProcess, rejectProcess) => {
+    const child = spawn(process.execPath, [cli, 'migrate', 'deploy'], {
+      cwd: projectRoot,
+      env: environment,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      child.kill();
+      rejectProcess(restoreValidationError('暂存库迁移超时，已拒绝恢复'));
+    }, 30_000);
+    const finish = (error?: Error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) rejectProcess(error);
+      else resolveProcess();
+    };
+    child.once('error', (error) => finish(restoreValidationError(`暂存库迁移启动失败：${error.message}`)));
+    child.once('close', (code) => {
+      if (code === 0) finish();
+      else finish(restoreValidationError(`暂存库迁移失败（退出码 ${code ?? 'unknown'}）`));
+    });
+  });
+}
+
+async function auditStagedDatabase(stagedDatabase: string): Promise<void> {
+  const knownMigrations = await localMigrationNames();
+  let check: PrismaClient | undefined;
+  try {
+    const clientModule = await import('../../database/client.js');
+    const connect = () => (check = clientModule.createPrismaClient(`file:${stagedDatabase}`));
+    connect();
+    const table = await check!.$queryRawUnsafe<Array<{ name: string }>>(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name = '_prisma_migrations'"
+    );
+    if (table.length !== 1) throw restoreValidationError('暂存数据库缺少 Prisma 迁移表');
+    let migrations = await check!.$queryRawUnsafe<
+      Array<{ migration_name: string; finished_at: string | null; rolled_back_at: string | null }>
+    >('SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations');
+    const validateMigrations = () => {
+      if (!migrations.some((migration) => migration.finished_at !== null)) throw restoreValidationError('暂存数据库没有已完成迁移');
+      if (migrations.some((migration) => migration.finished_at === null && migration.rolled_back_at === null))
+        throw restoreValidationError('暂存数据库包含未完成或失败迁移');
+      const unknown = migrations.filter((migration) => !knownMigrations.has(migration.migration_name));
+      if (unknown.length) throw restoreValidationError('暂存数据库包含未知未来迁移');
+    };
+    validateMigrations();
+    const completed = new Set(migrations.filter((migration) => migration.finished_at !== null).map((migration) => migration.migration_name));
+    if (completed.size < knownMigrations.size) {
+      await check!.$disconnect();
+      check = undefined;
+      await deployStagedMigrations(stagedDatabase);
+      connect();
+      migrations = await check!.$queryRawUnsafe<Array<{ migration_name: string; finished_at: string | null; rolled_back_at: string | null }>>(
+        'SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations'
+      );
+      validateMigrations();
+      if (new Set(migrations.filter((migration) => migration.finished_at !== null).map((migration) => migration.migration_name)).size < knownMigrations.size)
+        throw restoreValidationError('暂存数据库迁移未达到当前版本');
+    }
+    const integrity = await check!.$queryRawUnsafe<Array<{ integrity_check: string }>>('PRAGMA integrity_check');
+    if (integrity.length !== 1 || integrity[0]?.integrity_check !== 'ok') throw restoreValidationError('数据库完整性检查失败');
+    const foreignKeys = await check!.$queryRawUnsafe<Array<Record<string, unknown>>>('PRAGMA foreign_key_check');
+    if (foreignKeys.length) throw restoreValidationError('数据库外键检查失败');
+    await check!.settings.findUnique({ where: { id: 1 } });
+    await check!.ingredient.count();
+    await check!.recipe.count();
+    await check!.shoppingList.findFirst({ include: { items: true } });
+    await check!.mealPlan.count();
+    await check!.mealRecord.count();
+  } catch (error) {
+    if ((error as { statusCode?: number })?.statusCode === 422) throw error;
+    throw restoreValidationError(`暂存数据库预检失败：${error instanceof Error ? error.message : '未知错误'}`);
+  } finally {
+    await check?.$disconnect().catch(() => undefined);
+  }
 }
 
 let backupQueue: Promise<void> = Promise.resolve();
@@ -334,62 +444,83 @@ export async function restoreBackup(
   allowedInFlight = 0,
   beforeMaintenance?: () => void
 ) {
-  const dataRoot = resolveRestoreTempDirectory();
-  const stage = resolve(dataRoot, `.restore-${randomUUID()}`);
-  const rollback = resolve(dataRoot, `.rollback-${randomUUID()}`);
-  await mkdir(stage, { recursive: true });
-  let maintenanceStarted = false;
-  try {
-    const extracted = await extractBackup(zipPath, stage);
-    const manifest = parseManifest(await readFile(resolve(stage, 'backup-manifest.json'), 'utf8'));
-    validateManifest(manifest, extracted);
-    const stagedDatabase = resolve(stage, 'app.db');
-    await stat(stagedDatabase);
-    const check = (await import('../../database/client.js')).createPrismaClient(`file:${stagedDatabase}`);
-    try {
-      const integrity = await check.$queryRawUnsafe<Array<{ integrity_check: string }>>('PRAGMA integrity_check');
-      if (integrity.length !== 1 || integrity[0]?.integrity_check !== 'ok') throw new Error('数据库完整性检查失败');
-      const migrations = await check.$queryRawUnsafe<Array<{ migration_name: string }>>(
-        'SELECT migration_name FROM _prisma_migrations WHERE finished_at IS NOT NULL'
-      );
-      if (!migrations.length) throw new Error('缺少数据库迁移记录');
-    } finally {
-      await check.$disconnect();
-    }
-    beforeMaintenance?.();
-    await beginMaintenance(allowedInFlight);
-    maintenanceStarted = true;
+  return withBackupLock(async () => {
+    const dataRoot = resolveRestoreTempDirectory();
+    const stage = resolve(dataRoot, `.restore-${randomUUID()}`);
+    const rollback = resolve(dataRoot, `.rollback-${randomUUID()}`);
     const currentDatabase = databasePath();
-    await database.$queryRawUnsafe('PRAGMA wal_checkpoint(FULL)');
-    await database.$disconnect();
-    await mkdir(rollback, { recursive: true });
-    await copyFile(currentDatabase, resolve(rollback, 'app.db'));
-    if (await stat(uploadsDirectory).catch(() => null))
-      await cp(uploadsDirectory, resolve(rollback, 'uploads'), { recursive: true });
-    try {
-      await copyFile(stagedDatabase, currentDatabase);
-      await rm(uploadsDirectory, { recursive: true, force: true });
-      const stagedUploads = resolve(stage, 'uploads');
-      if (await stat(stagedUploads).catch(() => null)) await rename(stagedUploads, uploadsDirectory);
-      else await mkdir(uploadsDirectory, { recursive: true });
-      await database.$connect();
-      await database.$queryRawUnsafe('SELECT 1');
-      await database.settings.findUnique({ where: { id: 1 } });
-    } catch (error) {
-      await database.$disconnect().catch(() => undefined);
-      await copyFile(resolve(rollback, 'app.db'), currentDatabase);
-      await rm(uploadsDirectory, { recursive: true, force: true });
-      if (await stat(resolve(rollback, 'uploads')).catch(() => null)) {
-        await cp(resolve(rollback, 'uploads'), uploadsDirectory, { recursive: true });
+    assertSameStorageVolume([stage, rollback, currentDatabase]);
+    await mkdir(stage, { recursive: true });
+    let maintenanceStarted = false;
+    let switchedHealthy = false;
+    let rolledBackHealthy = false;
+    const sidecars = ['-wal', '-shm'];
+    const copySidecars = async (source: string, target: string) => {
+      for (const suffix of sidecars) {
+        if (await stat(`${source}${suffix}`).catch(() => null)) await copyFile(`${source}${suffix}`, `${target}${suffix}`);
       }
-      await database.$connect();
-      throw error;
+    };
+    const removeSidecars = async (path: string) => {
+      for (const suffix of sidecars) await rm(`${path}${suffix}`, { force: true });
+    };
+    try {
+      const extracted = await extractBackup(zipPath, stage);
+      const manifest = parseManifest(await readFile(resolve(stage, 'backup-manifest.json'), 'utf8'));
+      validateManifest(manifest, extracted);
+      const stagedDatabase = resolve(stage, 'app.db');
+      await stat(stagedDatabase);
+      await auditStagedDatabase(stagedDatabase);
+
+      // 所有预检完成后才消费高风险授权、进入维护态，保证无效备份不会消耗授权或阻断服务。
+      beforeMaintenance?.();
+      await beginMaintenance(allowedInFlight);
+      maintenanceStarted = true;
+      await database.$queryRawUnsafe('PRAGMA wal_checkpoint(TRUNCATE)');
+      await database.$disconnect();
+      await mkdir(rollback, { recursive: true });
+      await copyFile(currentDatabase, resolve(rollback, 'app.db'));
+      await copySidecars(currentDatabase, resolve(rollback, 'app.db'));
+      const existingUploads = await stat(uploadsDirectory).catch(() => null);
+      if (existingUploads) await cp(uploadsDirectory, resolve(rollback, 'uploads'), { recursive: true });
+
+      try {
+        await removeSidecars(currentDatabase);
+        await copyFile(stagedDatabase, currentDatabase);
+        await rm(uploadsDirectory, { recursive: true, force: true });
+        const stagedUploads = resolve(stage, 'uploads');
+        if (await stat(stagedUploads).catch(() => null)) await rename(stagedUploads, uploadsDirectory);
+        else await mkdir(uploadsDirectory, { recursive: true });
+        await database.$connect();
+        await database.$queryRawUnsafe('SELECT 1');
+        await database.settings.findUnique({ where: { id: 1 } });
+        await database.shoppingList.count();
+        switchedHealthy = true;
+      } catch (switchError) {
+        await database.$disconnect().catch(() => undefined);
+        try {
+          await removeSidecars(currentDatabase);
+          await copyFile(resolve(rollback, 'app.db'), currentDatabase);
+          await copySidecars(resolve(rollback, 'app.db'), currentDatabase);
+          await rm(uploadsDirectory, { recursive: true, force: true });
+          if (await stat(resolve(rollback, 'uploads')).catch(() => null)) {
+            await cp(resolve(rollback, 'uploads'), uploadsDirectory, { recursive: true });
+          } else await mkdir(uploadsDirectory, { recursive: true });
+          await database.$connect();
+          await database.$queryRawUnsafe('SELECT 1');
+          await database.settings.findUnique({ where: { id: 1 } });
+          await database.shoppingList.count();
+          rolledBackHealthy = true;
+        } catch (rollbackError) {
+          throw Object.assign(new Error(`恢复切换失败且回滚未完成，rollback 目录已保留：${rollbackError instanceof Error ? rollbackError.message : '未知错误'}`), { statusCode: 503 });
+        }
+        throw switchError;
+      }
+      clearPinSessions();
+      return { restored: true, restartRecommended: true };
+    } finally {
+      await rm(stage, { recursive: true, force: true });
+      if (switchedHealthy || rolledBackHealthy) await rm(rollback, { recursive: true, force: true });
+      if (maintenanceStarted && (switchedHealthy || rolledBackHealthy)) endMaintenance();
     }
-    clearPinSessions();
-    return { restored: true, restartRecommended: true };
-  } finally {
-    if (maintenanceStarted) endMaintenance();
-    await rm(stage, { recursive: true, force: true });
-    await rm(rollback, { recursive: true, force: true });
-  }
+  });
 }

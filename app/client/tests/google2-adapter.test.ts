@@ -4178,6 +4178,44 @@ describe('Google2 legacy entry adapter', () => {
       ['鸡蛋', 2, 'PIECE', null]
     ]);
   });
+
+  it('PIN 401 并发请求复用单例解锁，成功后各自仅重试一次且不重放禁区', async () => {
+    document.body.innerHTML = '';
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ success: true, data: {} }) });
+    vi.stubGlobal('fetch', fetchMock);
+    window.eval(adapter);
+    document.body.innerHTML = '<div id="modalPinUnlock"><form id="google2PinUnlockForm"><input id="google2PinInput"><p id="google2PinError"></p><button id="google2PinSubmit" type="submit"></button><button id="google2PinCancel" type="button"></button></form></div>';
+    fetchMock.mockReset();
+    fetchMock
+      .mockResolvedValueOnce({ ok: false, status: 401, headers: new Headers(), text: async () => JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: '需要 PIN' } }) })
+      .mockResolvedValueOnce({ ok: false, status: 401, headers: new Headers(), text: async () => JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: '需要 PIN' } }) })
+      .mockResolvedValueOnce({ ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ success: true, data: { valid: true, required: true, token: 'test-token' } }) })
+      .mockResolvedValue({ ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ success: true, data: { ok: true } }) });
+    const first = (window as any).DafanApiClient.get('/recipes');
+    const second = (window as any).DafanApiClient.get('/stores');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(false);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    (document.getElementById('google2PinInput') as HTMLInputElement).value = '1234';
+    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await expect(Promise.all([first, second])).resolves.toEqual([{ ok: true }, { ok: true }]);
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/settings/pin/verify'))).toHaveLength(1);
+    const retriedCalls = fetchMock.mock.calls.filter(([, init]) => typeof init?.headers?.['X-App-Pin-Token'] === 'string' && init.headers['X-App-Pin-Token']);
+    expect(retriedCalls).toHaveLength(2);
+  });
+
+  it('FormData 恢复请求保留浏览器 boundary，且恢复端点 401 不自动重放', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 401, headers: new Headers(), text: async () => JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: '需要 PIN' } }) });
+    vi.stubGlobal('fetch', fetchMock);
+    document.body.innerHTML = '<div id="modalPinUnlock" class="hidden"></div>';
+    window.eval(adapter);
+    fetchMock.mockClear();
+    const form = new FormData(); form.append('file', new Blob(['zip']), 'backup.zip');
+    await expect((window as any).DafanApiClient.request('/backups/restore', { method: 'POST', body: form, _skipPinRetry: true })).rejects.toMatchObject({ status: 401, code: 'UNAUTHORIZED' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Content-Type');
+  });
 });
 
 function deferred<T>() {

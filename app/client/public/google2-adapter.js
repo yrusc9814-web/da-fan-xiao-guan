@@ -4,46 +4,141 @@
   const PIN_KEY = 'dafan-pin-token';
   const BLOCKED_MESSAGE = '该功能尚未接通真实后端';
   class ApiError extends Error {
-    constructor(status, code, message, details) {
+    constructor(status, code, message, details, retryAfter) {
       super(message);
       this.name = 'ApiError';
       this.status = status;
       this.code = code;
       this.details = details;
+      this.retryAfter = retryAfter;
     }
   }
-  async function request(path, options = {}) {
-    const headers = { ...(options.headers || {}) };
-    const hasBody = options.body !== undefined && options.body !== null;
-    if (
-      hasBody &&
-      !(options.body instanceof FormData) &&
-      !Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')
-    )
-      headers['Content-Type'] = 'application/json';
+  const PIN_RETRY_EXCLUDED = ['/settings/pin/verify', '/settings/pin/session', '/settings/high-risk/authorize', '/backups/restore'];
+  let pinUnlockPromise = null;
+  let pinUnlockResolve = null;
+  let pinUnlockReject = null;
+  let pinUnlockCooldownTimer = null;
+  function normalizedPath(path) { return String(path).split('?')[0]; }
+  function pinRetryAllowed(path, options, status, code) {
+    return !options._pinRetried && status === 401 && code === 'UNAUTHORIZED' && !PIN_RETRY_EXCLUDED.includes(normalizedPath(path));
+  }
+  function pinUnlockError(message = '已取消 PIN 解锁') { return new ApiError(401, 'PIN_UNLOCK_CANCELLED', message); }
+  function pinDialog() {
+    return {
+      root: document.getElementById('modalPinUnlock'),
+      form: document.getElementById('google2PinUnlockForm'),
+      input: document.getElementById('google2PinInput'),
+      error: document.getElementById('google2PinError'),
+      submit: document.getElementById('google2PinSubmit'),
+      cancel: document.getElementById('google2PinCancel')
+    };
+  }
+  function setPinDialogError(message = '') { const node = pinDialog().error; if (node) node.textContent = message; }
+  function closePinUnlockDialog() {
+    const { root, input } = pinDialog();
+    root?.classList.add('hidden');
+    if (input) input.value = '';
+    setPinDialogError('');
+    if (pinUnlockCooldownTimer) { clearInterval(pinUnlockCooldownTimer); pinUnlockCooldownTimer = null; }
+  }
+  function finishPinUnlock(token) {
+    if (!token || !pinUnlockResolve) return;
+    localStorage.setItem(PIN_KEY, token);
+    const resolve = pinUnlockResolve;
+    pinUnlockPromise = pinUnlockResolve = pinUnlockReject = null;
+    closePinUnlockDialog();
+    resolve(token);
+  }
+  function cancelPinUnlock() {
+    if (!pinUnlockReject) return;
+    const reject = pinUnlockReject;
+    pinUnlockPromise = pinUnlockResolve = pinUnlockReject = null;
+    closePinUnlockDialog();
+    reject(pinUnlockError());
+  }
+  async function verifyPinFromDialog() {
+    const { input, submit } = pinDialog();
+    const pin = input?.value || '';
+    if (!/^\d{4,8}$/.test(pin)) { setPinDialogError('请输入 4～8 位数字 PIN'); input?.focus(); return; }
+    if (submit) submit.disabled = true;
+    setPinDialogError('正在验证…');
+    try {
+      const result = await request('/settings/pin/verify', { method: 'POST', body: JSON.stringify({ pin }), _pinRetried: true });
+      if (result?.valid !== true || typeof result.token !== 'string' || !result.token) {
+        setPinDialogError(result?.required === true ? 'PIN 不正确，请重试' : '当前未启用 PIN，请刷新后重试');
+        if (input) input.value = '';
+        return;
+      }
+      finishPinUnlock(result.token);
+    } catch (error) {
+      if (error?.status === 429 && error?.code === 'PIN_ATTEMPTS_EXCEEDED') {
+        let remaining = Math.max(1, Number(error.retryAfter) || 30);
+        setPinDialogError(`尝试次数过多，请 ${remaining} 秒后再试`);
+        if (pinUnlockCooldownTimer) clearInterval(pinUnlockCooldownTimer);
+        pinUnlockCooldownTimer = setInterval(() => {
+          remaining -= 1;
+          if (remaining <= 0) { clearInterval(pinUnlockCooldownTimer); pinUnlockCooldownTimer = null; setPinDialogError('可以再次尝试验证'); if (submit) submit.disabled = false; }
+          else setPinDialogError(`尝试次数过多，请 ${remaining} 秒后再试`);
+        }, 1000);
+      } else setPinDialogError('PIN 验证失败，请稍后重试');
+    } finally { if (submit && !pinUnlockCooldownTimer) submit.disabled = false; }
+  }
+  function ensurePinUnlock() {
+    if (pinUnlockPromise) return pinUnlockPromise;
+    pinUnlockPromise = new Promise((resolve, reject) => {
+      pinUnlockResolve = resolve; pinUnlockReject = reject;
+      const { root, form, input, cancel, submit } = pinDialog();
+      if (!root || !form || !input) { pinUnlockPromise = pinUnlockResolve = pinUnlockReject = null; reject(pinUnlockError('PIN 解锁界面不可用')); return; }
+      root.classList.remove('hidden'); input.value = ''; setPinDialogError(''); if (submit) submit.disabled = false;
+      form.onsubmit = (event) => { event.preventDefault(); void verifyPinFromDialog(); };
+      cancel.onclick = cancelPinUnlock;
+      queueMicrotask(() => input.focus());
+    });
+    return pinUnlockPromise;
+  }
+  async function parseApiResponse(response) {
+    const text = typeof response?.text === 'function' ? await response.text() : '';
+    let payload = null;
+    try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
+    return payload;
+  }
+  async function fetchWithPinRetry(path, options = {}) {
+    const { _pinRetried = false, _skipPinRetry = false, ...fetchOptions } = options || {};
+    const headers = { ...(fetchOptions.headers || {}) };
+    const hasBody = fetchOptions.body !== undefined && fetchOptions.body !== null;
+    if (hasBody && !(fetchOptions.body instanceof FormData) && !Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')) headers['Content-Type'] = 'application/json';
     const token = localStorage.getItem(PIN_KEY);
     if (token) headers['X-App-Pin-Token'] = token;
-    const response = await fetch(`${API_BASE}${path}`, { ...options, headers });
-    const text = await response.text();
-    let payload = null;
-    try {
-      payload = text ? JSON.parse(text) : null;
-    } catch {
-      payload = null;
-    }
+    const response = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
+    const payload = await parseApiResponse(response);
+    const apiError = payload?.error || {};
+    const code = apiError.code || (response.status === 503 ? 'MAINTENANCE' : 'HTTP_ERROR');
     if (!response.ok || !payload || payload.success !== true) {
-      const error = payload?.error || {};
-      throw new ApiError(
-        response.status,
-        error.code || (response.status === 503 ? 'MAINTENANCE' : 'HTTP_ERROR'),
-        error.message || `请求失败（${response.status}）`,
-        error.details
-      );
+      const error = new ApiError(response.status, code, apiError.message || `请求失败（${response.status}）`, apiError.details, Number(response.headers?.get?.('retry-after')) || undefined);
+      if (!_skipPinRetry && pinRetryAllowed(path, { _pinRetried }, response.status, code)) { await ensurePinUnlock(); return fetchWithPinRetry(path, { ...options, _pinRetried: true }); }
+      throw error;
     }
     return payload.data;
   }
+  async function request(path, options = {}) { return fetchWithPinRetry(path, options); }
+  async function requestBlob(path, options = {}) {
+    const { _pinRetried = false, _skipPinRetry = false, ...fetchOptions } = options || {};
+    const headers = { ...(fetchOptions.headers || {}) };
+    const token = localStorage.getItem(PIN_KEY);
+    if (token) headers['X-App-Pin-Token'] = token;
+    const response = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
+    if (!response.ok) {
+      const payload = await parseApiResponse(response); const apiError = payload?.error || {};
+      const code = apiError.code || (response.status === 503 ? 'MAINTENANCE' : 'HTTP_ERROR');
+      const error = new ApiError(response.status, code, apiError.message || `请求失败（${response.status}）`, apiError.details, Number(response.headers?.get?.('retry-after')) || undefined);
+      if (!_skipPinRetry && pinRetryAllowed(path, { _pinRetried }, response.status, code)) { await ensurePinUnlock(); return requestBlob(path, { ...options, _pinRetried: true }); }
+      throw error;
+    }
+    return response.blob();
+  }
   const ApiClient = {
     request,
+    requestBlob,
     get: (path) => request(path),
     post: (path, body) => request(path, { method: 'POST', body: JSON.stringify(body) }),
     put: (path, body) => request(path, { method: 'PUT', body: JSON.stringify(body) }),
@@ -1843,22 +1938,72 @@
   async function exportBackup(button) {
     button.disabled = true;
     try {
-      const response = await fetch(`${API_BASE}/backups/export`, {
-        headers: { 'X-App-Pin-Token': localStorage.getItem(PIN_KEY) || '' }
-      });
-      if (!response.ok)
-        throw new ApiError(response.status, 'BACKUP_EXPORT_FAILED', `备份导出失败（${response.status}）`);
+      const blob = await ApiClient.requestBlob('/backups/export');
+      const href = URL.createObjectURL(blob);
       const anchor = document.createElement('a');
-      anchor.href = URL.createObjectURL(await response.blob());
+      anchor.href = href;
       anchor.download = 'dafan-backup.zip';
       anchor.click();
-      URL.revokeObjectURL(anchor.href);
+      URL.revokeObjectURL(href);
       toast('备份下载已开始', 'success');
-    } catch (error) {
-      fail(error);
-    } finally {
-      button.disabled = false;
+    } catch (error) { fail(error); }
+    finally { button.disabled = false; }
+  }
+  function setRestoreState(state) {
+    const node = document.getElementById('google2RestoreState');
+    if (node) node.textContent = state || '';
+  }
+  function closeRestoreDialog() {
+    document.getElementById('modalBackupRestore')?.classList.add('hidden');
+    const input = document.getElementById('google2RestorePin');
+    const file = document.getElementById('google2RestoreFile');
+    if (input) input.value = '';
+    if (file) file.value = '';
+    setRestoreState('');
+  }
+  function openRestoreDialog(file) {
+    const name = document.getElementById('google2RestoreFileName');
+    const size = document.getElementById('google2RestoreFileSize');
+    if (name) name.textContent = file.name;
+    if (size) size.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+    document.getElementById('modalBackupRestore')?.classList.remove('hidden');
+  }
+  async function authorizeRestore(pinEnabled) {
+    if (pinEnabled) {
+      const pin = document.getElementById('google2RestorePin')?.value || '';
+      if (!/^\d{4,8}$/.test(pin)) throw new ApiError(422, 'PIN_INVALID', '请输入 4～8 位数字 PIN');
+      const result = await ApiClient.post('/settings/high-risk/authorize', { action: 'RESTORE', pin });
+      if (!result?.token) throw new ApiError(401, 'HIGH_RISK_AUTHORIZATION_INVALID', 'PIN 授权失败');
+      return result.token;
     }
+    const confirmed = document.getElementById('google2RestoreConfirmation');
+    if (!confirmed?.checked) throw new ApiError(422, 'RESTORE_CONFIRMATION_REQUIRED', '请先勾选恢复确认项');
+    const challenge = await ApiClient.post('/settings/high-risk/authorize', { action: 'RESTORE' });
+    if (!challenge?.challenge) throw new ApiError(401, 'HIGH_RISK_AUTHORIZATION_INVALID', '恢复确认已失效，请重试');
+    const result = await ApiClient.post('/settings/high-risk/authorize', { action: 'RESTORE', challenge: challenge.challenge, confirmation: 'RESTORE_LOCAL_DATA' });
+    if (!result?.token) throw new ApiError(401, 'HIGH_RISK_AUTHORIZATION_INVALID', '恢复授权失败');
+    return result.token;
+  }
+  async function restoreBackupFromDialog() {
+    const file = document.getElementById('google2RestoreFile')?.files?.[0];
+    if (!file || !file.name.toLowerCase().endsWith('.zip')) { setRestoreState('请选择 ZIP 备份文件'); return; }
+    const button = document.getElementById('google2RestoreSubmit');
+    if (button) button.disabled = true;
+    try {
+      setRestoreState('正在读取设置并申请高风险授权…');
+      const settings = await ApiClient.get('/settings');
+      const token = await authorizeRestore(settings?.pinEnabled === true);
+      const form = new FormData();
+      form.append('file', file, file.name);
+      setRestoreState('正在隔离校验并恢复，请勿关闭页面…');
+      await ApiClient.request('/backups/restore', { method: 'POST', body: form, headers: { 'X-High-Risk-Token': token }, _skipPinRetry: true });
+      localStorage.removeItem(PIN_KEY);
+      closeRestoreDialog();
+      toast('本地备份已恢复，正在重新加载数据', 'success');
+      await Promise.allSettled([loadSettings(), window.DafanDashboardAdapter?.refreshDashboard?.(), window.BentoService?.stores?.reload?.(), window.BentoService?.recipes?.reload?.(), window.BentoService?.plans?.reload?.(), window.BentoService?.records?.reload?.()]);
+      await syncPinSession().catch(() => undefined);
+    } catch (error) { setRestoreState(error?.message || '恢复失败，请检查备份文件'); }
+    finally { if (button) button.disabled = false; }
   }
   const SETTINGS_ROW_TITLES = { backup: '数据备份与导出', taboo: '食用者忌口偏好' };
   const TABOO_BLOCKED_MESSAGE = 'Google 2.0 暂无可用的忌口编辑入口';
@@ -1877,6 +2022,23 @@
       backupButton.dataset.backupBound = 'true';
       backupButton.removeAttribute('onclick');
       backupButton.addEventListener('click', () => exportBackup(backupButton));
+    }
+    const restoreButton = document.getElementById('google2RestoreButton');
+    const restoreInput = document.getElementById('google2RestoreFile');
+    if (restoreButton && restoreInput && !restoreButton.dataset.restoreBound) {
+      restoreButton.dataset.restoreBound = 'true';
+      restoreButton.addEventListener('click', () => restoreInput.click());
+      restoreInput.addEventListener('change', () => { const file = restoreInput.files?.[0]; if (file) openRestoreDialog(file); });
+    }
+    const restoreSubmit = document.getElementById('google2RestoreSubmit');
+    if (restoreSubmit && !restoreSubmit.dataset.restoreBound) {
+      restoreSubmit.dataset.restoreBound = 'true';
+      restoreSubmit.addEventListener('click', () => void restoreBackupFromDialog());
+    }
+    const restoreCancel = document.getElementById('google2RestoreCancel');
+    if (restoreCancel && !restoreCancel.dataset.restoreBound) {
+      restoreCancel.dataset.restoreBound = 'true';
+      restoreCancel.addEventListener('click', closeRestoreDialog);
     }
     const tabooButton = settingsRowButton(SETTINGS_ROW_TITLES.taboo);
     if (tabooButton && !tabooButton.dataset.tabooBound) {
@@ -2902,8 +3064,20 @@
     loadRecords?.().catch(fail);
     loadTools?.().catch(fail);
   }
+  async function syncPinSession() {
+    try {
+      const session = await request('/settings/pin/session', { _skipPinRetry: true });
+      if (session?.valid === true && session.token) localStorage.setItem(PIN_KEY, session.token);
+      return session;
+    } catch (error) {
+      if (error?.status === 401 && error?.code === 'UNAUTHORIZED') return ensurePinUnlock();
+      throw error;
+    }
+  }
   function boot() {
     clearMockState();
+    // 只有正式入口存在解锁界面时才启动会话探测；单元 fixture/嵌入式片段不应凭空占用业务请求序列。
+    if (document.getElementById('modalPinUnlock')) void syncPinSession().catch(fail);
     blockUnconnectedWrites();
     installDashboardRefresh();
     wireDomain();
@@ -3001,6 +3175,7 @@
   }
   sanitizeStaticBusinessState();
   window.DafanApiClient = ApiClient;
+  window.DafanPinAdapter = { ensurePinUnlock, cancelPinUnlock, syncPinSession };
   window.DafanDashboardAdapter = {
     mapDashboard,
     loadDashboard,
