@@ -1,8 +1,27 @@
+import { createHash } from 'node:crypto';
 import type { Prisma, PrismaClient, QuantityUnit, ShoppingListStatus, ShoppingSourceType } from '@prisma/client';
 
 import { VersionConflictError } from '../../database/optimistic-lock.js';
 import { recordDeletedItem } from '../../database/deleted-items.js';
 import { canConvertUnit, convertQuantity } from '../../database/units.js';
+
+export interface ShoppingCheckinInput {
+  version: number;
+  operationId: string;
+  itemIds: string[];
+}
+
+function payloadHash(input: ShoppingCheckinInput): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({ version: input.version, operationId: input.operationId, itemIds: [...input.itemIds].sort() })
+    )
+    .digest('hex');
+}
+
+function today(): string {
+  return new Date().toLocaleDateString('sv-SE');
+}
 
 export interface ShoppingItemInput {
   ingredientId?: string | null;
@@ -208,6 +227,109 @@ export async function clearCompleted(database: PrismaClient, listId: string, ver
       list: await tx.shoppingList.findUniqueOrThrow({ where: { id: listId }, include: listInclude }),
       cleared: result.count
     };
+  });
+}
+
+export async function checkInShoppingList(database: PrismaClient, listId: string, input: ShoppingCheckinInput) {
+  if (!input.operationId || !/^[A-Za-z0-9._:-]{1,160}$/.test(input.operationId))
+    throw httpError(400, 'operationId 无效');
+  if (!Number.isInteger(input.version) || input.version < 1) throw httpError(400, 'version 必须是正整数');
+  if (!Array.isArray(input.itemIds) || input.itemIds.length === 0 || input.itemIds.some((id) => typeof id !== 'string'))
+    throw httpError(400, 'itemIds 必须是非空字符串数组');
+  if (new Set(input.itemIds).size !== input.itemIds.length) throw httpError(400, 'itemIds 不能重复');
+  const hash = payloadHash(input);
+  return database.$transaction(async (tx) => {
+    const prior = await tx.shoppingCheckinOperation.findUnique({ where: { id: input.operationId } });
+    if (prior) {
+      if (prior.payloadHash !== hash) throw httpError(409, 'operationId 已用于其他入库请求');
+      // operationId 与首次入库的清单绑定：相同 payload 换 URL 清单不得返回旧清单的缓存结果（幂等假成功），
+      // 否则另一张清单上的重复请求会被伪装成“已完成”。保留 payloadHash 方法，只补充该显式绑定校验。
+      if (prior.shoppingListId !== listId) throw httpError(409, 'operationId 已用于其他购物清单的入库请求');
+      return JSON.parse(prior.resultJson);
+    }
+    const list = await tx.shoppingList.findFirst({ where: { id: listId, deletedAt: null }, include: { items: true } });
+    if (!list) throw httpError(404, '购物清单不存在');
+    if (list.version !== input.version)
+      throw new VersionConflictError({
+        entity: 'ShoppingList',
+        id: listId,
+        expectedVersion: input.version,
+        actualVersion: list.version
+      });
+    const selected = input.itemIds.map((id) => list.items.find((item) => item.id === id));
+    if (selected.some((item) => !item)) throw httpError(400, '存在不属于该购物清单的项目');
+    const items = selected as NonNullable<(typeof selected)[number]>[];
+    if (items.some((item) => !Number.isFinite(item.quantity) || item.quantity <= 0))
+      throw httpError(400, '采购数量必须为有限正数');
+    for (const item of items) {
+      if (item.ingredientId) {
+        const ingredient = await tx.ingredient.findFirst({ where: { id: item.ingredientId, deletedAt: null } });
+        if (!ingredient) throw httpError(409, `食材「${item.ingredientNameSnapshot}」不存在或已删除`);
+        if (!canConvertUnit(item.unit, ingredient.unit))
+          throw httpError(409, `食材「${item.ingredientNameSnapshot}」单位无法换算`);
+        if (item.completed && item.ingredientId) continue;
+      } else if (!item.ingredientNameSnapshot.trim()) throw httpError(400, '新食材名称不能为空');
+    }
+    for (const item of items) {
+      if (item.ingredientId) {
+        const ingredient = await tx.ingredient.findFirstOrThrow({ where: { id: item.ingredientId, deletedAt: null } });
+        const added = convertQuantity(item.quantity, item.unit, ingredient.unit);
+        if (added === null) throw httpError(409, '库存单位无法换算');
+        const batch = await tx.inventoryBatch.create({
+          data: { ingredientId: ingredient.id, quantity: item.quantity, unit: item.unit, purchaseDate: today() }
+        });
+        await tx.inventoryLog.create({
+          data: {
+            ingredientId: ingredient.id,
+            ingredientNameSnapshot: ingredient.name,
+            inventoryBatchId: batch.id,
+            beforeQuantity: 0,
+            changeQuantity: item.quantity,
+            afterQuantity: item.quantity,
+            unit: item.unit,
+            changeType: 'PURCHASE'
+          }
+        });
+        await tx.ingredient.update({
+          where: { id: ingredient.id },
+          data: { quantity: { increment: added }, version: { increment: 1 } }
+        });
+      } else {
+        const ingredient = await tx.ingredient.create({
+          data: {
+            name: item.ingredientNameSnapshot.trim(),
+            quantity: item.quantity,
+            unit: item.unit,
+            purchaseDate: today(),
+            inventoryBatches: { create: { quantity: item.quantity, unit: item.unit, purchaseDate: today() } }
+          },
+          include: { inventoryBatches: true }
+        });
+        const batch = ingredient.inventoryBatches[0];
+        await tx.inventoryLog.create({
+          data: {
+            ingredientId: ingredient.id,
+            ingredientNameSnapshot: ingredient.name,
+            inventoryBatchId: batch.id,
+            beforeQuantity: 0,
+            changeQuantity: item.quantity,
+            afterQuantity: item.quantity,
+            unit: item.unit,
+            changeType: 'PURCHASE'
+          }
+        });
+      }
+    }
+    await tx.shoppingListItem.deleteMany({ where: { shoppingListId: listId, id: { in: input.itemIds } } });
+    const result = await tx.shoppingList.update({
+      where: { id: listId },
+      data: { version: { increment: 1 } },
+      include: listInclude
+    });
+    await tx.shoppingCheckinOperation.create({
+      data: { id: input.operationId, shoppingListId: listId, payloadHash: hash, resultJson: JSON.stringify(result) }
+    });
+    return result;
   });
 }
 

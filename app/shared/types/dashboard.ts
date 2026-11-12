@@ -44,6 +44,8 @@ export interface DashboardDto {
   userNickname: string | null;
   currentDate: string;
   greetingPeriod: 'morning' | 'afternoon' | 'evening';
+  /** 问候卡主标题：与 greetingPeriod 同一真实时段派生，只含真实昵称（无昵称时不含称谓）。 */
+  greetingTitle: string;
   greetingText: string;
   recommendedRecipes: DashboardRecipe[];
   todayRecords: DashboardMealSlot[];
@@ -55,6 +57,8 @@ export interface DashboardDto {
   };
   weeklyStats: {
     recordedDays: number;
+    /** 连续记录天数：按真实有效记录日期去重、跨周回溯；今天未记录时从昨天起算。 */
+    streakDays: number;
     totalMeals: number;
     averageRating: number | null;
     consumedIngredientCount: number;

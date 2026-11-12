@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>搭饭小馆 · 麻薯便当 (Mochi Bento) 全景交互展厅</title>
-  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <script src="/assets/tailwind/tailwindcss-3.4.17.browser.min.js"></script>
   <style>
     /* 【高定暖调夜茶色 (Warm Mocha) 4级深色模式规范】 */
     html[data-theme="dark"] {
@@ -483,6 +483,44 @@
       display: none;
     }
 
+    /* =========================================================================
+       真实移动设备视口（≤640px）：自动进入移动外壳后的布局铺满。
+       该块只与 .mobile-mode（JS 按真机宽度自动维护）组合生效；桌面展厅手动
+       切换的手机框（宽屏 .mobile-mode）不受影响，保持原有 420px 演示形态。
+       ========================================================================= */
+    @media (max-width: 640px) {
+      body:has(.viewport-frame.mobile-mode) {
+        padding: 0;
+      }
+
+      /* 展厅工具栏是真机视口内不存在的桌面概念：隐藏而非压缩 */
+      body:has(.viewport-frame.mobile-mode) .top-toolbar {
+        display: none;
+      }
+
+      .viewport-frame.mobile-mode {
+        width: 100%;
+        max-width: none;
+        min-height: 100vh;
+        height: 100vh;
+        border: none;
+        border-radius: 0;
+        box-shadow: none;
+      }
+
+      /* 真机视口下外壳占满整屏，Dock 以 fixed 吸底，不再随 100vh 内容滚动 */
+      .viewport-frame.mobile-mode .mobile-floating-dock {
+        position: fixed;
+        bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+      }
+
+      .viewport-frame.mobile-mode .app-scroller {
+        height: 100vh;
+        max-height: none;
+        padding-bottom: calc(90px + env(safe-area-inset-bottom, 0px));
+      }
+    }
+
     .sidebar-brand {
       display: flex;
       align-items: center;
@@ -628,6 +666,13 @@
     }
 
     .hidden {
+      display: none !important;
+    }
+
+    /* 属性级隐藏兜底：数据适配器用 el.hidden = true 隐藏无数据的动态插槽（如临期食材行、日历日格）。
+       Tailwind 运行时生成的 .flex / .grid 等 display 工具类优先级高于浏览器默认的 [hidden] 规则，
+       若不兜底，被隐藏的插槽仍以 display:flex 参与布局，产生空白占位行。 */
+    [hidden] {
       display: none !important;
     }
 
@@ -1789,6 +1834,26 @@
     transition-timing-function: ease;
   }
 
+  .mobile-mode .record-card-header {
+    gap: 8px;
+  }
+  .mobile-mode .record-card-heading {
+    flex: 1;
+    min-width: 0;
+  }
+  .mobile-mode .record-card-heading > :first-child,
+  .mobile-mode .record-card-actions,
+  .mobile-mode .record-card-actions > * {
+    flex-shrink: 0;
+  }
+  .mobile-mode .record-card-title {
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+  .mobile-mode .record-card-actions {
+    white-space: nowrap;
+  }
+
   @media (prefers-reduced-motion: reduce) {
     *, ::before, ::after {
       animation-duration: 0.01ms !important;
@@ -1814,7 +1879,7 @@
     </div>
 
     <!-- 视角切换 -->
-    <div class="flex items-center gap-2">
+    <div class="flex flex-wrap items-center gap-2">
       <span class="text-xs font-bold text-stone-500">双重视角：</span>
       <button class="pill-btn active" id="btnDesktopMode" onclick="setDeviceMode('desktop')">💻 桌面端全览 (含完整侧边栏)</button>
       <button class="pill-btn" id="btnMobileMode" onclick="setDeviceMode('mobile')">📱 手机端 (含 Floating Dock)</button>
@@ -2247,7 +2312,7 @@
                 </div>
               </div>
             </div>
-            <p class="text-[11px] text-stone-400 m-0 mt-3 font-medium">连续记录 5 天，饮食节律健康稳定！</p>
+            <p class="text-[11px] text-stone-400 m-0 mt-3 font-medium">连续记录 <span data-binding="streakDays"></span> 天，饮食节律健康稳定！</p>
           </div>
 
           <!-- 板块 6: 库存概览与临期食材 -->
@@ -2830,23 +2895,23 @@
         <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 mb-4">
           <div class="neo-card p-3.5 text-center m-0 border-l-4 border-l-[#FF6B57]">
             <span class="text-[11px] text-stone-400 font-bold block mb-1">💰 餐饮总支出</span>
-            <span class="text-xl font-black text-[#FF6B57]" id="statTotalExpense">¥ 680</span>
-            <span class="text-[10px] text-stone-400 block mt-1" id="statExpenseSub">外卖 + 堂食累计实付</span>
+            <span class="text-xl font-black text-[#FF6B57]" id="statTotalExpense"></span>
+            <span class="text-[10px] text-stone-400 block mt-1" id="statExpenseSub">周期内全部餐次记录累计</span>
           </div>
           <div class="neo-card p-3.5 text-center m-0 border-l-4 border-l-[#D97706]">
             <span class="text-[11px] text-stone-400 font-bold block mb-1">🛵 外卖花费</span>
-            <span class="text-xl font-black text-[#D97706]" id="statTakeoutExpense">¥ 294</span>
-            <span class="text-[10px] text-stone-400 block mt-1" id="statTakeoutCount">共 8 顿外卖 (均¥36.7)</span>
+            <span class="text-xl font-black text-[#D97706]" id="statTakeoutExpense"></span>
+            <span class="text-[10px] text-stone-400 block mt-1" id="statTakeoutCount"></span>
           </div>
           <div class="neo-card p-3.5 text-center m-0 border-l-4 border-l-[#7C3AED]">
             <span class="text-[11px] text-stone-400 font-bold block mb-1">🍽️ 堂食聚餐</span>
-            <span class="text-xl font-black text-[#7C3AED]" id="statDineInExpense">¥ 386</span>
-            <span class="text-[10px] text-stone-400 block mt-1" id="statDineInCount">共 4 次堂食 (均¥96.5)</span>
+            <span class="text-xl font-black text-[#7C3AED]" id="statDineInExpense"></span>
+            <span class="text-[10px] text-stone-400 block mt-1" id="statDineInCount"></span>
           </div>
           <div class="neo-card p-3.5 text-center m-0 border-l-4 border-l-[#2E7D32]">
             <span class="text-[11px] text-stone-400 font-bold block mb-1">🍳 自烹预估节约</span>
-            <span class="text-xl font-black text-[#2E7D32]" id="statSavedExpense">¥ 910</span>
-            <span class="text-[10px] text-stone-400 block mt-1" id="statCookCount">自烹 26 顿 (对标外卖)</span>
+            <span class="text-xl font-black text-[#2E7D32]" id="statSavedExpense"></span>
+            <span class="text-[10px] text-stone-400 block mt-1" id="statCookCount"></span>
           </div>
         </div>
 
@@ -2859,7 +2924,7 @@
                 <span class="text-base">📊</span>
                 <h4 class="text-xs font-black text-stone-700 m-0">每日卡路里摄入走势 (kcal)</h4>
               </div>
-              <span class="text-[10px] text-stone-400">虚线为 2000 kcal 每日健康推荐基准</span>
+              <span class="text-[10px] text-stone-400">虚线为 2000 kcal 通用参考基准（非个人目标）</span>
             </div>
             <div class="w-full h-44 mt-2" id="chartCalorieTrendWrap">
               <!-- SVG 动态折线/柱状图 -->
@@ -2876,9 +2941,9 @@
               <!-- SVG 动态环形图 -->
             </div>
             <div class="flex items-center justify-around text-[10px] font-bold text-stone-500 pt-1 border-t border-[#F0E8DC]">
-              <span class="text-[#2E7D32]">● 自烹 <span id="statPctCook">68%</span></span>
-              <span class="text-[#D97706]">● 外卖 <span id="statPctTakeout">21%</span></span>
-              <span class="text-[#7C3AED]">● 堂食 <span id="statPctDineIn">11%</span></span>
+              <span class="text-[#2E7D32]">● 自烹 <span id="statPctCook">—</span></span>
+              <span class="text-[#D97706]">● 外卖 <span id="statPctTakeout">—</span></span>
+              <span class="text-[#7C3AED]">● 堂食 <span id="statPctDineIn">—</span></span>
             </div>
           </div>
         </div>
@@ -2890,18 +2955,10 @@
               <span class="text-base">🥗</span>
               <h4 class="text-xs font-black text-stone-700 m-0">八分饱黄金舒适度达标比</h4>
             </div>
-            <span class="text-xs font-black text-[#FF6B57]" id="statSatietyScore">85% 达成良好</span>
+            <span class="text-xs font-black text-[#FF6B57]" id="statSatietyScore"></span>
           </div>
-          <div class="w-full h-3.5 bg-stone-100 rounded-full overflow-hidden flex border border-[#F0E8DC] dark:bg-stone-800 dark:border-stone-700" id="satietyBarContainer">
-            <div class="h-full bg-[#6ABF69]" style="width: 72%" title="8分饱黄金刚好"></div>
-            <div class="h-full bg-[#FFC53D]" style="width: 16%" title="7分饱轻盈"></div>
-            <div class="h-full bg-[#FF6B57]" style="width: 12%" title="10分饱偏撑"></div>
-          </div>
-          <div class="flex justify-between text-[10.5px] font-bold text-stone-500 mt-2">
-            <span class="text-[#2E7D32]">● 八分饱舒适刚好 (72%)</span>
-            <span class="text-[#D97706]">● 七分饱轻盈少负 (16%)</span>
-            <span class="text-[#FF6B57]">● 撑到扶墙超量 (12%)</span>
-          </div>
+          <div class="w-full h-3.5 bg-stone-100 rounded-full overflow-hidden flex border border-[#F0E8DC] dark:bg-stone-800 dark:border-stone-700" id="satietyBarContainer"></div>
+          <div class="flex justify-between text-[10.5px] font-bold text-stone-500 mt-2"></div>
         </div>
       </section>
 
@@ -3312,7 +3369,7 @@
               <h4 class="text-xs font-black text-stone-700 m-0 flex items-center gap-1.5">
                 <span>🥩</span> 食材配方清单 × 冰箱库存实时比对
               </h4>
-              <button type="button" class="text-[11px] font-black text-[#FF6B57] hover:underline flex items-center gap-1" onclick="BentoService.recipes.addMissingIngredientsToShopping(BentoModal.currentPayload)">
+              <button type="button" class="text-[11px] font-black text-[#FF6B57] hover:underline flex items-center gap-1" onclick="addMissingListToShopping(BentoModal.currentPayload)">
                 <span>🛒</span> 缺料一键入清单
               </button>
             </div>
@@ -3683,7 +3740,7 @@
             </div>
             <div>
               <label class="block text-stone-600 font-black mb-1">耗时 (分钟)</label>
-              <input type="number" id="formRecipeTime" value="20" min="1" max="240" required class="w-full px-2.5 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+              <input type="number" id="formRecipeTime" value="" min="1" max="240" required class="w-full px-2.5 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
             </div>
             <div>
               <label class="block text-stone-600 font-black mb-1">热量 (kcal)</label>
@@ -3750,7 +3807,7 @@
           </div>
           <button class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
         </div>
-        <form onsubmit="BentoModal.handleStoreFormSubmit(event)" class="overflow-y-auto pr-1 text-xs space-y-3">
+        <form onsubmit="window.BentoModal.handleStoreFormSubmit(event)" class="overflow-y-auto pr-1 text-xs space-y-3">
           <input type="hidden" id="formStoreId" value="" />
           <div>
             <label class="block text-stone-600 font-black mb-1">店铺名称</label>
@@ -3929,7 +3986,10 @@
           <!-- 饱腹程度与就餐体验解耦 -->
           <div class="grid grid-cols-2 gap-2">
             <div>
-              <label class="block text-stone-600 font-black mb-1">饱腹感 (生理感知)</label>
+              <div class="flex items-center justify-between mb-1">
+                <label class="block text-stone-600 font-black">饱腹感 (生理感知)</label>
+                <button type="button" id="btnClearRecordSatiety" class="text-[10px] font-black text-stone-400 hover:text-[#FF6B57] px-1.5 py-0.5 rounded transition-colors" onclick="clearRecordSatiety()" title="清空饱腹感，保存后不记录该字段">清除</button>
+              </div>
               <select id="formRecordSatiety" class="w-full px-2.5 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]">
                 <option value="10">🥢 十分饱 · 撑到扶墙</option>
                 <option value="8" selected>🍱 八分饱 · 饱足舒适</option>
@@ -4329,6 +4389,11 @@
           BentoBus.emit('pantry:changed');
 
           // 自动写入饮食日记
+          // 耗时未填写时不得把 null 写进日记正文（展示层不再补默认值）
+          const cookMinutesText =
+            recipe.cookTimeMinutes == null || recipe.cookTimeMinutes === ''
+              ? ''
+              : `历时约 ${recipe.cookTimeMinutes} 分钟，`;
           BentoService.records.add({
             id: crypto.randomUUID(),
             date: new Date().toISOString().slice(0, 10),
@@ -4337,8 +4402,10 @@
             title: `${recipe.name} · 烹饪打卡完成`,
             calories: recipe.calories,
             satiety: 5,
-            notes: `按菜谱亲手制作，历时约 ${recipe.cookTimeMinutes} 分钟，自烹治愈食光！`,
+            notes: `按菜谱亲手制作，${cookMinutesText}自烹治愈食光！`,
             icon: recipe.icon
+          }).then(saved => {
+            if (saved && saved.id) window.__cookedRecordIds = [...(window.__cookedRecordIds || []), saved.id];
           });
 
           BentoModal.close();
@@ -5473,17 +5540,23 @@
       setupStoreDetail(storeId) {
         const store = BentoService.stores.getById(storeId);
         if (!store) return;
-        document.getElementById('storeDetailIcon').innerText = store.icon;
-        document.getElementById('storeDetailName').innerText = store.name;
-        document.getElementById('storeDetailCategory').innerText = store.category;
-        document.getElementById('storeDetailRating').innerText = `★ ${store.rating}`;
-        document.getElementById('storeDetailPrice').innerText = `人均 ¥${store.price}`;
-        document.getElementById('storeDetailHours').innerText = `营业时间 · ${store.hours}`;
-        document.getElementById('storeDetailAddress').innerText = store.address;
-        document.getElementById('storeDetailPhone').innerText = store.phone || '0512-68219901';
-        document.getElementById('storeDetailNotes').innerText = store.notes || '暂无店家笔记';
+        document.getElementById('storeDetailIcon').innerText = store.icon ?? '';
+        document.getElementById('storeDetailName').innerText = store.name ?? '';
+        document.getElementById('storeDetailCategory').innerText = store.category ?? '';
+        document.getElementById('storeDetailRating').innerText = store.rating == null ? '' : `★ ${store.rating}`;
+        document.getElementById('storeDetailPrice').innerText = store.price == null ? '' : `人均 ¥${store.price}`;
+        document.getElementById('storeDetailHours').innerText = store.hours == null ? '' : `营业时间 · ${store.hours}`;
+        document.getElementById('storeDetailAddress').innerText = store.address ?? '';
+        document.getElementById('storeDetailPhone').innerText = store.phone ?? '';
+        document.getElementById('storeDetailNotes').innerText = store.notes ?? '';
 
-        const deliveryNote = store.supportsTakeout ? `起送 ¥${store.price > 40 ? 35 : 20} · 配送费 ¥${store.price > 40 ? 4 : 3}` : '仅支持堂食到店';
+        // 人均为空时整条配送门槛文案不展示价格区间，不得把 null 当成低价
+        const hasPrice = store.price !== null && store.price !== undefined && store.price !== '';
+        const deliveryNote = !store.supportsTakeout
+          ? '仅支持堂食到店'
+          : hasPrice
+            ? `起送 ¥${store.price > 40 ? 35 : 20} · 配送费 ¥${store.price > 40 ? 4 : 3}`
+            : '外卖配送 · 起送与配送费以商家为准';
         document.getElementById('storeDetailDeliveryNote').innerText = deliveryNote;
 
         const badgesContainer = document.getElementById('storeDetailBadges');
@@ -5503,17 +5576,17 @@
           menuContainer.innerHTML = menuItems.map(item => `
             <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm flex items-center justify-between gap-3 hover:border-[#FEDBC5] transition-all">
               <div class="flex items-center gap-2.5 min-w-0 flex-1">
-                <span class="text-xl w-9 h-9 rounded-xl bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0">${item.icon}</span>
+                <span class="text-xl w-9 h-9 rounded-xl bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0">${item.icon ?? ''}</span>
                 <div class="min-w-0">
                   <div class="flex items-center gap-2">
                     <span class="font-black text-stone-800 text-xs truncate">${item.name}</span>
                     ${item.isSignature ? '<span class="px-1.5 py-0.2 rounded bg-red-100 text-red-600 font-extrabold text-[9px]">招牌</span>' : ''}
                   </div>
-                  <div class="text-[11px] text-stone-400 truncate mt-0.5">${item.desc}</div>
+                  <div class="text-[11px] text-stone-400 truncate mt-0.5">${item.desc ?? ''}</div>
                 </div>
               </div>
               <div class="flex items-center gap-2 flex-shrink-0">
-                <span class="text-xs font-black text-[#FF6B57]">¥${item.price}</span>
+                ${item.price == null ? '' : `<span class="text-xs font-black text-[#FF6B57]">¥${item.price}</span>`}
                 <button class="pill-btn py-1 px-2.5 text-[11px] bg-[#FFF0ED] border-[#FEDBC5] text-[#FF6B57] hover:bg-[#FF6B57] hover:text-white" onclick="BentoModal.open('planPicker', { targetType: 'store', targetId: '${store.id}', targetName: '${item.name}' })">
                   🍱 排入便当
                 </button>
@@ -5530,13 +5603,15 @@
         if (historyItems.length === 0) {
           historyContainer.innerHTML = '<div class="p-2.5 text-center text-stone-400 bg-white rounded-xl border border-stone-100">暂无就餐打卡记录，去尝鲜吧！</div>';
         } else {
+          // D1：后端 relatedRecords 只返回 id/recordDate/recordTime/mealType/sourceType/rating/notes，
+          // 不返回 items；未填写的 note/rating 也是 null。这里一律留空，绝不把 undefined/null 直接写进文案。
           historyContainer.innerHTML = historyItems.map(h => `
             <div class="p-2.5 bg-white border border-[#F0E8DC] rounded-xl flex items-center justify-between text-[11px]">
               <div class="space-y-0.5">
-                <div class="font-bold text-stone-700">【${h.date} ${h.slot}】点过：${h.items}</div>
-                <div class="text-stone-400 text-[10.5px]">${h.note}</div>
+                <div class="font-bold text-stone-700">【${h.date ?? ''} ${h.slot ?? ''}】点过：${h.title || h.items || '一餐'}</div>
+                <div class="text-stone-400 text-[10.5px]">${h.note ?? ''}</div>
               </div>
-              <span class="text-amber-500 font-black">★ ${h.rating}分</span>
+              <span class="text-amber-500 font-black">${h.rating == null ? '' : `★ ${h.rating}分`}</span>
             </div>
           `).join('');
         }
@@ -5555,21 +5630,37 @@
         const recipe = BentoService.recipes.getById(recipeId);
         if (!recipe) return;
 
-        document.getElementById('recipeDetailIcon').innerText = recipe.icon;
-        document.getElementById('recipeDetailName').innerText = recipe.name;
-        document.getElementById('recipeDetailCategory').innerText = recipe.category;
-        document.getElementById('recipeDetailTime').innerText = `⏱ ${recipe.cookTimeMinutes}分钟`;
-        document.getElementById('recipeDetailDifficulty').innerText = `${recipe.difficulty}难度`;
-        document.getElementById('recipeDetailCalories').innerText = `${recipe.calories} kcal`;
-        const calSpan = document.getElementById('recipeDetailCaloriesSpan'); if (calSpan) calSpan.innerText = recipe.calories || 320;
+        document.getElementById('recipeDetailIcon').innerText = recipe.icon ?? '';
+        document.getElementById('recipeDetailName').innerText = recipe.name ?? '';
+        document.getElementById('recipeDetailCategory').innerText = recipe.category ?? '';
+        document.getElementById('recipeDetailTime').innerText = recipe.cookTimeMinutes == null ? '' : `⏱ ${recipe.cookTimeMinutes}分钟`;
+        document.getElementById('recipeDetailDifficulty').innerText = recipe.difficulty == null ? '' : `${recipe.difficulty}难度`;
+        document.getElementById('recipeDetailCalories').innerText = recipe.calories == null ? '' : `${recipe.calories} kcal`;
+        const calSpan = document.getElementById('recipeDetailCaloriesSpan'); if (calSpan) calSpan.innerText = recipe.calories == null ? '' : recipe.calories;
 
         // 食材比对
         const ingContainer = document.getElementById('recipeDetailIngredientsList');
-        ingContainer.innerHTML = recipe.ingredients.map(ing => {
-          const matched = BentoService.pantry.data.find(p => p.name.includes(ing.pantryKeyword) || ing.name.includes(p.name));
+        const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+        const steps = Array.isArray(recipe.steps) ? recipe.steps : [];
+        // 保存的用户文本在详情重开时同样只作为文字；不得让标签/引号成为 HTML 或事件代码。
+        const recipeText = value => String(value ?? '').replace(/[&<>"']/g, char => ({
+          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+        })[char]);
+        ingContainer.innerHTML = ingredients.map(ing => {
+          // 库存比对只认明确关联：解绑行（ingredientId=null）不参加名称模糊匹配，
+          // 否则改名后的食材会被同名/包含关系的库存误报为「充足」。已关联行保持原版徽标逻辑。
+          const pantryRows = Array.isArray(BentoService.pantry.data) ? BentoService.pantry.data : [];
+          const matched = ing.ingredientId
+            ? pantryRows.find(p => p.id === ing.ingredientId)
+            : null;
           let badgeHtml = '';
-          if (!matched) {
+          if (!ing.ingredientId) {
+            badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-stone-100 text-stone-500 border border-stone-200">⚪ 未关联库存</span>';
+          } else if (!matched) {
             badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-50 text-red-600 border border-red-200">❌ 缺少库存</span>';
+          } else if (!(Number(matched.stock) > 0)) {
+            // 同名库存行存在但数量为 0（如土豆 0g）仍是缺料，必须走补货入口，不得报「充足」
+            badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-50 text-red-600 border border-red-200">❌ 已用尽(${matched.stock}${matched.unit})</span>`;
           } else if (matched.expireDaysLeft <= 2) {
             badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-200">⚠️ 临期(余${matched.expireDaysLeft}天)</span>`;
           } else {
@@ -5578,8 +5669,8 @@
           return `
             <div class="p-2.5 bg-white border border-[#F0E8DC] rounded-xl flex items-center justify-between text-xs">
               <div class="flex items-center gap-2">
-                <span class="font-bold text-stone-800">${ing.name}</span>
-                <span class="text-stone-400 font-medium">(${ing.amount})</span>
+                <span class="font-bold text-stone-800">${recipeText(ing.name)}</span>
+                ${String(ing.amount ?? '').trim() ? `<span class="text-stone-400 font-medium">(${recipeText(ing.amount)})</span>` : ''}
               </div>
               <div>${badgeHtml}</div>
             </div>
@@ -5588,25 +5679,30 @@
 
         // 步骤与计时器
         const stepsContainer = document.getElementById('recipeDetailStepsList');
-        stepsContainer.innerHTML = recipe.steps.map((step, idx) => `
+        stepsContainer.innerHTML = steps.map((step, idx) => `
           <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm space-y-1.5">
             <div class="flex items-center justify-between">
               <div class="font-black text-stone-800 text-xs flex items-center gap-2">
                 <span class="w-5 h-5 rounded-full bg-[#FAF7F2] text-[#FF6B57] border border-[#FEDBC5] flex items-center justify-center text-[10px] font-black">${step.stepIndex}</span>
-                <span>${step.title}</span>
+                <span>${recipeText(step.title)}</span>
               </div>
               ${step.timerMinutes ? `
-                <button class="pill-btn py-1 px-2.5 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF9F6] hover:bg-[#FF6B57] hover:text-white transition-all" id="stepTimerBtn-${idx}" onclick="BentoModal.toggleStepTimer('${recipe.id}', ${idx}, ${step.timerMinutes}, '${(step.title || '').replace(/'/g, "\'")}', '${(recipe.name || '').replace(/'/g, "\'")}')">
+                <button class="pill-btn py-1 px-2.5 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF9F6] hover:bg-[#FF6B57] hover:text-white transition-all" id="stepTimerBtn-${idx}" data-recipe-step-index="${idx}">
                   ⏱️ 计时 ${step.timerMinutes}分钟
                 </button>
               ` : ''}
             </div>
-            <p class="text-stone-600 text-[11.5px] leading-relaxed m-0">${step.desc}</p>
+            <p class="text-stone-600 text-[11.5px] leading-relaxed m-0">${recipeText(step.desc)}</p>
             <div id="stepTimerBarWrap-${idx}" class="hidden w-full h-1.5 bg-stone-100 rounded-full overflow-hidden mt-1">
               <div id="stepTimerBar-${idx}" class="h-full bg-gradient-to-r from-[#FF6B57] to-[#FF8575] transition-all" style="width: 100%;"></div>
             </div>
           </div>
         `).join('');
+        stepsContainer.querySelectorAll('[data-recipe-step-index]').forEach(button => {
+          const idx = Number(button.dataset.recipeStepIndex);
+          const step = steps[idx];
+          button.onclick = () => this.toggleStepTimer(recipe.id, idx, step.timerMinutes, step.title ?? '', recipe.name ?? '');
+        });
 
         // 收藏状态
         const favIcon = document.getElementById('recipeDetailFavIcon');
@@ -5636,7 +5732,13 @@
         const badge = document.getElementById('ingredientDetailExpiryBadge');
         const bar = document.getElementById('ingredientDetailExpiryBar');
 
-        if (item.expireDaysLeft <= 2) {
+        // D1：未填保质期时 expireDaysLeft 为 undefined，不能让「保质期充裕 · 还剩 undefined 天」直出
+        if (item.expireDaysLeft == null) {
+          badge.innerText = '未填写保质期';
+          badge.className = 'font-black text-stone-400';
+          bar.className = 'h-full bg-stone-300 transition-all';
+          bar.style.width = '0%';
+        } else if (item.expireDaysLeft <= 2) {
           badge.innerText = `仅剩 ${item.expireDaysLeft} 天过期！`;
           badge.className = 'font-black text-red-500';
           bar.className = 'h-full bg-red-500 transition-all';
@@ -5666,7 +5768,7 @@
                 <span class="text-lg">${r.icon}</span>
                 <div>
                   <span class="font-black text-stone-800 text-xs">${r.name}</span>
-                  <span class="text-[10.5px] text-stone-400 ml-1">⏱ ${r.cookTimeMinutes}分钟</span>
+                  <span class="text-[10.5px] text-stone-400 ml-1">${r.cookTimeMinutes == null ? '' : `⏱ ${r.cookTimeMinutes}分钟`}</span>
                 </div>
               </div>
               <span class="text-xs font-bold text-[#FF6B57]">查看做法 →</span>
@@ -5691,7 +5793,7 @@
           items.push({
             value: `recipe:${r.id}`,
             name: r.name,
-            sub: `自烹 · ⏱ ${r.cookTimeMinutes}分 · ${r.calories} kcal`,
+            sub: ['自烹', r.cookTimeMinutes == null ? null : `⏱ ${r.cookTimeMinutes}分`, r.calories == null ? null : `${r.calories} kcal`].filter(Boolean).join(' · '),
             icon: r.icon,
             group: '自烹菜谱',
             type: 'recipe',
@@ -5704,7 +5806,7 @@
           items.push({
             value: `store:${s.id}:${dishName}`,
             name: `${s.name} (${dishName})`,
-            sub: `外卖 · 人均 ¥${s.price} · ${s.category}`,
+            sub: ['外卖', s.price == null || s.price === '' ? null : `人均 ¥${s.price}`, s.category || null].filter(Boolean).join(' · '),
             icon: s.icon,
             group: '觅食外卖',
             type: 'store',
@@ -6238,9 +6340,9 @@
                     <span class="text-base">${r.icon}</span>
                     <span class="font-black text-stone-800 text-xs">${r.slot} · ${r.title}</span>
                   </div>
-                  <span class="text-[#FF6B57] font-black text-xs">${r.calories} kcal</span>
+                  <span class="text-[#FF6B57] font-black text-xs">${r.calories == null ? '' : `${r.calories} kcal`}</span>
                 </div>
-                <div class="text-[11px] text-stone-500">${r.notes}</div>
+                <div class="text-[11px] text-stone-500">${r.notes ?? ''}</div>
                 <div class="text-[10px] text-amber-500 font-bold">饱腹感：${'★'.repeat(r.satiety || 5)}</div>
               </div>
             `).join('');
@@ -6282,16 +6384,25 @@
           if (submitBtn) submitBtn.innerText = '💾 保存菜谱修改';
 
           document.getElementById('formRecipeName').value = recipe.name || '';
-          document.getElementById('formRecipeCategory').value = recipe.category || '快手家常';
+          const categoryField = document.getElementById('formRecipeCategory');
+          if (categoryField) {
+            categoryField.value = recipe.category ?? '';
+            categoryField.dataset.valueState = recipe.category == null ? 'empty' :
+              Array.from(categoryField.options).some((option) => option.value === recipe.category) ? 'filled' : 'unrepresentable';
+          }
           document.getElementById('formRecipeIcon').value = recipe.icon || '🍳';
           const iconPreview = document.getElementById('formRecipeIconPreview');
           if (iconPreview) iconPreview.innerText = recipe.icon || '🍳';
-          document.getElementById('formRecipeTime').value = recipe.cookTimeMinutes || 20;
-          document.getElementById('formRecipeCalories').value = recipe.calories || 320;
-          document.getElementById('formRecipeDifficulty').value = recipe.difficulty || '简单';
+          // 后端 nullable 字段：没有真实值时留空，不写 20/320 这类演示默认冒充用户数据
+          document.getElementById('formRecipeTime').value = recipe.cookTimeMinutes ?? '';
+          // 热量：后端是 nullable（无值 = 未填写）。后端没有值就留空，绝不用 320 之类演示值冒充用户数据；
+          // 用 dataset 记录「未填写」状态，并由 input 事件跟踪用户是否真实填入（不隐藏、不改 range 选项）
+          setNullableRecipeCaloriesInput(recipe.calories);
+          document.getElementById('formRecipeDifficulty').value = recipe.difficulty ?? '';
+          document.getElementById('formRecipeDifficulty').dataset.valueState = recipe.difficulty == null ? 'empty' : 'filled';
 
           document.querySelectorAll('#recipeDifficultyGroup button').forEach(b => {
-            b.classList.toggle('active', b.innerText.trim() === (recipe.difficulty || '简单'));
+            b.classList.toggle('active', String(b.innerText ?? b.textContent ?? '').trim() === (recipe.difficulty || '简单'));
           });
 
           const ingContainer = document.getElementById('formRecipeIngList');
@@ -6299,9 +6410,10 @@
             ingContainer.innerHTML = '';
             const ings = recipe.ingredients || [];
             if (ings.length > 0) {
-              ings.forEach(ing => addRecipeIngRow(ing.name, ing.amount));
+              ings.forEach(ing => addRecipeIngRow(ing.name, ing.amount, ing));
             } else {
-              addRecipeIngRow('主料', '300g');
+              // 后端本就没有食材：给一行空白录入行，不写入「主料 300g」之类假业务数据
+              addRecipeIngRow();
             }
           }
 
@@ -6310,9 +6422,10 @@
             stepContainer.innerHTML = '';
             const steps = recipe.steps || [];
             if (steps.length > 0) {
-              steps.forEach(s => addRecipeStepRow(s.title, s.desc, s.timerMinutes || 0));
+              steps.forEach(s => addRecipeStepRow(s.title, s.desc, s.timerMinutes ?? '', s));
             } else {
-              addRecipeStepRow('烹饪制作', '按火候烹制入味', 10);
+              // 后端本就没有步骤：给一行空白步骤行，不写入「烹饪制作」默认步骤
+              addRecipeStepRow();
             }
           }
         } else {
@@ -6320,7 +6433,16 @@
           if (titleEl) titleEl.innerText = '录入我的私房菜谱';
           if (submitBtn) submitBtn.innerText = '💾 保存菜谱';
 
-          document.getElementById('formRecipeDifficulty').value = '简单';
+          document.getElementById('formRecipeCategory').value = '';
+          document.getElementById('formRecipeCategory').dataset.valueState = 'empty';
+          document.getElementById('formRecipeTime').value = '';
+          document.getElementById('formRecipeTime').dataset.valueState = 'new';
+          document.getElementById('formRecipeDifficulty').value = '';
+          document.getElementById('formRecipeDifficulty').dataset.valueState = 'empty';
+          // 新建：热量控件带 value="320" 的演示默认值，form.reset() 会把它还原；
+          // 这里显式清空并标记「未填写」，避免默认值被当成用户数据写进后端
+          // （时长控件 value="20" 是正式 UI 已有的 required 默认值，保持不变）
+          setNullableRecipeCaloriesInput(null);
           document.querySelectorAll('#recipeDifficultyGroup button').forEach((b, idx) => {
             if (idx === 0) b.classList.add('active');
             else b.classList.remove('active');
@@ -6329,16 +6451,15 @@
           const ingContainer = document.getElementById('formRecipeIngList');
           if (ingContainer) {
             ingContainer.innerHTML = '';
-            addRecipeIngRow('鸡腿肉', '300g');
-            addRecipeIngRow('洋葱', '半个');
-            addRecipeIngRow('日式照烧汁', '2汤匙');
+            // 新建菜谱：一行空白录入行（保留现 row DOM 交互），不再预填「鸡腿肉 300g / 日式照烧汁」演示食材
+            addRecipeIngRow();
           }
 
           const stepContainer = document.getElementById('formRecipeStepList');
           if (stepContainer) {
             stepContainer.innerHTML = '';
-            addRecipeStepRow('备料与前置处理', '鸡腿肉改刀划浅花刀，洋葱顺纹切细丝备用', 5);
-            addRecipeStepRow('热锅香煎出锅挂浓汁', '平底锅少油中火慢煎鸡腿肉至两面金黄，淋入照烧汁大火收浓', 10);
+            // 新建菜谱：一行空白步骤行，不预填演示步骤文案
+            addRecipeStepRow();
           }
         }
       },
@@ -6364,6 +6485,9 @@
 
         const scored = recipes.map(r => {
           const ings = r.ingredients || [];
+          // 推荐弹窗沿用原版名称弱匹配口径（X4 回退：真实 UI + API 核查确认前后端均无 ingredientId
+          // 自动关联，新建同名菜谱行落库为 null，按 id 精确匹配会把这些行整体判为缺料）。
+          // 详情页徽标仍按 ingredientId 判定（D3 修复保留），两处口径各自独立。
           const matched = ings.filter(i => 
             pantry.some(p => (p.name.includes(i.name) || i.name.includes(p.name) || (i.pantryKeyword && p.name.includes(i.pantryKeyword))) && p.stock > 0)
           );
@@ -6394,7 +6518,7 @@
                           <h4 class="font-black text-xs text-stone-800 m-0">${m.recipe.name}</h4>
                           <span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700">可做</span>
                         </div>
-                        <p class="text-[10px] text-stone-400 m-0 mt-0.5">耗时 ${m.recipe.cookTimeMinutes}分钟 · ${m.recipe.difficulty}难度 · ${m.matched.map(i => i.name).join('、')}</p>
+                        <p class="text-[10px] text-stone-400 m-0 mt-0.5">${[m.recipe.cookTimeMinutes == null ? null : `耗时 ${m.recipe.cookTimeMinutes}分钟`, m.recipe.difficulty == null ? null : `${m.recipe.difficulty}难度`, m.matched.map(i => i.name).join('、')].filter(Boolean).join(' · ')}</p>
                       </div>
                     </div>
                     <div class="flex items-center gap-1.5"><button class="pill-btn py-1.5 px-2 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF0ED] hover:bg-[#FF6B57] hover:text-white" onclick="BentoModal.open('planPicker', { targetType: 'recipe', targetId: '${m.recipe.id}' })">🍱 排入便当</button><button class="neo-btn-primary text-xs py-1.5 px-3 shadow-sm" onclick="BentoModal.open('recipeDetail', '${m.recipe.id}')">🍳 立即开火</button></div>
@@ -6511,14 +6635,20 @@
           if (titleEl) titleEl.innerText = '编辑这一餐的治愈食光';
           if (submitBtn) submitBtn.innerText = '保存记录修改';
 
-          document.getElementById('formRecordSlot').value = record.slot || '午餐';
+          // 回填就餐时段：选项文本是「下午茶/夜宵」这种合并写法（选项列表不允许改），
+          // 精确匹配失败时按前缀匹配找到对应选项（后端 AFTERNOON_TEA 的中文标签是「下午茶」）；
+          // 仍然表达不了的后端餐次（如 SOUP）保持「未选择」，由提交端省略字段以保留后端原值。
+          selectOptionByLabelOrPrefix(document.getElementById('formRecordSlot'), record.slot || '午餐');
           document.getElementById('formRecordType').value = record.type || '自烹';
           onRecordTypeChange(record.type || '自烹');
           document.getElementById('formRecordTitle').value = record.title || '';
-          document.getElementById('formRecordCalories').value = record.calories || 500;
-          document.getElementById('formRecordCost').value = record.cost || 0;
-          document.getElementById('formRecordSatiety').value = record.satiety || 8;
-          document.getElementById('formRecordRating').value = record.rating || 5;
+          // 后端 nullable 营养字段：真实值回填，无值只留空（不补 500/0/8）；null 状态由 selectedIndex=-1 表达
+          setNullableNumberInput('formRecordCalories', record.calories);
+          setNullableNumberInput('formRecordCost', record.cost);
+          setNullableSelectValue('formRecordSatiety', record.satiety);
+          // 评分：后端 nullable 且可为 0..5 的任意数，控件只有 5/4/3/2 四个选项、且没有 clear 选项。
+          // 只回填能精确匹配的已有值；null 或无法表达的值保持「未选择」，绝不默认成 5。
+          setNullableSelectValue('formRecordRating', record.rating);
           document.getElementById('formRecordNotes').value = record.notes || '';
 
           const photos = record.photos || [];
@@ -6532,12 +6662,21 @@
           currentRecordPhotos = [null, null, null];
           for (let i = 0; i < 3; i++) updatePhotoSlotPreview(i);
 
-          document.getElementById('formRecordSlot').value = '午餐';
+          selectOptionByLabelOrPrefix(document.getElementById('formRecordSlot'), '午餐');
           document.getElementById('formRecordType').value = '自烹';
-          document.getElementById('formRecordCalories').value = '550';
-          document.getElementById('formRecordCost').value = '0';
-          document.getElementById('formRecordSatiety').value = '8';
-          document.getElementById('formRecordRating').value = '4';
+          // recordForm 的时长无默认值，但保险起见同样显式置空未填写字段
+          const recordCalories = document.getElementById('formRecordCalories');
+          if (recordCalories) recordCalories.value = '';
+          const recordCost = document.getElementById('formRecordCost');
+          if (recordCost) recordCost.value = '';
+          // 饱腹感沿用原版交互：新建默认八分饱（5 档不变）；已保存记录为 null 时仍由回填逻辑保持未选择
+          const recordSatiety = document.getElementById('formRecordSatiety');
+          if (recordSatiety) {
+            recordSatiety.value = '8';
+            recordSatiety.dataset.valueState = 'filled';
+          }
+          // 评分同样是后端 nullable：新建时不预选星级，避免未评价的一餐被写成 4 星假数据
+          setNullableSelectValue('formRecordRating', null);
           onRecordTypeChange('自烹');
 
           if (payload) {
@@ -6555,34 +6694,66 @@
       handleRecipeFormSubmit(e) {
         e.preventDefault();
         const existingId = document.getElementById('formRecipeId') ? document.getElementById('formRecipeId').value.trim() : '';
-        const name = document.getElementById('formRecipeName').value.trim();
-        const category = document.getElementById('formRecipeCategory').value;
+        const name = String(document.getElementById('formRecipeName')?.value ?? '').trim();
         const icon = document.getElementById('formRecipeIcon').value || '🍳';
-        const time = parseInt(document.getElementById('formRecipeTime').value) || 20;
-        const calories = parseInt(document.getElementById('formRecipeCalories').value) || 320;
-        const difficulty = document.getElementById('formRecipeDifficulty').value || '简单';
+        const timeField = document.getElementById('formRecipeTime');
+        const timeRaw = String(timeField?.value ?? '').trim();
+        const time = timeRaw === '' ? null : Number(timeRaw);
+        const caloriesField = document.getElementById('formRecipeCalories');
+        const caloriesRaw = String(caloriesField?.value ?? '').trim();
+        const calories = caloriesRaw === '' ? null : Number(caloriesRaw);
+        const difficultyField = document.getElementById('formRecipeDifficulty');
+        const difficulty = String(difficultyField?.value ?? '').trim() || null;
+        const categoryField = document.getElementById('formRecipeCategory');
+        const categoryRaw = String(categoryField?.value ?? '').trim();
+        const category = categoryField.dataset.valueState === 'unrepresentable'
+          ? undefined
+          : (categoryRaw || null);
+        if ((!existingId && (time === null || !Number.isInteger(time) || time < 1 || time > 240)) ||
+            (existingId && time !== null && (!Number.isInteger(time) || time < 0 || time > 240)) ||
+            (calories !== null && (!Number.isInteger(calories) || calories < 50 || calories > 2000))) {
+          return;
+        }
 
         // 收集动态食材行
         const ingRows = document.querySelectorAll('#formRecipeIngList .recipe-ing-row');
         const ings = Array.from(ingRows).map(row => {
           const ingName = row.querySelector('.recipe-ing-name').value.trim();
-          const ingAmt = row.querySelector('.recipe-ing-amount').value.trim() || '适量';
-          return { name: ingName, amount: ingAmt, pantryKeyword: ingName };
+          const ingAmt = row.querySelector('.recipe-ing-amount').value.trim();
+          const metadata = {
+            ingredientId: row.dataset.ingredientId || null,
+            quantity: row.dataset.quantity != null ? Number(row.dataset.quantity) : null,
+            unit: row.dataset.unit || null,
+            optional: row.dataset.optional === 'true',
+            isPrimary: row.dataset.isPrimary === 'true'
+          };
+          const originalName = row.dataset.originalName || '';
+          return {
+            name: ingName,
+            amount: ingAmt,
+            amountText: ingAmt || null,
+            pantryKeyword: ingName,
+            ...metadata,
+            ...(originalName && originalName !== ingName ? { ingredientId: null } : {})
+          };
         }).filter(i => i.name.length > 0);
 
         // 收集动态步骤行
         const stepRows = document.querySelectorAll('#formRecipeStepList .recipe-step-row');
         const steps = Array.from(stepRows).map((row, idx) => {
-          const stepTitle = row.querySelector('.recipe-step-title').value.trim() || `步骤 ${idx + 1}`;
-          const stepDesc = row.querySelector('.recipe-step-desc').value.trim() || '按火候烹制';
-          const timerMin = parseInt(row.querySelector('.recipe-step-timer').value) || 0;
+          const stepTitle = row.querySelector('.recipe-step-title').value.trim();
+          const stepDesc = row.querySelector('.recipe-step-desc').value.trim();
+          const timerRaw = row.querySelector('.recipe-step-timer').value.trim();
+          const timerMin = timerRaw === '' ? null : Number(timerRaw);
+          if (timerMin !== null && (!Number.isInteger(timerMin) || timerMin < 0 || timerMin > 180)) return null;
           return {
             stepIndex: idx + 1,
-            title: stepTitle,
-            desc: stepDesc,
-            timerMinutes: timerMin
+            title: stepTitle || null,
+            desc: stepDesc || null,
+            timerMinutes: timerMin,
+            imagePath: row.dataset.imagePath || null
           };
-        }).filter(s => s.title.length > 0 || s.desc.length > 0);
+        }).filter(Boolean).filter(s => s.title || s.desc);
 
         const recipeId = existingId || `recipe-${Date.now()}`;
         const existingRecipe = BentoService.recipes.getById(recipeId);
@@ -6606,43 +6777,71 @@
 
       // 7. 店铺表单动态装配与招牌菜增删
       setupStoreForm(storeId) {
-        const form = document.querySelector('#modalStoreForm form');
-        if (form) form.reset();
-        document.getElementById('formStoreId').value = '';
-        document.getElementById('storeFormTitle').innerText = '录入觅食店铺';
+        const modal = document.getElementById('modalStoreForm');
+        const q = (selector) => modal?.querySelector(selector);
+        const form = q('form');
+        if (!modal || !form) return;
+        form.reset();
+        q('#formStoreId').value = '';
+        q('#storeFormTitle').innerText = '录入觅食店铺';
+        q('#formStorePrice').value = '';
+        ['#formStorePhone', '#formStoreHours', '#formStoreAddress', '#formStoreNotes'].forEach(selector => {
+          q(selector).value = '';
+        });
+        const categoryInput = q('#formStoreCategory');
+        if (categoryInput) {
+          categoryInput.dataset.valueState = categoryInput.value ? 'filled' : 'empty';
+          if (!categoryInput.dataset.nullableTracked) {
+            categoryInput.dataset.nullableTracked = 'true';
+            categoryInput.addEventListener('change', () => {
+              categoryInput.dataset.valueState = categoryInput.selectedIndex >= 0 ? 'filled' : 'empty';
+            });
+          }
+        }
 
-        const menuContainer = document.getElementById('formStoreMenuList');
+        const menuContainer = q('#formStoreMenuList');
         if (!menuContainer) return;
         menuContainer.innerHTML = '';
 
         if (storeId) {
           const s = BentoService.stores.getById(storeId);
+          if (!s) {
+            console.warn(`店铺 ${storeId} 不存在，已终止编辑`);
+            modal.classList.add('hidden');
+            return;
+          }
           if (s) {
-            document.getElementById('formStoreId').value = s.id;
-            document.getElementById('storeFormTitle').innerText = `编辑店铺 · ${s.name}`;
-            document.getElementById('formStoreName').value = s.name;
-            document.getElementById('formStoreCategory').value = s.category;
-            document.getElementById('formStorePrice').value = s.price;
-            document.getElementById('formStorePhone').value = s.phone;
-            document.getElementById('formStoreHours').value = s.hours;
-            document.getElementById('formStoreAddress').value = s.address;
-            document.getElementById('formStoreDineIn').checked = !!s.supportsDineIn;
-            document.getElementById('formStoreTakeout').checked = !!s.supportsTakeout;
-            document.getElementById('formStoreNotes').value = s.notes;
+            q('#formStoreId').value = s.id;
+            q('#storeFormTitle').innerText = `编辑店铺 · ${s.name}`;
+            q('#formStoreName').value = s.name ?? '';
+            const category = q('#formStoreCategory');
+            category.value = s.category ?? '';
+            const hasCategory = s.category != null && s.category !== '';
+            category.dataset.valueState = !hasCategory
+              ? 'empty'
+              : category.value === s.category
+                ? 'filled'
+                : 'unrepresentable';
+            if (hasCategory && category.value !== s.category) category.selectedIndex = -1;
+            q('#formStorePrice').value = s.price ?? '';
+            q('#formStorePhone').value = s.phone ?? '';
+            q('#formStoreHours').value = s.hours ?? '';
+            q('#formStoreAddress').value = s.address ?? '';
+            q('#formStoreDineIn').checked = !!s.supportsDineIn;
+            q('#formStoreTakeout').checked = !!s.supportsTakeout;
+            q('#formStoreNotes').value = s.notes ?? '';
 
             if (s.menuItems && s.menuItems.length > 0) {
-              s.menuItems.forEach(m => addStoreMenuRow(m.name, m.price, m.isSignature));
-              document.getElementById('modalStoreForm').classList.remove('hidden');
+              s.menuItems.forEach(m => addStoreMenuRow(m.name, m.price, m.isSignature, m));
+              modal.classList.remove('hidden');
               return;
             }
           }
         }
 
-        // 默认初始化 3 道招牌菜
-        addStoreMenuRow('招牌特色便当', 36, true);
-        addStoreMenuRow('温泉蛋厚切肥牛饭', 42, true);
-        addStoreMenuRow('日式和风时蔬色拉', 16, false);
-        document.getElementById('modalStoreForm').classList.remove('hidden');
+        // 新建只保留一行空白菜品录入行，不写入演示菜名或人均价格。
+        addStoreMenuRow();
+        modal.classList.remove('hidden');
       },
 
       handleStoreFormSubmit(e) {
@@ -6890,12 +7089,10 @@
                 <div class="min-w-0 flex-1">
                   <div class="flex items-center gap-2">
                     <h4 class="text-sm font-black text-stone-800 truncate m-0">${store.name}</h4>
-                    <span class="text-xs font-black text-[#FF6B57]">¥${store.price}/人</span>
+                    ${store.price == null || store.price === '' ? '' : `<span class="text-xs font-black text-[#FF6B57]">¥${store.price}/人</span>`}
                   </div>
                   <div class="text-xs font-bold text-stone-500 mt-1 flex items-center gap-2">
-                    <span class="text-[#FF6B57] font-extrabold">${store.category}</span>
-                    <span>•</span>
-                    <span class="text-amber-500 font-extrabold">★ ${store.rating}</span>
+                    ${[store.category ? `<span class="text-[#FF6B57] font-extrabold">${store.category}</span>` : '', store.rating == null || store.rating === '' ? '' : `<span class="text-amber-500 font-extrabold">★ ${store.rating}</span>`].filter(Boolean).join('<span>•</span>')}
                   </div>
                 </div>
               </div>
@@ -6906,14 +7103,14 @@
             <div class="flex flex-wrap items-center gap-2 mb-3">
               ${store.supportsDineIn ? '<span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200">🍽️ 支持堂食</span>' : ''}
               ${store.supportsTakeout ? '<span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-black bg-orange-50 text-orange-600 border border-orange-200">🛵 品质外卖</span>' : ''}
-              <span class="text-[11px] text-stone-400 font-bold ml-auto">${store.hours}</span>
+              <span class="text-[11px] text-stone-400 font-bold ml-auto">${store.hours ?? ''}</span>
             </div>
             <div class="p-3 rounded-2xl bg-[#FAF7F2] border border-[#F0E8DC] text-xs space-y-1.5 mb-3">
               <div class="font-bold text-stone-800 leading-relaxed truncate">
-                <span class="text-stone-400 font-normal">招牌：</span>${store.dishes}
+                <span class="text-stone-400 font-normal">招牌：</span>${store.dishes ?? ''}
               </div>
               <div class="text-[11.5px] text-stone-500 flex items-center gap-1.5 leading-normal truncate">
-                <span>📍</span><span>${store.address}</span>
+                <span>📍</span><span>${store.address ?? ''}</span>
               </div>
             </div>
           </div>
@@ -6964,15 +7161,19 @@
             </div>
             <div class="flex items-center justify-between mb-1">
               <h4 class="text-sm font-black m-0">${r.name}</h4>
-              <span class="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">${r.difficulty}</span>
+              <span class="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">${r.difficulty ?? ''}</span>
             </div>
-            <p class="text-[11px] text-stone-500 mb-2 truncate">${r.ingredients.map(i => i.name).join('、')} · ⏱ ${r.cookTimeMinutes}分钟</p>
+            <p class="text-[11px] text-stone-500 mb-2 truncate" data-recipe-ingredient-summary></p>
           </div>
           <button class="neo-btn-primary text-xs py-2 w-full shadow-[var(--shadow-primary)]" onclick="event.stopPropagation(); BentoModal.open('recipeDetail', '${r.id}')">
             查看做法克重与步骤
           </button>
         </div>
       `).join('');
+      container.querySelectorAll('[data-recipe-ingredient-summary]').forEach((summary, idx) => {
+        const r = recipes[idx];
+        summary.textContent = [r.ingredients.map(i => i.name).join('、'), r.cookTimeMinutes == null ? null : `⏱ ${r.cookTimeMinutes}分钟`].filter(Boolean).join(' · ');
+      });
     }
 
     function renderInventory() {
@@ -7003,9 +7204,12 @@
       }
 
       container.innerHTML = filtered.map(item => {
-        const isUrgent = item.expireDaysLeft <= 2;
-        const isWarning = item.expireDaysLeft <= 5;
-        const badge = isUrgent
+        const hasExpiry = item.expireDaysLeft != null;
+        const isUrgent = hasExpiry && item.expireDaysLeft <= 2;
+        const isWarning = hasExpiry && item.expireDaysLeft <= 5;
+        const badge = !hasExpiry
+          ? ''
+          : isUrgent
           ? '<span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-red-100 text-red-600 border border-red-200">临期预警</span>'
           : (isWarning ? '<span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-700 border border-amber-200">建议尽快</span>' : '<span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200">新鲜</span>');
 
@@ -7026,7 +7230,7 @@
               </div>
             </div>
             <div class="text-right flex-shrink-0">
-              <div class="text-[11px] font-extrabold ${isUrgent ? 'text-red-500' : 'text-stone-500'}">余 ${item.expireDaysLeft} 天</div>
+              <div class="text-[11px] font-extrabold ${isUrgent ? 'text-red-500' : 'text-stone-500'}">${hasExpiry ? `余 ${item.expireDaysLeft} 天` : '未填写保质期'}</div>
               <button class="text-[10.5px] font-bold text-[#FF6B57] hover:underline mt-1" onclick="event.stopPropagation(); BentoModal.open('ingredientDetail', '${item.id}')">档案 →</button>
             </div>
           </div>
@@ -7156,12 +7360,12 @@
 
         return `
           <div class="neo-card p-4 m-0 shadow-[var(--shadow-bento-sm)] hover:border-[#FEDBC5] transition-all space-y-2">
-            <div class="flex items-center justify-between border-b border-stone-100 pb-2">
-              <div class="flex items-center gap-2">
+            <div class="record-card-header flex items-center justify-between border-b border-stone-100 pb-2">
+              <div class="record-card-heading flex items-center gap-2">
                 <span class="text-xl">${rec.icon}</span>
-                <span class="text-xs font-black text-stone-800">${rec.title}</span>
+                <span class="record-card-title text-xs font-black text-stone-800">${rec.title}</span>
               </div>
-              <div class="flex items-center gap-1.5">
+              <div class="record-card-actions flex items-center gap-1.5">
                 ${hasCost ? `<span class="px-2 py-0.5 rounded-full text-[9.5px] font-black bg-[#FFF5E8] text-[#D97706] border border-[#FEE8B8]">¥ ${rec.cost}</span>` : ''}
                 <span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#FFF0ED] text-[#FF6B57]">${rec.type}</span>
                 <button type="button" class="p-1 text-stone-400 hover:text-[#FF6B57] hover:bg-[#FFF0ED] rounded-lg transition-all text-xs ml-1" title="编辑就餐记录" onclick="openEditRecord('${rec.id}')">✏️</button>
@@ -7272,8 +7476,8 @@
       const emptyState = document.getElementById('favoritesEmptyState');
       if (!container) return;
 
-      const favRecipes = BentoService.recipes.getAll().filter(r => r.favorite);
-      const favStores = BentoService.stores.getAll().filter(s => s.favorite);
+      const favRecipes = (BentoService.recipes.getAll() || []).filter(r => r.favorite);
+      const favStores = (BentoService.stores.getAll() || []).filter(s => s.favorite);
       const favTakeout = favStores.filter(s => s.supportsTakeout);
       const favDineIn = favStores.filter(s => s.supportsDineIn);
 
@@ -7300,8 +7504,8 @@
           id: r.id,
           name: r.name,
           categoryBadge: '🍳 自己做的菜',
-          subtext: `耗时 ${r.cookTimeMinutes} 分钟 · ${r.difficulty}难度 · ${r.calories} kcal`,
-          detail: r.ingredients.map(i => i.name).join('、'),
+          subtext: [r.cookTimeMinutes == null ? null : `耗时 ${r.cookTimeMinutes} 分钟`, r.difficulty == null ? null : `${r.difficulty}难度`, r.calories == null ? null : `${r.calories} kcal`].filter(Boolean).join(' · '),
+          detail: (Array.isArray(r.ingredients) ? r.ingredients : []).map(i => i.name).join('、'),
           icon: r.icon
         }));
       }
@@ -7314,8 +7518,8 @@
             id: s.id,
             name: s.name,
             categoryBadge: s.supportsDineIn && s.supportsTakeout ? '🛵 外卖 / 堂食好味' : (s.supportsDineIn ? '🍽️ 堂食名店' : '🛵 品质外卖'),
-            subtext: `${s.category} · 人均 ¥${s.price} · ★ ${s.rating}`,
-            detail: `招牌：${s.dishes} (${s.address})`,
+            subtext: [s.category || null, s.price == null || s.price === '' ? null : `人均 ¥${s.price}`, s.rating == null || s.rating === '' ? null : `★ ${s.rating}`].filter(Boolean).join(' · '),
+            detail: [`招牌：${s.dishes || '未填写'}`, s.address ? `(${s.address})` : null].filter(Boolean).join(' '),
             icon: s.icon
           });
         });
@@ -7386,6 +7590,8 @@
     BentoBus.on('records:changed', () => renderRecords());
     BentoBus.on('shopping:changed', () => renderShoppingList());
     BentoBus.on('favorites:changed', () => renderFavorites());
+    // 工具服务保存/删除后即时重渲染（原静态版在同一函数内直接 renderTools，被 adapter 替换后需经总线补回）
+    BentoBus.on('tools:changed', () => renderTools());
 
     // =========================================================================
     // 【视角切换、抽屉与音频交互】
@@ -7406,6 +7612,35 @@
         toggleDrawer(false);
       }
       setTimeout(resizeConfetti, 350);
+    }
+
+    // 真实移动设备（innerWidth ≤ 640）自动进入既有 mobile-mode 外壳：显示 Floating Dock、
+    // 抽屉与手机标题栏，隐藏 230px 桌面侧栏；与 getUIContext() 的 'responsive-mobile'
+    // 阈值保持同一断点，交互与布局一致。桌面宽屏下若处于自动态则还原为桌面外壳；
+    // 展厅手动切换（setDeviceMode）优先于自动判断，宽屏手动手机框不受影响。
+    let autoMobileModeActive = false;
+
+    function applyAutoMobileMode() {
+      const viewport = document.getElementById('appViewport');
+      const btnMobile = document.getElementById('btnMobileMode');
+      const btnDesktop = document.getElementById('btnDesktopMode');
+      if (!viewport) return;
+      if (window.innerWidth <= 640) {
+        if (!viewport.classList.contains('mobile-mode')) {
+          autoMobileModeActive = true;
+          viewport.classList.add('mobile-mode');
+          if (btnMobile) btnMobile.classList.add('active');
+          if (btnDesktop) btnDesktop.classList.remove('active');
+          setTimeout(resizeConfetti, 350);
+        }
+      } else if (autoMobileModeActive) {
+        autoMobileModeActive = false;
+        viewport.classList.remove('mobile-mode');
+        toggleDrawer(false);
+        if (btnDesktop) btnDesktop.classList.add('active');
+        if (btnMobile) btnMobile.classList.remove('active');
+        setTimeout(resizeConfetti, 350);
+      }
     }
 
     function switchPage(pageId, triggerEl) {
@@ -7474,6 +7709,17 @@
     let currentDegree = 0;
     let wheelCandidateMode = 'all';
     let dynamicWheelItems = [];
+    // 本轮排除项集合：key 为 `${type}:${id || title}`。候选重算与远程推荐映射都必须尊重它，
+    // 否则已排除项会通过 updateWheelCandidates / 扇区替换重新回到候选或最终结果。
+    const wheelExcludedKeys = new Set();
+    const wheelItemKey = (item) => (item ? `${item.type}:${item.id || item.title}` : '');
+    function excludeWheelItem(item) {
+      const key = wheelItemKey(item);
+      if (key) wheelExcludedKeys.add(key);
+    }
+    function clearWheelExclusions() {
+      wheelExcludedKeys.clear();
+    }
     let activeSpinRunId = 0;
     let activeSpinWatchdogTimer = null;
     let activeSpinTransitionEndHandler = null;
@@ -7486,6 +7732,8 @@
 
     function setWheelCandidateMode(mode) {
       if (mode === 'store') mode = 'all';
+      // 切换分类视为新一轮决策：上一轮排除项不再约束新的候选池
+      clearWheelExclusions();
       wheelCandidateMode = mode;
       ['all', 'cook', 'dinein', 'takeout', 'store'].forEach(m => {
         const btn = document.getElementById('btnWheelMode-' + m);
@@ -7573,6 +7821,9 @@
           if (sPart[i]) candidates.push(sPart[i]);
         }
       }
+
+      // 本轮排除项不重新进入候选池（重算/刷新后仍然生效）
+      candidates = candidates.filter((item) => !wheelExcludedKeys.has(wheelItemKey(item)));
 
       // 仅 all 和 cook 模式在候选不足 2 项时进入公共 Fallback，dinein / takeout 隔离真实空态
       if (['all', 'cook'].includes(wheelCandidateMode) && candidates.length < 2) {
@@ -8382,16 +8633,29 @@
       if (input) input.value = val;
     }
 
-    function addRecipeIngRow(name = '', amount = '') {
+    function addRecipeIngRow(name = '', amount = '', meta = null) {
       const container = document.getElementById('formRecipeIngList');
       if (!container) return;
       const row = document.createElement('div');
       row.className = 'recipe-ing-row flex items-center gap-2 mb-1.5';
+      // 两个 ID 语义不同，必须分键保存：ingredientRowId 是菜谱食材行自身 ID（用于精确回查旧行），
+      // ingredientId 是库存食材 ID（保存载荷的关联字段）。混用会在两个 ID 不同时把行 ID
+      // 误当库存 ID（或反之），未编辑保存即丢失 ingredientId/optional/isPrimary。
+      if (meta?.id) row.dataset.ingredientRowId = meta.id;
+      if (meta?.ingredientId) row.dataset.ingredientId = meta.ingredientId;
+      row.dataset.originalName = String(name ?? '');
+      if (meta?.amountText != null) row.dataset.amountText = meta.amountText;
+      if (meta?.quantity != null) row.dataset.quantity = String(meta.quantity);
+      if (meta?.unit != null) row.dataset.unit = meta.unit;
+      row.dataset.optional = String(!!meta?.optional);
+      row.dataset.isPrimary = String(!!meta?.isPrimary);
       row.innerHTML = `
-        <input type="text" placeholder="食材名 (如 鸡腿肉)" value="${name}" class="recipe-ing-name flex-1 px-3 py-1.5 rounded-xl border border-[#F0E8DC] bg-[#FAF7F2] text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:border-[#FF6B57]" />
-        <input type="text" placeholder="用量 (如 300g/半个)" value="${amount}" class="recipe-ing-amount w-28 px-3 py-1.5 rounded-xl border border-[#F0E8DC] bg-[#FAF7F2] text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:border-[#FF6B57]" />
+        <input type="text" placeholder="食材名 (如 鸡腿肉)" value="" class="recipe-ing-name flex-1 px-3 py-1.5 rounded-xl border border-[#F0E8DC] bg-[#FAF7F2] text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:border-[#FF6B57]" />
+        <input type="text" placeholder="用量 (如 300g/半个)" value="" class="recipe-ing-amount w-28 px-3 py-1.5 rounded-xl border border-[#F0E8DC] bg-[#FAF7F2] text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:border-[#FF6B57]" />
         <button type="button" onclick="removeRecipeIngRow(this)" class="w-6 h-6 rounded-full border border-transparent text-stone-400 hover:text-red-500 hover:bg-red-50 text-xs font-black flex items-center justify-center transition-all">✕</button>
       `;
+      row.querySelector('.recipe-ing-name').value = String(name ?? '');
+      row.querySelector('.recipe-ing-amount').value = String(amount ?? '');
       container.appendChild(row);
     }
 
@@ -8414,25 +8678,33 @@
       });
     }
 
-    function addRecipeStepRow(title = '', desc = '', timer = 0) {
+    function addRecipeStepRow(title = '', desc = '', timer = '', meta = null) {
       const container = document.getElementById('formRecipeStepList');
+      title = title ?? '';
+      desc = desc ?? '';
+      timer = timer ?? '';
       if (!container) return;
       const count = container.querySelectorAll('.recipe-step-row').length + 1;
       const row = document.createElement('div');
       row.className = 'recipe-step-row p-2.5 bg-[#FAF7F2] border border-[#F0E8DC] rounded-xl space-y-1.5 mb-2';
+      if (meta?.id) row.dataset.stepId = meta.id;
+      if (meta?.imagePath != null) row.dataset.imagePath = meta.imagePath;
       row.innerHTML = `
         <div class="flex items-center justify-between">
           <span class="step-num font-black text-[#FF6B57] text-[11px]">步骤 ${count}</span>
           <button type="button" onclick="removeRecipeStepRow(this)" class="w-5 h-5 rounded-full text-stone-300 hover:text-red-500 text-xs font-black flex items-center justify-center transition-all">✕</button>
         </div>
-        <input type="text" placeholder="步骤小标题 (如 蛋液充分打散快速滑炒)" value="${title}" class="recipe-step-title w-full px-2.5 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
-        <textarea rows="2" placeholder="详细做法要领 (如 鸡蛋加少许盐和一滴料酒充分打散...)" class="recipe-step-desc w-full p-2 rounded-lg border border-[#F0E8DC] bg-white text-xs text-stone-700 focus:outline-none focus:border-[#FF6B57]">${desc}</textarea>
+        <input type="text" placeholder="步骤小标题 (如 蛋液充分打散快速滑炒)" value="" class="recipe-step-title w-full px-2.5 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+        <textarea rows="2" placeholder="详细做法要领 (如 鸡蛋加少许盐和一滴料酒充分打散...)" class="recipe-step-desc w-full p-2 rounded-lg border border-[#F0E8DC] bg-white text-xs text-stone-700 focus:outline-none focus:border-[#FF6B57]"></textarea>
         <div class="flex items-center gap-2 pt-0.5">
           <span class="text-stone-400 text-[10px] font-bold">⏱ 倒计时(可选分钟数):</span>
-          <input type="number" min="0" max="180" placeholder="0" value="${timer || ''}" class="recipe-step-timer w-16 px-2 py-1 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+          <input type="number" min="0" max="180" placeholder="0" value="" class="recipe-step-timer w-16 px-2 py-1 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
           <span class="text-stone-400 text-[10px]">分</span>
         </div>
       `;
+      row.querySelector('.recipe-step-title').value = String(title ?? '');
+      row.querySelector('.recipe-step-desc').textContent = String(desc ?? '');
+      row.querySelector('.recipe-step-timer').value = String(timer ?? '');
       container.appendChild(row);
     }
 
@@ -8459,16 +8731,21 @@
       });
     }
 
-    function addStoreMenuRow(name = '', price = 35, isSig = false) {
-      const container = document.getElementById('formStoreMenuList');
+    function addStoreMenuRow(name = '', price = null, isSig = false, metadata = null) {
+      const container = document.querySelector('#modalStoreForm #formStoreMenuList');
       if (!container) return;
       const row = document.createElement('div');
       row.className = 'store-dish-row flex items-center gap-2 mb-1.5 bg-[#FAF7F2] p-2 rounded-xl border border-[#F0E8DC]';
+      if (metadata) {
+        if (metadata.id != null) row.dataset.menuId = String(metadata.id);
+        if (metadata.icon != null) row.dataset.menuIcon = String(metadata.icon);
+        if (metadata.desc != null) row.dataset.menuDesc = String(metadata.desc);
+      }
       row.innerHTML = `
-        <input type="text" placeholder="菜品名称 (如 招牌照烧鸡排便当)" value="${name}" class="store-dish-name flex-1 px-2.5 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+        <input type="text" placeholder="菜品名称 (如 招牌照烧鸡排便当)" class="store-dish-name flex-1 px-2.5 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
         <div class="flex items-center gap-1">
           <span class="text-stone-400 text-[10px]">¥</span>
-          <input type="number" min="1" max="999" placeholder="单价" value="${price}" class="store-dish-price w-16 px-2 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+          <input type="number" min="1" max="999" placeholder="单价" class="store-dish-price w-16 px-2 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
         </div>
         <label class="flex items-center gap-1 cursor-pointer font-bold text-stone-600 text-[10.5px]">
           <input type="checkbox" ${isSig ? 'checked' : ''} class="store-dish-sig w-3.5 h-3.5 rounded text-[#FF6B57] accent-[#FF6B57]" />
@@ -8476,6 +8753,8 @@
         </label>
         <button type="button" onclick="removeStoreMenuRow(this)" class="w-5 h-5 rounded-full text-stone-300 hover:text-red-500 text-xs font-black flex items-center justify-center transition-all">✕</button>
       `;
+      row.querySelector('.store-dish-name').value = name ?? '';
+      row.querySelector('.store-dish-price').value = price ?? '';
       container.appendChild(row);
     }
 
@@ -8840,6 +9119,7 @@
 
       BentoAudioManager.playWheelExclude();
 
+      excludeWheelItem(currentWheelWinnerItem);
       dynamicWheelItems = dynamicWheelItems.filter(item => {
         if (excludedId && item.id) return item.id !== excludedId;
         return item.title !== excludedTitle;
@@ -8850,28 +9130,22 @@
       setTimeout(() => triggerSpin(), 200);
     }
 
-    // 缺料一键加入清单
-    function addMissingListToShopping(recipeId) {
-      const r = BentoService.recipes.getById(recipeId);
-      if (!r) return;
-      const pantry = BentoService.pantry.getAll();
-      let count = 0;
-      r.ingredients.forEach(i => {
-        const has = pantry.some(p => (p.name.includes(i.name) || i.name.includes(p.name)) && p.stock > 0);
-        if (!has) {
-          BentoService.shopping.add({
-            id: crypto.randomUUID(),
-            name: `${i.name} (${i.amount})`,
-            amount: i.amount,
-            category: '缺料补齐',
-            isChecked: false,
-            source: `智能配菜: ${r.name}`
-          }, false);
-          count++;
-        }
-      });
-      showToast(`已将 ${count} 味缺失食材一键加入购物清单！`, '🛒');
-      BentoModal.setupPantryRecommend();
+    // 缺料一键加入清单：统一走 adapter 的真实写入入口（整批预检 + 逐项如实汇报），
+    // 失败时明确提示，绝不显示“已加入 N 味”的虚假成功。
+    async function addMissingListToShopping(recipeId) {
+      const recipes = BentoService.recipes;
+      const id = recipeId && typeof recipeId === 'object' ? recipeId.id : recipeId;
+      if (!id) return;
+      if (typeof recipes?.addMissingIngredientsToShopping !== 'function') {
+        showToast('补齐缺料功能暂不可用，请稍后重试', '⚠️');
+        return;
+      }
+      try {
+        const result = await recipes.addMissingIngredientsToShopping(id);
+        if (result) BentoModal.setupPantryRecommend();
+      } catch (error) {
+        showToast(error instanceof Error ? error.message : '补齐缺料失败，请手动加入购物清单', '⚠️');
+      }
     }
 
     // -------------------------------------------------------------------------
@@ -8901,14 +9175,14 @@
           <div class="neo-card p-3.5 m-0 relative group hover:border-[#FEDBC5] transition-all">
             <button class="w-5 h-5 rounded-full bg-stone-100 hover:bg-red-50 hover:text-red-500 text-stone-400 text-xs font-black absolute top-2.5 right-2.5 flex items-center justify-center transition-all" onclick="deleteTool('${t.id}', '${t.name}')" title="删除该工具">✕</button>
             <div class="flex items-start gap-3">
-              <span class="text-3xl p-1 bg-[#FAF7F2] rounded-xl border border-[#F0E8DC]">${t.icon}</span>
+              <span class="text-3xl p-1 bg-[#FAF7F2] rounded-xl border border-[#F0E8DC]">${t.icon ?? ''}</span>
               <div>
                 <h4 class="text-xs font-black text-stone-800 m-0">${t.name}</h4>
                 <div class="flex items-center gap-1.5 mt-1">
                   <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${isGood ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
-                    ${t.status}
+                    ${t.status ?? '未标注'}
                   </span>
-                  <span class="text-[9.5px] font-bold text-stone-400">#${t.category}</span>
+                  ${t.category ? `<span class="text-[9.5px] font-bold text-stone-400">#${t.category}</span>` : ''}
                 </div>
               </div>
             </div>
@@ -9053,6 +9327,95 @@
     function closeImageLightbox() {
       const modal = document.getElementById('modalImageLightbox');
       if (modal) modal.classList.add('hidden');
+    }
+
+    // 回填 select 的正式选项：优先精确匹配，其次按选项文本前缀匹配（如选项「下午茶/夜宵」对应后端「下午茶」）。
+    // 完全表达不了的值保持「未选择」并记录 unrepresentable，由提交端省略该字段以保留后端原值。
+    function selectOptionByLabelOrPrefix(select, label) {
+      if (!select) return;
+      if (!select.dataset.nullableTracked) {
+        select.dataset.nullableTracked = 'true';
+        select.addEventListener('change', () => {
+          select.dataset.valueState = select.selectedIndex >= 0 ? 'filled' : 'empty';
+        });
+      }
+      select.value = label;
+      if (select.value === label) {
+        select.dataset.valueState = 'filled';
+        return true;
+      }
+      const option = Array.from(select.options).find(
+        (item) => item.text.trim() === label || item.value === label || item.text.trim().startsWith(label)
+      );
+      if (option) {
+        select.value = option.value || option.text.trim();
+        select.dataset.valueState = 'filled';
+        return true;
+      }
+      select.selectedIndex = -1;
+      select.dataset.valueState = 'unrepresentable';
+      return false;
+    }
+
+    // 菜谱热量控件（number，min=50 max=2000）：只回填真实 number，null/undefined 留空并标记未填写。
+    // 用 dataset 记录未填写状态、input 事件跟踪用户真实输入；不隐藏控件、不改 range 选项。
+    function setNullableRecipeCaloriesInput(value) {
+      const input = document.getElementById('formRecipeCalories');
+      if (!input) return;
+      const hasValue = typeof value === 'number' && Number.isFinite(value);
+      input.value = hasValue ? String(value) : '';
+      input.dataset.valueState = hasValue ? 'filled' : 'empty';
+      if (!input.dataset.nullableTracked) {
+        input.dataset.nullableTracked = 'true';
+        input.addEventListener('input', () => {
+          input.dataset.valueState = input.value.trim() === '' ? 'empty' : 'filled';
+        });
+      }
+    }
+
+    // 表单 nullable 数值控件：只有真实 number 才回填，null/undefined 留空（不伪造演示默认值）
+    function setNullableNumberInput(id, value) {
+      const input = document.getElementById(id);
+      if (!input) return;
+      input.value = typeof value === 'number' && Number.isFinite(value) ? String(value) : '';
+    }
+
+    // 正式 select 没有 clear 选项（不允许改列表），用 selectedIndex = -1 表示「未选择」：
+    // - null / undefined → 未选择（保持无值）
+    // - 可精确匹配的真实值 → 正常回填
+    // - 控件表达不了的真实值（如 4.5 分评分）→ 未选择并标记 unrepresentable，
+    //   提交时省略该字段以保留后端原值，绝不静默改成别的档位
+    // 注：正式 select 没有 clear 选项（不允许改列表）；用户主动清空走「清除」控件（clearRecordSatiety），
+    // 用 selectedIndex = -1 表达「未选择」，提交时空值解析为 null。
+    function setNullableSelectValue(id, value) {
+      const select = document.getElementById(id);
+      if (!select) return;
+      if (!select.dataset.nullableTracked) {
+        select.dataset.nullableTracked = 'true';
+        select.addEventListener('change', () => {
+          select.dataset.valueState = select.selectedIndex >= 0 ? 'filled' : 'empty';
+        });
+      }
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        select.value = String(value);
+        if (select.value === String(value)) {
+          select.dataset.valueState = 'filled';
+          return;
+        }
+        select.selectedIndex = -1;
+        select.dataset.valueState = 'unrepresentable';
+        return;
+      }
+      select.selectedIndex = -1;
+      select.dataset.valueState = 'empty';
+    }
+
+    // 用户主动清除饱腹感：沿用“未选择”状态，提交时空值解析为 null；不新增空 option、不改 5 档列表
+    function clearRecordSatiety() {
+      const select = document.getElementById('formRecordSatiety');
+      if (!select) return;
+      select.selectedIndex = -1;
+      select.dataset.valueState = 'empty';
     }
 
     function onRecordTypeChange(val) {
@@ -9269,6 +9632,7 @@
     window.spinAgain = spinAgain;
     window.excludeCurrentWinnerAndSpin = excludeCurrentWinnerAndSpin;
     window.addMissingListToShopping = addMissingListToShopping;
+    window.clearRecordSatiety = clearRecordSatiety;
     window.renderTools = renderTools;
     window.handleToolFormSubmit = handleToolFormSubmit;
     window.deleteTool = deleteTool;
@@ -9525,99 +9889,108 @@
       BentoModal.open('planPicker', { planId });
     }
 
-    async function confirmDeletePlan(planId) {
+    // 删除入口统一契约：真实失败由确认层展示错误并返回 false，入口本身不再向上抛未处理拒绝。
+    async function runDelete(entry) {
+      try {
+        return await entry();
+      } catch {
+        return false;
+      }
+    }
+
+    function confirmDeletePlan(planId) {
       const plan = BentoService.plans.getById ? BentoService.plans.getById(planId) : null;
       const name = plan ? plan.recipeName || plan.title || '此计划' : '此计划';
-      return await requestDestructiveConfirm({
+      return runDelete(() => requestDestructiveConfirm({
         title: '确认删除排餐计划',
         message: `确定要删除「${name}」的排餐计划吗？`,
         icon: '📅',
         onConfirm: async () => {
-          BentoService.plans.delete(planId);
+          await BentoService.plans.delete(planId);
           showToast('已删除排餐计划', 'info');
         }
-      });
+      }));
     }
 
     function openEditRecord(recId) {
       BentoModal.open('recordForm', recId);
     }
 
-    async function confirmDeleteRecord(recId) {
+    function confirmDeleteRecord(recId) {
       const rec = BentoService.records.getById ? BentoService.records.getById(recId) : null;
       const name = rec ? rec.title || '就餐记录' : '就餐记录';
-      return await requestDestructiveConfirm({
+      return runDelete(() => requestDestructiveConfirm({
         title: '确认删除饮食记录',
         message: `确定要删除「${name}」这条记录吗？`,
         icon: '🍱',
         onConfirm: async () => {
-          BentoService.records.delete(recId);
+          await BentoService.records.delete(recId);
           showToast('已删除饮食记录', 'info');
         }
-      });
+      }));
     }
 
     function openEditRecipe(recipeId) {
       BentoModal.open('recipeForm', recipeId);
     }
 
-    async function confirmDeleteRecipe(recipeId) {
+    function confirmDeleteRecipe(recipeId) {
       const recipe = BentoService.recipes.getById ? BentoService.recipes.getById(recipeId) : null;
       const name = recipe ? recipe.name : '该菜谱';
-      return await requestDestructiveConfirm({
+      return runDelete(() => requestDestructiveConfirm({
         title: '确认删除菜谱',
         message: `确定要删除菜谱「${name}」吗？此操作无法撤销。`,
         icon: '🍲',
         onConfirm: async () => {
           BentoModal.close();
-          BentoService.recipes.delete(recipeId);
+          await BentoService.recipes.delete(recipeId);
           showToast(`已删除菜谱「${name}」`, 'info');
         }
-      });
+      }));
     }
 
-    async function confirmDeletePantryItem(itemId) {
+    function confirmDeletePantryItem(itemId) {
       const item = BentoService.pantry.getById ? BentoService.pantry.getById(itemId) : null;
       const name = item ? item.name : '该食材';
-      return await requestDestructiveConfirm({
+      return runDelete(() => requestDestructiveConfirm({
         title: '确认移除食材',
         message: `确定要从小卖部/食材库中移除「${name}」吗？`,
         icon: '🥬',
         onConfirm: async () => {
           BentoModal.close();
-          BentoService.pantry.delete(itemId);
+          await BentoService.pantry.delete(itemId);
           showToast(`已移除食材「${name}」`, 'info');
         }
-      });
+      }));
     }
 
-    async function confirmDeleteStore(storeId) {
+    function confirmDeleteStore(storeId) {
       const store = BentoService.stores.getById ? BentoService.stores.getById(storeId) : null;
       const name = store ? store.name : '该店铺';
-      return await requestDestructiveConfirm({
+      return runDelete(() => requestDestructiveConfirm({
         title: '确认删除店铺',
         message: `确定要删除店铺「${name}」吗？相关收藏也会同步移除。`,
         icon: '🏪',
         onConfirm: async () => {
           BentoModal.close();
-          BentoService.stores.delete(storeId);
+          await BentoService.stores.delete(storeId);
           showToast(`已删除店铺「${name}」`, 'info');
         }
-      });
+      }));
     }
 
-    async function confirmDeleteShoppingItem(itemId) {
+    function confirmDeleteShoppingItem(itemId) {
       const item = BentoService.shopping.getAll ? BentoService.shopping.getAll().find(s => s.id === itemId) : null;
       const name = item ? item.name : '该食材';
-      return await requestDestructiveConfirm({
+      return runDelete(() => requestDestructiveConfirm({
         title: '确认移除采购条目',
         message: `确定要从购物清单中移除「${name}」吗？`,
         icon: '🛒',
         onConfirm: async () => {
-          BentoService.shopping.delete(itemId);
+          await BentoService.shopping.delete(itemId);
           showToast(`已从清单移除「${name}」`, 'info');
         }
-      });
+      }));
     }
 
     async function confirmToggleRecipeFavorite(recipeId) {
@@ -9673,6 +10046,7 @@
     window.requestDestructiveConfirm = requestDestructiveConfirm;
     window.openMobileConfirmOverlay = openMobileConfirmOverlay;
     window.setDeviceMode = setDeviceMode;
+    window.applyAutoMobileMode = applyAutoMobileMode;
     window.toggleDrawer = toggleDrawer;
     window.showToast = showToast;
     window.setStoreFilter = setStoreFilter;
@@ -9681,6 +10055,8 @@
     window.setWheelCandidateMode = setWheelCandidateMode;
     window.getWheelCandidateMode = () => wheelCandidateMode;
     window.getDynamicWheelItems = () => dynamicWheelItems;
+    window.isWheelItemExcluded = (item) => wheelExcludedKeys.has(wheelItemKey(item));
+    window.clearWheelExclusions = clearWheelExclusions;
     window.updateWheelCandidates = updateWheelCandidates;
     window.renderWheelSlices = renderWheelSlices;
     window.triggerSpin = triggerSpin;
@@ -9722,7 +10098,19 @@
     });
 
     window.addEventListener('resize', resizeConfetti);
-  
+
+    // 真机宽度探测：初始进入 + 旋转/窗口尺寸变化（防抖 150ms）
+    applyAutoMobileMode();
+    let autoMobileModeResizeTimer = null;
+    window.addEventListener('resize', () => {
+      if (autoMobileModeResizeTimer) clearTimeout(autoMobileModeResizeTimer);
+      autoMobileModeResizeTimer = setTimeout(applyAutoMobileMode, 150);
+    });
+    window.addEventListener('orientationchange', () => {
+      if (autoMobileModeResizeTimer) clearTimeout(autoMobileModeResizeTimer);
+      autoMobileModeResizeTimer = setTimeout(applyAutoMobileMode, 150);
+    });
+
   </script>
 
   <script src="/google2-adapter.js"></script>

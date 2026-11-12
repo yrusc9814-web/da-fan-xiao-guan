@@ -41,6 +41,24 @@ export interface BatchAdjustmentInput {
   notes?: string | null;
 }
 
+/** Google2 库存详情固定按钮（消耗 100g / 250g / 全部用完）对应的聚合消耗输入。 */
+export interface ConsumeInput {
+  mode: 'QUANTITY' | 'ALL';
+  quantity?: number;
+  unit?: QuantityUnit;
+  ingredientVersion: number;
+  notes?: string | null;
+}
+
+export interface ConsumptionAllocation {
+  batchId: string;
+  batchVersion: number;
+  beforeQuantity: number;
+  afterQuantity: number;
+  unit: QuantityUnit;
+  changeQuantity: number;
+}
+
 const ingredientInclude = {
   inventoryBatches: {
     where: { deletedAt: null },
@@ -378,4 +396,193 @@ export async function adjustInventory(database: PrismaClient, ingredientId: stri
 export async function listInventoryLogs(database: PrismaClient, ingredientId: string) {
   await getIngredient(database, ingredientId);
   return database.inventoryLog.findMany({ where: { ingredientId }, orderBy: { createdAt: 'desc' } });
+}
+
+function roundQuantity(value: number): number {
+  return Number(value.toFixed(6));
+}
+
+const activeBatchOrder = [
+  { consumePriority: 'desc' as const },
+  { expiryDate: 'asc' as const },
+  { createdAt: 'asc' as const },
+  { id: 'asc' as const }
+];
+
+/**
+ * 聚合食材级消耗：库存详情页固定按钮「消耗 100g / 消耗 250g / 全部用完」的真实后端语义。
+ *
+ * - 批次顺序由服务端确定（consumePriority desc → expiryDate asc → createdAt asc → id asc），
+ *   与 consumption/service.ts 预览分配规则一致；UI 无批次选择，不允许也不需要一个一个指定批次。
+ * - QUANTITY：只从单位可换算到请求单位的活批次按序扣减；不可换算的活批次原样保留并在响应
+ *   incompatibleBatchIds 中标出（不静默跳过）；兼容批次可用量不足 → 409，整单失败无部分扣减。
+ * - ALL：把真实存在的全部活批次清零（不使用任何硬编码库存数字）。
+ * - 乐观锁：ingredient.version 与各批次 version 均作为条件更新谓词；任一冲突 → 409 整单回滚。
+ * - 每个被扣批次写 InventoryLog（before/change/after、批次单位、MANUAL_DEDUCT）并同步食材汇总。
+ */
+export async function consumeIngredient(database: PrismaClient, ingredientId: string, input: ConsumeInput) {
+  if (!Number.isInteger(input.ingredientVersion) || input.ingredientVersion < 1)
+    throw badRequest('ingredientVersion 必须是正整数');
+  if (input.mode !== 'QUANTITY' && input.mode !== 'ALL') throw badRequest('消耗模式必须是 QUANTITY 或 ALL');
+  if (input.mode === 'ALL' && (input.quantity != null || input.unit != null))
+    throw badRequest('“全部用完”不接受数量或单位参数');
+  if (input.mode === 'QUANTITY') {
+    if (!Number.isFinite(input.quantity) || (input.quantity as number) <= 0)
+      throw badRequest('消耗数量必须是大于 0 的有限数');
+    if (!input.unit) throw badRequest('按数量消耗必须提供单位');
+  }
+
+  return database.$transaction(async (transaction) => {
+    const ingredient = await transaction.ingredient.findFirst({ where: { id: ingredientId, deletedAt: null } });
+    if (!ingredient) throw Object.assign(new Error('食材不存在'), { statusCode: 404 });
+    if (ingredient.version !== input.ingredientVersion) {
+      throw new VersionConflictError({
+        entity: 'Ingredient',
+        id: ingredientId,
+        expectedVersion: input.ingredientVersion,
+        actualVersion: ingredient.version
+      });
+    }
+
+    const batches = await transaction.inventoryBatch.findMany({
+      where: { ingredientId, deletedAt: null, quantity: { gt: 0 } },
+      orderBy: activeBatchOrder
+    });
+    if (!batches.length) throw Object.assign(new Error('库存数量不足，无法完成本次消耗'), { statusCode: 409 });
+
+    const planned: Array<{ batch: (typeof batches)[number]; take: number }> = [];
+    const incompatibleBatchIds: string[] = [];
+    let consumedQuantity: number | null = null;
+
+    if (input.mode === 'QUANTITY') {
+      const unit = input.unit as QuantityUnit;
+      const compatible = batches.filter((batch) => convertQuantity(1, batch.unit, unit) !== null);
+      for (const batch of batches) {
+        if (convertQuantity(1, batch.unit, unit) === null) incompatibleBatchIds.push(batch.id);
+      }
+      if (!compatible.length) throw Object.assign(new Error('库存单位不可换算，无法按该单位消耗'), { statusCode: 409 });
+      const available = compatible.reduce(
+        (total, batch) => total + (convertQuantity(batch.quantity, batch.unit, unit) ?? 0),
+        0
+      );
+      if (roundQuantity(available) < roundQuantity(input.quantity as number))
+        throw Object.assign(new Error('库存数量不足，无法完成本次消耗'), { statusCode: 409 });
+      let remaining = input.quantity as number;
+      for (const batch of compatible) {
+        if (remaining <= 0) break;
+        const availableInUnit = convertQuantity(batch.quantity, batch.unit, unit) ?? 0;
+        const takeInUnit = Math.min(remaining, availableInUnit);
+        const takeInBatchUnit = roundQuantity(convertQuantity(takeInUnit, unit, batch.unit) ?? 0);
+        const take = Math.min(takeInBatchUnit, batch.quantity);
+        if (take > 0) planned.push({ batch, take });
+        remaining = roundQuantity(remaining - takeInUnit);
+      }
+      let totalInIngredientUnit = 0;
+      let allConvertible = true;
+      for (const { batch, take } of planned) {
+        const converted = convertQuantity(take, batch.unit, ingredient.unit);
+        if (converted == null) {
+          allConvertible = false;
+          break;
+        }
+        totalInIngredientUnit += converted;
+      }
+      // 只有全部已扣批次都能换算到食材基础单位时才报告汇总消耗量；否则如实为 null（明细以 allocations 为准）
+      consumedQuantity = allConvertible ? roundQuantity(totalInIngredientUnit) : null;
+    } else {
+      for (const batch of batches) planned.push({ batch, take: batch.quantity });
+      const totalInIngredientUnit = planned.reduce((total, { batch, take }) => {
+        const converted = convertQuantity(take, batch.unit, ingredient.unit);
+        return total + (converted ?? Number.NaN);
+      }, 0);
+      consumedQuantity = Number.isFinite(totalInIngredientUnit) ? roundQuantity(totalInIngredientUnit) : null;
+    }
+
+    const allocations: ConsumptionAllocation[] = [];
+    const inventoryLogIds: string[] = [];
+    for (const { batch, take } of planned) {
+      const after = roundQuantity(batch.quantity - take);
+      if (after < 0) throw Object.assign(new Error('库存数量不足，无法完成本次消耗'), { statusCode: 409 });
+      const updated = await transaction.inventoryBatch.updateMany({
+        where: { id: batch.id, version: batch.version, deletedAt: null, quantity: { gte: take } },
+        data: { quantity: after, version: { increment: 1 } }
+      });
+      if (!updated.count) {
+        throw new VersionConflictError({
+          entity: 'InventoryBatch',
+          id: batch.id,
+          expectedVersion: batch.version,
+          actualVersion: batch.version + 1
+        });
+      }
+      const log = await transaction.inventoryLog.create({
+        data: {
+          ingredientId,
+          ingredientNameSnapshot: ingredient.name,
+          inventoryBatchId: batch.id,
+          beforeQuantity: batch.quantity,
+          changeQuantity: -take,
+          afterQuantity: after,
+          unit: batch.unit,
+          changeType: 'MANUAL_DEDUCT',
+          notes: input.notes ?? null
+        }
+      });
+      inventoryLogIds.push(log.id);
+      allocations.push({
+        batchId: batch.id,
+        batchVersion: batch.version,
+        beforeQuantity: batch.quantity,
+        afterQuantity: after,
+        unit: batch.unit,
+        changeQuantity: -take
+      });
+    }
+
+    const remainingBatches = await transaction.inventoryBatch.findMany({
+      where: { ingredientId, deletedAt: null },
+      orderBy: [{ createdAt: 'asc' as const }, { id: 'asc' as const }]
+    });
+    const quantity = roundQuantity(aggregateQuantity(remainingBatches, ingredient.unit));
+    const earliest = [...remainingBatches]
+      .filter((item) => item.quantity > 0)
+      .sort((a, b) => (a.expiryDate ?? '9999-12-31').localeCompare(b.expiryDate ?? '9999-12-31'))[0];
+    const summary = await transaction.ingredient.updateMany({
+      where: { id: ingredientId, version: input.ingredientVersion, deletedAt: null },
+      data: {
+        quantity,
+        purchaseDate: earliest?.purchaseDate ?? null,
+        expiryDate: earliest?.expiryDate ?? null,
+        location: earliest?.location ?? null,
+        opened: remainingBatches.some((item) => item.quantity > 0 && item.opened),
+        version: { increment: 1 }
+      }
+    });
+    if (!summary.count) {
+      const latest = await transaction.ingredient.findUnique({
+        where: { id: ingredientId },
+        select: { version: true, deletedAt: true }
+      });
+      if (!latest || latest.deletedAt) throw Object.assign(new Error('食材不存在'), { statusCode: 404 });
+      throw new VersionConflictError({
+        entity: 'Ingredient',
+        id: ingredientId,
+        expectedVersion: input.ingredientVersion,
+        actualVersion: latest.version
+      });
+    }
+    const updatedIngredient = await transaction.ingredient.findUniqueOrThrow({
+      where: { id: ingredientId },
+      include: ingredientInclude
+    });
+    return {
+      mode: input.mode,
+      consumedQuantity,
+      consumedUnit: input.mode === 'QUANTITY' ? (input.unit as QuantityUnit) : ingredient.unit,
+      allocations,
+      incompatibleBatchIds,
+      inventoryLogIds,
+      ingredient: updatedIngredient
+    };
+  });
 }

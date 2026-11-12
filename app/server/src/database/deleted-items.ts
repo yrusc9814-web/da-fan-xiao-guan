@@ -10,7 +10,7 @@ export async function recordDeletedItem(
   expiresAt.setDate(expiresAt.getDate() + 30);
   await transaction.deletedItem.upsert({
     where: { entityType_entityId: { entityType, entityId } },
-    create: { entityType, entityId, deletedAt, expiresAt },
-    update: { deletedAt, expiresAt }
+    create: { entityType, entityId, deletedAt, expiresAt, planUncompleteProof: null },
+    update: { deletedAt, expiresAt, planUncompleteProof: null }
   });
 }

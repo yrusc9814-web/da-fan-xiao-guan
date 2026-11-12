@@ -1,7 +1,8 @@
-import type { MealRole, MealType, Prisma, PrismaClient, QuantityUnit } from '@prisma/client';
+import type { MealRole, MealType, Prisma, PrismaClient, QuantityUnit, RecordSourceType } from '@prisma/client';
 
 import { VersionConflictError } from '../../database/optimistic-lock.js';
 import { recordDeletedItem } from '../../database/deleted-items.js';
+import { createRecord, recordDtoWithPhotos, type RecordInput } from '../meal-records/service.js';
 
 export interface RecipeIngredientInput {
   ingredientId?: string | null;
@@ -9,12 +10,18 @@ export interface RecipeIngredientInput {
   ingredientName?: string;
   quantity?: number | null;
   unit?: QuantityUnit | null;
+  /** 自由用量原文（"300g" / "半个" / "适量" / "2汤匙"）：逐行保留用户输入，不做数值推测。 */
+  amountText?: string | null;
   optional?: boolean;
   isPrimary?: boolean;
 }
 
 export interface RecipeStepInput {
   content: string;
+  /** 步骤标题：与 content（步骤说明）独立；null 表示未填写。 */
+  title?: string | null;
+  /** 步骤计时（分钟）：0..180 整数；null 表示未填写，0 是真实值。 */
+  timerMinutes?: number | null;
   imagePath?: string | null;
 }
 export interface RecipeToolInput {
@@ -25,12 +32,16 @@ export interface RecipeToolInput {
 
 export interface RecipeWriteInput {
   name: string;
+  /** 菜谱分类（前端 #formRecipeCategory）：与 tags 相互独立，null 表示未填写。 */
+  category?: string | null;
   imagePath?: string | null;
   ingredientsText?: string | null;
   cookingTimeMinutes?: number | null;
   difficulty?: string | null;
   spicyLevel?: number | null;
   servings?: number | null;
+  /** 热量 kcal：50..2000 整数（与 Google 2.0 前端 min/max 一致），null 表示未填写。 */
+  calories?: number | null;
   sourceNote?: string | null;
   notes?: string | null;
   favorite?: boolean;
@@ -54,6 +65,29 @@ export interface RecipeListQuery {
   pageSize?: number;
   sortBy?: 'name' | 'cookingTimeMinutes' | 'favorite' | 'createdAt' | 'updatedAt';
   sortOrder?: 'asc' | 'desc';
+}
+
+/**
+ * Google2 recipeDetail「🍳 打卡」的请求输入。
+ *
+ * 记录日期/时段必须由真实请求提供（不由 UTC 推导、不硬编码“午餐”）；
+ * calories/rating/satiety/cost 省略或 null 时全部保持 null（calories 允许回落到菜谱自身真实值），
+ * 绝不注入 8 分饱腹、0 元消费等伪造默认值。不包含任何库存参数：打卡绝不扣库。
+ */
+export interface CookCheckinInput {
+  recordDate: string;
+  mealType: MealType;
+  recordTime?: string | null;
+  /** MealRecord 用户标题；省略保持幂等旧值，null/空白清除。 */
+  title?: string | null;
+  notes?: string | null;
+  photos?: string[] | null;
+  calories?: number | null;
+  rating?: number | null;
+  satiety?: number | null;
+  cost?: number | null;
+  dinerIds?: string[];
+  sourceType?: RecordSourceType;
 }
 
 const recipeInclude = {
@@ -83,16 +117,38 @@ function assertRecipeInput(input: RecipeWriteInput): void {
   ) {
     throw Object.assign(new Error('辣度必须是 0 到 5 的整数'), { statusCode: 400 });
   }
+  // 热量上下界与前端 Google 2.0 的 min="50" / max="2000" 保持一致；
+  // 旧菜谱未填写保持 null，不写入推测性默认热量。
+  if (input.calories != null && (!Number.isInteger(input.calories) || input.calories < 50 || input.calories > 2000)) {
+    throw Object.assign(new Error('热量必须是 50 到 2000 之间的整数'), { statusCode: 400 });
+  }
+  // 分类 / 自由用量原文 / 步骤标题：只接受字符串或 null，不做 trim 之外的任何改写，
+  // 也绝不把数字/布尔静默转成字符串。
+  assertNullableString(input.category, '菜谱分类');
   for (const item of input.ingredients ?? []) {
     if (!(item.name ?? item.ingredientName)?.trim())
       throw Object.assign(new Error('食材名称不能为空'), { statusCode: 400 });
     if (item.quantity != null && (!Number.isFinite(item.quantity) || item.quantity < 0)) {
       throw Object.assign(new Error('食材数量不能为负数'), { statusCode: 400 });
     }
+    assertNullableString(item.amountText, '食材用量原文');
   }
   for (const step of input.steps ?? []) {
     if (!step.content?.trim()) throw Object.assign(new Error('制作步骤不能为空'), { statusCode: 400 });
+    assertNullableString(step.title, '步骤标题');
+    // 计时上界 180 与前端 .recipe-step-timer 的 max="180" 一致；null 表示未填写，0 是真实值。
+    if (
+      step.timerMinutes != null &&
+      (!Number.isInteger(step.timerMinutes) || step.timerMinutes < 0 || step.timerMinutes > 180)
+    ) {
+      throw Object.assign(new Error('步骤计时必须是 0 到 180 之间的整数'), { statusCode: 400 });
+    }
   }
+}
+
+function assertNullableString(value: string | null | undefined, field: string): void {
+  if (value === null || value === undefined) return;
+  if (typeof value !== 'string') throw Object.assign(new Error(`${field}必须是字符串`), { statusCode: 400 });
 }
 
 function assertVersionNumber(version: number): void {
@@ -130,6 +186,8 @@ async function relationCreates(
         ingredientNameSnapshot: (item.name ?? item.ingredientName)!.trim(),
         quantity: item.quantity ?? null,
         unit: item.unit ?? null,
+        // 自由用量原文逐行落库：不做数值解析、不写入推测值（省略即 null）
+        amountText: item.amountText ?? null,
         optional: item.optional ?? false,
         isPrimary: item.isPrimary ?? false,
         sortOrder: index
@@ -142,6 +200,8 @@ async function relationCreates(
         recipeId,
         stepNo: index + 1,
         content: step.content.trim(),
+        title: step.title ?? null,
+        timerMinutes: step.timerMinutes ?? null,
         imagePath: step.imagePath ?? null
       }))
     });
@@ -179,12 +239,16 @@ async function relationCreates(
 function scalarData(input: RecipeWriteInput): Prisma.RecipeUncheckedCreateInput {
   return {
     name: input.name.trim(),
+    // category 是 Google 2.0 新增字段：create 省略 → null；update 省略 → undefined（Prisma 视为“不修改”，
+    // 从而保留原值），显式 null → 清除。其余老 scalar 仍保持 PUT 全量替换语义，不受影响。
+    category: input.category,
     imagePath: input.imagePath ?? null,
     ingredientsText: input.ingredientsText ?? null,
     cookingTimeMinutes: input.cookingTimeMinutes ?? null,
     difficulty: input.difficulty ?? null,
     spicyLevel: input.spicyLevel ?? null,
     servings: input.servings ?? null,
+    calories: input.calories ?? null,
     sourceNote: input.sourceNote ?? null,
     notes: input.notes ?? null,
     favorite: input.favorite ?? false,
@@ -328,4 +392,104 @@ export async function toggleRecipeFavorite(database: PrismaClient, id: string, v
     throw new VersionConflictError({ entity: 'Recipe', id, expectedVersion: version, actualVersion: current.version });
   }
   return database.recipe.findUniqueOrThrow({ where: { id } });
+}
+
+/**
+ * Google2 recipeDetail「🍳 打卡」：只创建一条真实烹饪饮食记录，绝不触碰库存。
+ *
+ * - 路由只负责调用；记录写入复用 meal-records 的 createRecord（同一套真实校验与持久化），
+ *   记录源关系 recipeId 为真实菜谱，items[0].recipe.name 立即可读。
+ * - 热量优先取请求真实值，否则取菜谱自身 calories（可能为 null）；rating/satiety/cost 缺省一律 null。
+ * - 不创建 DRAFT、不调用 purchase/consume、不写 InventoryLog、不调用 preview/confirm 授权，
+ *   响应显式声明 inventoryDeducted=false 并指向正式扣库端点。
+ * - 幂等：同（recipeId, recordDate, mealType）已有未删 CONFIRMED 记录时直接返回该记录，不重复创建。
+ */
+async function cookCheckinTransaction(database: PrismaClient, recipeId: string, input: CookCheckinInput) {
+  return database.$transaction(async (transaction) => {
+    const recipe = await transaction.recipe.findFirst({ where: { id: recipeId, deletedAt: null } });
+    if (!recipe) throw Object.assign(new Error('菜谱不存在'), { statusCode: 404 });
+
+    const existing = await transaction.mealRecord.findFirst({
+      where: {
+        deletedAt: null,
+        status: 'CONFIRMED',
+        recordDate: input.recordDate,
+        mealType: input.mealType,
+        items: { some: { recipeId } }
+      },
+      include: {
+        items: { orderBy: { sortOrder: 'asc' }, include: { recipe: true, store: true } },
+        diners: { include: { diner: true } }
+      }
+    });
+    const calories = input.calories === undefined ? recipe.calories : input.calories;
+    const requestedDiners = [...new Set(input.dinerIds ?? [])].sort();
+    const requestedPhotos =
+      input.photos === undefined || input.photos === null || input.photos.length === 0
+        ? null
+        : input.photos.map((photo) => photo.trim());
+    if (existing) {
+      const existingDiners = existing.diners.map((entry) => entry.dinerId).sort();
+      const existingPhotos = recordDtoWithPhotos(existing).photos;
+      const same =
+        existing.recordTime === (input.recordTime ?? null) &&
+        existing.sourceType === (input.sourceType ?? 'HOMEMADE') &&
+        existing.title === (input.title === undefined ? existing.title : input.title?.trim() || null) &&
+        existing.notes === (input.notes ?? null) &&
+        existing.calories === calories &&
+        existing.rating === (input.rating ?? null) &&
+        existing.satiety === (input.satiety ?? null) &&
+        existing.cost === (input.cost ?? null) &&
+        JSON.stringify(existingDiners) === JSON.stringify(requestedDiners) &&
+        JSON.stringify(existingPhotos) === JSON.stringify(requestedPhotos);
+      if (!same) throw Object.assign(new Error('该菜谱在同一日期和餐次已有不同内容的打卡记录'), { statusCode: 409 });
+      return {
+        record: recordDtoWithPhotos(existing),
+        recipe: { id: recipe.id, name: recipe.name, calories: recipe.calories },
+        inventoryDeducted: false,
+        inventoryDeductionPrompt:
+          '打卡仅生成饮食记录，未扣减库存；如需扣减请走 /api/v1/consumption/preview-from-recipe 预览确认',
+        repeated: true
+      };
+    }
+
+    const recordInput: RecordInput = {
+      recordDate: input.recordDate,
+      recordTime: input.recordTime ?? null,
+      mealType: input.mealType,
+      sourceType: input.sourceType ?? 'HOMEMADE',
+      status: 'CONFIRMED',
+      title: input.title,
+      calories,
+      rating: input.rating ?? null,
+      satiety: input.satiety ?? null,
+      cost: input.cost ?? null,
+      notes: input.notes ?? null,
+      photos: input.photos,
+      items: [{ itemType: 'RECIPE', recipeId, mealRole: 'MAIN', sortOrder: 0 }],
+      dinerIds: input.dinerIds ?? []
+    };
+    const record = await createRecord(transaction, recordInput);
+    return {
+      record,
+      recipe: { id: recipe.id, name: recipe.name, calories: recipe.calories },
+      inventoryDeducted: false,
+      inventoryDeductionPrompt:
+        '打卡仅生成饮食记录，未扣减库存；如需扣减请走 /api/v1/consumption/preview-from-recipe 预览确认',
+      repeated: false
+    };
+  });
+}
+
+export async function cookCheckinRecipe(database: PrismaClient, recipeId: string, input: CookCheckinInput) {
+  // SQLite 并发写入可能暂时返回 P2028；只重试完整 cook-checkin 事务，避免部分写操作重试。
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      return await cookCheckinTransaction(database, recipeId, input);
+    } catch (error) {
+      const code = (error as { code?: string }).code;
+      if (code !== 'P2028' || attempt === 2) throw error;
+    }
+  }
+  throw new Error('cook-checkin transaction retry exhausted');
 }

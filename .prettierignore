@@ -8,3 +8,4 @@ agent.md
 package-lock.json
 app/client/src/assets
 app/client/index.html
+app/client/public/assets/tailwind/tailwindcss-3.4.17.browser.min.js

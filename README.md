@@ -76,6 +76,8 @@ npm run release:windows
 - 自动备份：`data/backups/`
 - PID：`data/app.pid`
 
+存储隔离（可选）：生产默认路径保持不变；仅在明确设置以下三个绝对路径变量时切换数据库、上传和备份目录：`DAFAN_DATABASE_PATH`、`DAFAN_UPLOADS_PATH`、`DAFAN_BACKUPS_PATH`。相对路径或空白无效值会直接失败。测试环境仍必须显式设置 `TEST_DATABASE_URL`。
+
 这些运行数据均应被 Git 忽略。不要在服务运行期间手工替换数据库。
 
 ## 图片位置

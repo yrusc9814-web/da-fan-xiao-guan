@@ -9,6 +9,8 @@ function createDashboardDatabase(overrides: Record<string, unknown> = {}): Prism
   const database = {
     settings: { findUnique: vi.fn().mockResolvedValue(null) },
     recipe: { findMany: vi.fn().mockResolvedValue([]) },
+    // 首页会调用 mealRecord.findMany 三次：今天记录、本周记录、跨周全部有效记录日期（streak 用）；
+    // 未显式排队的调用都落到这里的默认空数组，避免 mock 缺省值与真实调用次数不符。
     mealRecord: { findMany: vi.fn().mockResolvedValue([]) },
     mealPlan: { findMany: vi.fn().mockResolvedValue([]) },
     ingredient: { findMany: vi.fn().mockResolvedValue([]) },
@@ -18,6 +20,16 @@ function createDashboardDatabase(overrides: Record<string, unknown> = {}): Prism
   };
 
   return database as unknown as PrismaClient;
+}
+
+function businessDate(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function offsetBusinessDate(offsetDays: number): string {
+  const date = new Date();
+  date.setDate(date.getDate() + offsetDays);
+  return businessDate(date);
 }
 
 describe('Dashboard 首页只读接口', () => {
@@ -35,12 +47,17 @@ describe('Dashboard 首页只读接口', () => {
     const weekQuery = (database.mealRecord.findMany as unknown as ReturnType<typeof vi.fn>).mock.calls[1]?.[0];
     expect(weekQuery.where.recordDate).toMatchObject({ gte: expect.any(String), lte: expect.any(String) });
     expect(weekQuery.where.status).toBe('CONFIRMED');
+    // 第三次 findMany 是跨周有效记录日期（streak 数据源），空库必须真实返回 []
+    const streakQuery = (database.mealRecord.findMany as unknown as ReturnType<typeof vi.fn>).mock.calls[2]?.[0];
+    expect(streakQuery.where).toEqual({ status: 'CONFIRMED', deletedAt: null });
+    expect(streakQuery.select).toEqual({ recordDate: true });
+    expect((database.mealRecord.findMany as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(3);
     expect(payload.data).toMatchObject({
       branding: { appName: '搭饭小馆', subtitle: '让每一餐都更美好' },
       userNickname: null,
       recommendedRecipes: [],
       inventory: { totalIngredients: 0, expiringSoon: 0, insufficient: 0, expiringIngredients: [] },
-      weeklyStats: { recordedDays: 0, totalMeals: 0, averageRating: null, consumedIngredientCount: 0 },
+      weeklyStats: { recordedDays: 0, streakDays: 0, totalMeals: 0, averageRating: null, consumedIngredientCount: 0 },
       calendarDays: expect.any(Array),
       todayRecords: expect.arrayContaining([
         expect.objectContaining({ mealType: 'BREAKFAST', recorded: false }),
@@ -81,6 +98,8 @@ describe('Dashboard 首页只读接口', () => {
             }
           ])
           .mockResolvedValueOnce([{ recordDate: '2026-08-06', rating: 4.6 }])
+          // 第三次：跨周有效记录日期（streak 数据源），用真实日期给出「今天 + 昨天」连续 2 天
+          .mockResolvedValueOnce([{ recordDate: offsetBusinessDate(0) }, { recordDate: offsetBusinessDate(-1) }])
       },
       mealPlan: { findMany: vi.fn().mockResolvedValue([]) },
       ingredient: {
@@ -111,7 +130,8 @@ describe('Dashboard 首页只读接口', () => {
     expect(payload.data).toMatchObject({
       userNickname: '厨房伙伴',
       recommendedRecipes: [{ id: 'recipe-1', tags: ['家常菜'], rating: 4.6 }],
-      weeklyStats: { totalMeals: 1, averageRating: 4.6, consumedIngredientCount: 2 },
+      // streak 来自第三次 findMany 的真实日期（今天 + 昨天连续），与本周 recordedDays 口径相互独立
+      weeklyStats: { recordedDays: 1, streakDays: 2, totalMeals: 1, averageRating: 4.6, consumedIngredientCount: 2 },
       inventory: { totalIngredients: 1, insufficient: 1 }
     });
   });

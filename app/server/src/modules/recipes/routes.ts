@@ -17,12 +17,14 @@ import {
   versionQuerySchema
 } from '../../shared/validation-schemas.js';
 import {
+  cookCheckinRecipe,
   createRecipe,
   deleteRecipe,
   getRecipe,
   listRecipes,
   toggleRecipeFavorite,
   updateRecipe,
+  type CookCheckinInput,
   type RecipeListQuery,
   type RecipeWriteInput
 } from './service.js';
@@ -35,6 +37,8 @@ const recipeIngredientSchema = {
     ingredientName: stringSchema,
     quantity: { type: ['number', 'null'], minimum: 0 },
     unit: nullableQuantityUnitSchema,
+    /** 自由用量原文（"300g" / "半个" / "适量" / "2汤匙"）：仅字符串或 null，不做任何数值推测。 */
+    amountText: nullableStringSchema,
     optional: booleanSchema,
     isPrimary: booleanSchema
   }
@@ -45,12 +49,15 @@ const recipeBodySchema = {
   required: ['name'],
   properties: {
     name: stringSchema,
+    /** 菜谱分类（前端 #formRecipeCategory）：与 tags 相互独立，null 表示未填写。 */
+    category: nullableStringSchema,
     imagePath: nullableStringSchema,
     ingredientsText: nullableStringSchema,
     cookingTimeMinutes: { type: ['integer', 'null'], minimum: 0 },
     difficulty: nullableStringSchema,
     spicyLevel: { type: ['integer', 'null'], minimum: 0, maximum: 5 },
     servings: { type: ['integer', 'null'], minimum: 0 },
+    calories: { type: ['integer', 'null'], minimum: 50, maximum: 2000 },
     sourceNote: nullableStringSchema,
     notes: nullableStringSchema,
     favorite: booleanSchema,
@@ -61,7 +68,14 @@ const recipeBodySchema = {
       items: {
         type: 'object',
         required: ['content'],
-        properties: { content: stringSchema, imagePath: nullableStringSchema }
+        properties: {
+          content: stringSchema,
+          /** 步骤标题：与 content（步骤说明）独立，null 表示未填写。 */
+          title: nullableStringSchema,
+          /** 步骤计时（分钟）：0..180 整数；null 表示未填写，0 是真实值。 */
+          timerMinutes: { type: ['integer', 'null'], minimum: 0, maximum: 180 },
+          imagePath: nullableStringSchema
+        }
       }
     },
     toolIds: {
@@ -105,6 +119,65 @@ const recipeListQuerySchema = {
     sortOrder: sortOrderQuerySchema
   }
 };
+
+/**
+ * Google2「🍳 打卡」body：只允许真实打卡输入。
+ *
+ * 不含任何库存/扣减字段（打卡不扣库）；nutrition 字段可选且无默认值注入，
+ * satiety 只接受正式档位 3/5/7/8/10，recordDate/mealType 必填且由真实请求提供。
+ */
+const cookSourceTypeSchema = {
+  type: 'string',
+  enum: ['HOMEMADE', 'TAKEOUT', 'DINE_IN', 'CUSTOM']
+} as const;
+
+const cookCheckinBodySchema = {
+  type: 'object',
+  required: ['recordDate', 'mealType'],
+  additionalProperties: false,
+  properties: {
+    recordDate: { type: 'string', pattern: '^\\d{4}-\\d{2}-\\d{2}$' },
+    mealType: mealTypeSchema,
+    recordTime: nullableStringSchema,
+    title: { type: ['string', 'null'], maxLength: 200 },
+    notes: nullableStringSchema,
+    photos: { type: ['array', 'null'], maxItems: 3, items: stringSchema },
+    calories: { type: ['integer', 'null'], minimum: 0 },
+    rating: { type: ['number', 'null'], minimum: 0, maximum: 5 },
+    satiety: { type: ['integer', 'null'], enum: [3, 5, 7, 8, 10, null] },
+    cost: { type: ['integer', 'null'], minimum: 0, maximum: 9999 },
+    dinerIds: stringListSchema,
+    sourceType: cookSourceTypeSchema
+  }
+};
+
+/**
+ * Google2「🍳 打卡」body 的允许字段（Fastify 默认 AJV 会静默剥离未知字段，
+ * 与“打卡不接收任何库存/confirm 语义”的 fail-closed 契约冲突）。
+ * preValidation 在 AJV 之前运行，能看到原始解析后的 body。
+ */
+const cookCheckinAllowedKeys: readonly string[] = [
+  'recordDate',
+  'mealType',
+  'recordTime',
+  'title',
+  'notes',
+  'photos',
+  'calories',
+  'rating',
+  'satiety',
+  'cost',
+  'dinerIds',
+  'sourceType'
+];
+
+function assertCookCheckinKeys(body: unknown): void {
+  if (!body || typeof body !== 'object') return;
+  const unknown = Object.keys(body as Record<string, unknown>).filter((key) => !cookCheckinAllowedKeys.includes(key));
+  if (unknown.length) {
+    throw Object.assign(new Error(`打卡请求包含未支持的字段：${unknown.join(', ')}`), { statusCode: 400 });
+  }
+}
 
 export async function registerRecipeRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
   app.get<{ Querystring: Record<string, string | undefined> }>(
@@ -155,5 +228,18 @@ export async function registerRecipeRoutes(app: FastifyInstance, database: Prism
     },
     async (request) =>
       success(await toggleRecipeFavorite(database, request.params.id, request.body.version, request.body.favorite))
+  );
+  // Google2 recipeDetail「🍳 打卡」：仅创建真实烹饪记录，不扣库。
+  // 新建 201；同（菜谱, 日期, 餐次）已有 CONFIRMED 记录时返回既有记录 200（repeated=true）。
+  app.post<{ Params: { id: string }; Body: CookCheckinInput }>(
+    '/api/v1/recipes/:id/cook-checkin',
+    {
+      schema: { body: cookCheckinBodySchema },
+      preValidation: async (request) => assertCookCheckinKeys(request.body)
+    },
+    async (request, reply) => {
+      const result = await cookCheckinRecipe(database, request.params.id, request.body);
+      return reply.code(result.repeated ? 200 : 201).send(success(result));
+    }
   );
 }

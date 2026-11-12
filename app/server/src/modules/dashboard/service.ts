@@ -43,6 +43,46 @@ function getGreetingText(period: DashboardDto['greetingPeriod']): string {
   }
 }
 
+/**
+ * 问候卡主标题：只由真实时段（greetingPeriod）和真实昵称派生，不编造任何业务数字。
+ * 昵称为空时省略称谓，不伪造称呼。
+ */
+function getGreetingTitle(period: DashboardDto['greetingPeriod'], nickname: string | null): string {
+  const periodLabel = period === 'morning' ? '早上好' : period === 'afternoon' ? '下午好' : '晚上好';
+  return nickname ? `${periodLabel}，${nickname}` : periodLabel;
+}
+
+function shiftBusinessDate(date: Date, offsetDays: number): string {
+  const shifted = new Date(date);
+  shifted.setDate(shifted.getDate() + offsetDays);
+  return toBusinessDate(shifted);
+}
+
+/**
+ * 连续记录天数（streak）。
+ *
+ * 口径：
+ * - 有效记录 = status CONFIRMED 且 deletedAt IS NULL（与本周记录统计、日历 hasRecords 同一口径），
+ *   不采信前端 DRAFT 或任何伪 activeness 标记。
+ * - 按业务日期去重，跨周累计，不受自然周边界影响（本周 recordedDays 只覆盖周一起的 7 天，不能代表连续天数）。
+ * - 锚点：今天已有有效记录则从今天回溯；今天尚未记录则从昨天回溯（当天还没记完不该丢掉昨天起的连续）。
+ *   昨天也没有记录时连续为 0。
+ * - 只有日期连续、每天至少一条有效记录才算入，断档即停止。
+ */
+function computeStreak(recordDates: Set<string>, today: string, yesterday: string): number {
+  const anchor = recordDates.has(today) ? today : yesterday;
+  if (!recordDates.has(anchor)) return 0;
+
+  const [year, month, day] = anchor.split('-').map(Number);
+  const cursor = new Date(year ?? 1970, (month ?? 1) - 1, day ?? 1);
+  let streak = 0;
+  while (recordDates.has(toBusinessDate(cursor))) {
+    streak += 1;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
 function toCalendarDays(
   currentDate: Date,
   recordedDates: Set<string>,
@@ -77,51 +117,58 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
   weekEnd.setHours(23, 59, 59, 999);
   const weekEndDate = toBusinessDate(weekEnd);
 
-  const [settings, recipes, todayRecords, weekRecords, plannedDays, ingredients, consumedLogs] = await Promise.all([
-    database.settings.findUnique({ where: { id: 1 } }),
-    database.recipe.findMany({
-      where: { deletedAt: null, enabledForRecommendation: true },
-      orderBy: { createdAt: 'asc' },
-      take: 6,
-      include: {
-        tags: { include: { tag: true } },
-        recordItems: {
-          where: { mealRecord: { status: 'CONFIRMED', deletedAt: null } },
-          include: {
-            mealRecord: { select: { rating: true, deletedAt: true } }
+  const [settings, recipes, todayRecords, weekRecords, allRecordDates, plannedDays, ingredients, consumedLogs] =
+    await Promise.all([
+      database.settings.findUnique({ where: { id: 1 } }),
+      database.recipe.findMany({
+        where: { deletedAt: null, enabledForRecommendation: true },
+        orderBy: { createdAt: 'asc' },
+        take: 6,
+        include: {
+          tags: { include: { tag: true } },
+          recordItems: {
+            where: { mealRecord: { status: 'CONFIRMED', deletedAt: null } },
+            include: {
+              mealRecord: { select: { rating: true, deletedAt: true } }
+            }
           }
         }
-      }
-    }),
-    database.mealRecord.findMany({
-      where: { recordDate: currentDate, status: 'CONFIRMED', deletedAt: null },
-      orderBy: { mealType: 'asc' },
-      include: {
-        items: {
-          orderBy: { sortOrder: 'asc' },
-          take: 1,
-          include: { recipe: true, store: true }
+      }),
+      database.mealRecord.findMany({
+        where: { recordDate: currentDate, status: 'CONFIRMED', deletedAt: null },
+        orderBy: { mealType: 'asc' },
+        include: {
+          items: {
+            orderBy: { sortOrder: 'asc' },
+            take: 1,
+            include: { recipe: true, store: true }
+          }
         }
-      }
-    }),
-    database.mealRecord.findMany({
-      where: { recordDate: { gte: weekStartDate, lte: weekEndDate }, status: 'CONFIRMED', deletedAt: null },
-      select: { recordDate: true, rating: true }
-    }),
-    database.mealPlan.findMany({
-      where: {
-        planDate: { gte: weekStartDate, lte: weekEndDate },
-        status: { in: ['PLANNED', 'COMPLETED'] },
-        deletedAt: null
-      },
-      select: { planDate: true }
-    }),
-    database.ingredient.findMany({ where: { deletedAt: null }, orderBy: { expiryDate: 'asc' } }),
-    database.inventoryLog.findMany({
-      where: { createdAt: { gte: weekStart, lte: weekEnd }, changeType: 'COOK_DEDUCT' },
-      select: { ingredientId: true, ingredientNameSnapshot: true }
-    })
-  ]);
+      }),
+      database.mealRecord.findMany({
+        where: { recordDate: { gte: weekStartDate, lte: weekEndDate }, status: 'CONFIRMED', deletedAt: null },
+        select: { recordDate: true, rating: true }
+      }),
+      // 连续记录天数需要跨周的全部有效记录日期，因此不按本周窗口过滤
+      database.mealRecord.findMany({
+        where: { status: 'CONFIRMED', deletedAt: null },
+        select: { recordDate: true },
+        distinct: ['recordDate']
+      }),
+      database.mealPlan.findMany({
+        where: {
+          planDate: { gte: weekStartDate, lte: weekEndDate },
+          status: { in: ['PLANNED', 'COMPLETED'] },
+          deletedAt: null
+        },
+        select: { planDate: true }
+      }),
+      database.ingredient.findMany({ where: { deletedAt: null }, orderBy: { expiryDate: 'asc' } }),
+      database.inventoryLog.findMany({
+        where: { createdAt: { gte: weekStart, lte: weekEnd }, changeType: 'COOK_DEDUCT' },
+        select: { ingredientId: true, ingredientNameSnapshot: true }
+      })
+    ]);
 
   const expiringLimit = new Date(now);
   expiringLimit.setDate(expiringLimit.getDate() + 3);
@@ -163,6 +210,13 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
 
   const ratedRecords = weekRecords.filter((record) => record.rating !== null);
   const recordedDates = new Set(weekRecords.map((record) => record.recordDate));
+  // 真实 Prisma findMany 恒为数组：这里不做「非数组 => 空数组」兜底，
+  // 否则数据访问契约被破坏时会静默把连续天数伪装成 0，掩盖真实故障。
+  const streakDays = computeStreak(
+    new Set(allRecordDates.map((record) => record.recordDate)),
+    currentDate,
+    shiftBusinessDate(now, -1)
+  );
   const plannedDateSet = new Set(plannedDays.map((plan) => plan.planDate));
   const averageRating =
     ratedRecords.length > 0
@@ -178,6 +232,7 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
     userNickname: settings?.userNickname ?? null,
     currentDate,
     greetingPeriod: period,
+    greetingTitle: getGreetingTitle(period, settings?.userNickname ?? null),
     greetingText: getGreetingText(period),
     recommendedRecipes: recipes.map((recipe) => {
       const ratings = recipe.recordItems
@@ -207,6 +262,7 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
     },
     weeklyStats: {
       recordedDays: recordedDates.size,
+      streakDays,
       totalMeals: weekRecords.length,
       averageRating,
       consumedIngredientCount: new Set(consumedLogs.map((log) => log.ingredientId ?? log.ingredientNameSnapshot)).size

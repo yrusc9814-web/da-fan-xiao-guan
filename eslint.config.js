@@ -4,7 +4,17 @@ import tseslint from 'typescript-eslint';
 import vue from 'eslint-plugin-vue';
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', 'dist-server/**', 'data/**', 'runtime/**', 'node_modules/**', 'docs/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      'dist-server/**',
+      'data/**',
+      'runtime/**',
+      'node_modules/**',
+      'docs/**',
+      'app/client/public/assets/tailwind/tailwindcss-3.4.17.browser.min.js'
+    ]
+  },
   eslint.configs.recommended,
   ...tseslint.configs.recommended,
   ...vue.configs['flat/essential'],

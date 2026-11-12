@@ -1,4 +1,5 @@
 import { spawnSync } from 'node:child_process';
+import { fixtureDataRoot } from './setup/fixture-paths.js';
 import { existsSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { resolve } from 'node:path';
@@ -7,7 +8,7 @@ import { afterAll, describe, expect, it } from 'vitest';
 
 const projectRoot = resolve(import.meta.dirname, '../../..');
 const script = resolve(projectRoot, 'scripts/reset-test-database.mjs');
-const allowedDatabase = resolve(projectRoot, 'data/test-reset-guard.db');
+const allowedDatabase = resolve(fixtureDataRoot(projectRoot), 'test-reset-guard.db');
 
 function reset(databaseUrl: string) {
   return spawnSync(process.execPath, [script], {
@@ -35,6 +36,6 @@ describe('测试数据库重置保护', () => {
   ])('拒绝删除%s', (_, databaseUrl) => {
     const result = reset(databaseUrl);
     expect(result.status).not.toBe(0);
-    expect(result.stderr).toContain('拒绝重置非测试数据库');
+    expect(result.stderr).toMatch(/拒绝重置非测试数据库|安全闸|escapes isolation root/);
   });
 });

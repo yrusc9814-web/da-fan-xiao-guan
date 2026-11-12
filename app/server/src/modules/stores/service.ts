@@ -6,11 +6,26 @@ import { VersionConflictError } from '../../database/optimistic-lock.js';
 const STORE_TEXT_LIMIT = 2_000;
 const STORE_NAME_LIMIT = 120;
 const RECENT_DAYS_DEFAULT = 30;
+const MENU_ITEM_NAME_LIMIT = 100;
+const MENU_ITEM_ICON_LIMIT = 20;
+const MENU_ITEM_DESC_LIMIT = 500;
+const MENU_ITEM_LIMIT = 100;
+const MENU_PRICE_MIN = 1;
+const MENU_PRICE_MAX = 999;
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
 export type StoreAcquisitionMode = 'DINE_IN' | 'TAKEOUT';
 export type StoreSortBy = 'name' | 'averageCost' | 'rating' | 'createdAt' | 'updatedAt' | 'lastEaten';
+
+export interface StoreMenuItemInput {
+  name: string;
+  price?: number | null;
+  icon?: string | null;
+  isSignature?: boolean;
+  desc?: string | null;
+  sortOrder?: number;
+}
 
 export interface StoreWriteInput {
   name: string;
@@ -30,6 +45,7 @@ export interface StoreWriteInput {
   notes?: string | null;
   favorite?: boolean;
   mealTypes?: MealType[];
+  menuItems?: StoreMenuItemInput[];
 }
 
 export type StoreUpdateInput = Partial<StoreWriteInput> & { version: number };
@@ -88,6 +104,89 @@ function validateMealTypes(mealTypes: MealType[] | undefined): MealType[] {
     throw new StoreRequestError('餐次类型无效');
   }
   return unique;
+}
+
+interface NormalizedMenuItem {
+  name: string;
+  price: number | null;
+  icon: string | null;
+  isSignature: boolean;
+  desc: string | null;
+  sortOrder: number;
+}
+
+/** 菜单文本：nullish → null；非字符串 / 超限直接 400，不做类型强转与静默截断。 */
+function cleanedMenuText(value: unknown, field: string, limit: number): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') throw new StoreRequestError(`${field}必须是字符串`);
+  const cleaned = value.trim();
+  if (cleaned.length > limit) throw new StoreRequestError(`${field}不能超过 ${limit} 个字符`);
+  return cleaned || null;
+}
+
+/**
+ * 招牌菜单入参规范化。
+ *
+ * 契约（与 Google 2.0 前端 #formStoreMenuList 行字段一一对应）：
+ *   * name 必填、去空白后非空、≤ 100；
+ *   * price 可缺省为 null，其余必须是 1..999 整数（前端 input min=1 max=999，故 0 / 负数 / 小数一律 400，不兜底造价）；
+ *   * icon ≤ 20，desc ≤ 500，均可空；
+ *   * isSignature 可缺省（默认 false），其余必须是布尔；
+ *   * sortOrder 可缺省 → 采用数组下标，显式值必须是非负整数（决定列表返回顺序）。
+ *
+ * 任何非法值都快速失败，绝不静默丢弃整行、也绝不写入假默认值。
+ */
+function validateMenuItems(menuItems: unknown): NormalizedMenuItem[] {
+  if (menuItems === undefined) return [];
+  if (!Array.isArray(menuItems)) throw new StoreRequestError('招牌菜单必须是数组');
+  if (menuItems.length > MENU_ITEM_LIMIT) throw new StoreRequestError(`招牌菜单最多 ${MENU_ITEM_LIMIT} 道菜`);
+  return menuItems.map((raw, index) => {
+    if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) {
+      throw new StoreRequestError(`第 ${index + 1} 道菜必须是对象`);
+    }
+    const item = raw as Record<string, unknown>;
+    const name = cleanedMenuText(item.name, `第 ${index + 1} 道菜的菜名`, MENU_ITEM_NAME_LIMIT);
+    if (!name) throw new StoreRequestError(`第 ${index + 1} 道菜的菜名不能为空`);
+
+    let price: number | null = null;
+    if (item.price !== undefined && item.price !== null) {
+      if (
+        typeof item.price !== 'number' ||
+        !Number.isInteger(item.price) ||
+        item.price < MENU_PRICE_MIN ||
+        item.price > MENU_PRICE_MAX
+      ) {
+        throw new StoreRequestError(
+          `第 ${index + 1} 道菜的单价必须是 ${MENU_PRICE_MIN} 到 ${MENU_PRICE_MAX} 之间的整数`
+        );
+      }
+      price = item.price;
+    }
+
+    let isSignature = false;
+    if (item.isSignature !== undefined) {
+      if (typeof item.isSignature !== 'boolean')
+        throw new StoreRequestError(`第 ${index + 1} 道菜的招牌标记必须是布尔值`);
+      isSignature = item.isSignature;
+    }
+
+    let sortOrder = index;
+    if (item.sortOrder !== undefined) {
+      if (typeof item.sortOrder !== 'number' || !Number.isInteger(item.sortOrder) || item.sortOrder < 0) {
+        throw new StoreRequestError(`第 ${index + 1} 道菜的排序必须是非负整数`);
+      }
+      sortOrder = item.sortOrder;
+    }
+
+    return {
+      name,
+      price,
+      icon: cleanedMenuText(item.icon, `第 ${index + 1} 道菜的图标`, MENU_ITEM_ICON_LIMIT),
+      isSignature,
+      desc: cleanedMenuText(item.desc, `第 ${index + 1} 道菜的描述`, MENU_ITEM_DESC_LIMIT),
+      sortOrder
+    };
+  });
 }
 
 function validatedStoreData(input: Partial<StoreWriteInput>, requireName: boolean): Prisma.StoreUpdateInput {
@@ -204,6 +303,7 @@ function baseStoreWhere(query: StoreListQuery): Prisma.StoreWhereInput {
 
 const storeInclude = {
   mealTypes: { orderBy: { mealType: 'asc' as const } },
+  menuItems: { orderBy: [{ sortOrder: 'asc' as const }, { createdAt: 'asc' as const }] },
   recordItems: {
     where: activeRecordWhere(),
     select: { mealRecord: { select: { id: true, recordDate: true } } }
@@ -213,6 +313,18 @@ const storeInclude = {
 function mapStore<
   T extends {
     mealTypes: Array<{ mealType: MealType }>;
+    menuItems: Array<{
+      id: string;
+      storeId: string;
+      name: string;
+      price: number | null;
+      icon: string | null;
+      isSignature: boolean;
+      desc: string | null;
+      sortOrder: number;
+      createdAt: Date;
+      updatedAt: Date;
+    }>;
     recordItems: Array<{ mealRecord: { id: string; recordDate: string } }>;
   }
 >(store: T) {
@@ -225,6 +337,18 @@ function mapStore<
   return {
     ...rest,
     mealTypes: store.mealTypes.map(({ mealType }) => mealType),
+    menuItems: store.menuItems.map((item) => ({
+      id: item.id,
+      storeId: item.storeId,
+      name: item.name,
+      price: item.price,
+      icon: item.icon,
+      isSignature: item.isSignature,
+      desc: item.desc,
+      sortOrder: item.sortOrder,
+      createdAt: item.createdAt.toISOString(),
+      updatedAt: item.updatedAt.toISOString()
+    })),
     lastEatenDate: recordDates[0] ?? null,
     historyCount: recordIds.size
   };
@@ -236,14 +360,55 @@ async function activeStoreOrThrow(database: DatabaseClient, id: string) {
   return store;
 }
 
+/**
+ * 整组替换招牌菜单：与菜谱子表（recipeIngredient / recipeStep 等）保持同一模式——
+ * 先在调用方事务内删除该店铺全部菜单行，再按请求数组顺序整组重建。
+ * 事务由调用方持有，失败（含乐观锁冲突）时由父级 Store 一起回滚，不留半套菜单。
+ */
+async function replaceStoreMenuItems(
+  transaction: Prisma.TransactionClient,
+  storeId: string,
+  menuItems: NormalizedMenuItem[]
+): Promise<void> {
+  await transaction.storeMenuItem.deleteMany({ where: { storeId } });
+  if (menuItems.length) {
+    await transaction.storeMenuItem.createMany({
+      data: menuItems.map((item) => ({
+        storeId,
+        name: item.name,
+        price: item.price,
+        icon: item.icon,
+        isSignature: item.isSignature,
+        desc: item.desc,
+        sortOrder: item.sortOrder
+      }))
+    });
+  }
+}
+
 export async function createStore(database: PrismaClient, input: StoreWriteInput) {
   const mealTypes = validateMealTypes(input.mealTypes);
+  const menuItems = validateMenuItems(input.menuItems);
   const data = validatedStoreData(input, true) as Prisma.StoreCreateInput;
   return database.$transaction(async (transaction) => {
     const store = await transaction.store.create({
       data: {
         ...data,
-        ...(mealTypes.length ? { mealTypes: { create: mealTypes.map((mealType) => ({ mealType })) } } : {})
+        ...(mealTypes.length ? { mealTypes: { create: mealTypes.map((mealType) => ({ mealType })) } } : {}),
+        ...(menuItems.length
+          ? {
+              menuItems: {
+                create: menuItems.map((item) => ({
+                  name: item.name,
+                  price: item.price,
+                  icon: item.icon,
+                  isSignature: item.isSignature,
+                  desc: item.desc,
+                  sortOrder: item.sortOrder
+                }))
+              }
+            }
+          : {})
       },
       include: storeInclude
     });
@@ -303,6 +468,8 @@ export async function getStore(database: PrismaClient, id: string) {
 export async function updateStore(database: PrismaClient, id: string, input: StoreUpdateInput) {
   if (!Number.isInteger(input.version) || input.version < 1) throw new StoreRequestError('版本号无效');
   const mealTypes = input.mealTypes === undefined ? undefined : validateMealTypes(input.mealTypes);
+  // 菜单校验必须先于事务内的任何写操作：非法菜单不得让父 Store 字段先被改掉
+  const menuItems = input.menuItems === undefined ? undefined : validateMenuItems(input.menuItems);
   const data = validatedStoreData(input, false);
   return database.$transaction(async (transaction) => {
     const current = await activeStoreOrThrow(transaction, id);
@@ -314,6 +481,7 @@ export async function updateStore(database: PrismaClient, id: string, input: Sto
         actualVersion: current.version
       });
     }
+    // 部分更新语义保持不变：始终按版本推进一次，即使本次只带了菜单。
     const result = await transaction.store.updateMany({
       where: { id, deletedAt: null, version: input.version },
       data: { ...data, version: { increment: 1 } }
@@ -331,6 +499,10 @@ export async function updateStore(database: PrismaClient, id: string, input: Sto
       await transaction.storeMealType.deleteMany({ where: { storeId: id } });
       if (mealTypes.length)
         await transaction.storeMealType.createMany({ data: mealTypes.map((mealType) => ({ storeId: id, mealType })) });
+    }
+    if (menuItems !== undefined) {
+      // menuItems 省略 → 原菜单组保持；[] → 清空；非空 → 整组替换。
+      await replaceStoreMenuItems(transaction, id, menuItems);
     }
     const updated = await transaction.store.findUniqueOrThrow({ where: { id }, include: storeInclude });
     return mapStore(updated);

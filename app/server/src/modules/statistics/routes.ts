@@ -6,6 +6,7 @@ import { isoDateQuerySchema, stringSchema } from '../../shared/validation-schema
 import { getStatistics } from './service.js';
 
 const statisticsQuerySchema = {
+  // 这里只校验形状（YYYY-MM-DD）；真实日历存在性（含闰年、2026-02-31 不得 rollover）由 service 层 400 拒绝。
   type: 'object',
   properties: { start: isoDateQuerySchema, end: isoDateQuerySchema, dinerId: stringSchema }
 };

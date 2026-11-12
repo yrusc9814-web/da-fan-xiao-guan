@@ -6,10 +6,28 @@ import { recordDeletedItem } from '../../database/deleted-items.js';
 export interface ToolWriteInput {
   name: string;
   imagePath?: string | null;
+  /** 设备图标（前端 #formToolIcon select 的 emoji 原文）；null 表示未填写，绝不以 🍲 等默认值冒充。 */
+  icon?: string | null;
   category?: string | null;
   quantity?: number;
   status?: string | null;
   notes?: string | null;
+}
+
+/** 图标长度上限（与冻结 UI select 的 emoji 原文容量对应；超限快速失败而非静默截断）。 */
+const TOOL_ICON_LIMIT = 20;
+
+/**
+ * 图标入参：null/undefined/空串 → null（未填写）；非字符串或超限 → 400。
+ * 注意：mapTool 类读取侧不得回退 imagePath/🍲 —— 只返回真实存下的 icon。
+ */
+function cleanedIcon(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  if (typeof value !== 'string') throw Object.assign(new Error('设备图标必须是字符串'), { statusCode: 400 });
+  const cleaned = value.trim();
+  if (cleaned.length > TOOL_ICON_LIMIT)
+    throw Object.assign(new Error(`设备图标不能超过 ${TOOL_ICON_LIMIT} 个字符`), { statusCode: 400 });
+  return cleaned || null;
 }
 
 function validate(input: ToolWriteInput): void {
@@ -17,6 +35,7 @@ function validate(input: ToolWriteInput): void {
   if (input.quantity != null && (!Number.isInteger(input.quantity) || input.quantity < 0)) {
     throw Object.assign(new Error('工具数量必须是非负整数'), { statusCode: 400 });
   }
+  cleanedIcon(input.icon);
 }
 
 export async function listTools(database: PrismaClient, search?: string) {
@@ -38,6 +57,7 @@ export async function createTool(database: PrismaClient, input: ToolWriteInput) 
     data: {
       name: input.name.trim(),
       imagePath: input.imagePath ?? null,
+      icon: cleanedIcon(input.icon),
       category: input.category ?? null,
       quantity: input.quantity ?? 1,
       status: input.status ?? null,
@@ -55,6 +75,8 @@ export async function updateTool(database: PrismaClient, id: string, version: nu
     data: {
       name: input.name.trim(),
       imagePath: input.imagePath ?? null,
+      // 省略 icon → 保留库内旧值（不得把用户已选图标静默清空/造假）；显式 null/空串 → 清空。
+      icon: input.icon === undefined ? undefined : cleanedIcon(input.icon),
       category: input.category ?? null,
       quantity: input.quantity ?? 1,
       status: input.status ?? null,

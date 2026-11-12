@@ -4,14 +4,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const testDatabaseUrl = process.env.TEST_DATABASE_URL ?? 'file:../../../data/test.db';
 const prismaCli = resolve(projectRoot, 'node_modules/prisma/build/index.js');
-const environment = {
-  ...process.env,
-  DATABASE_URL: testDatabaseUrl,
-  TEST_DATABASE_URL: testDatabaseUrl,
-  NODE_ENV: 'test'
-};
+const { testEnvironment } = await import('./test-storage-environment.mjs');
+const environment = await testEnvironment();
 
 function run(command, args) {
   const result = spawnSync(command, args, { cwd: projectRoot, env: environment, stdio: 'inherit' });

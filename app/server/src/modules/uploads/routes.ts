@@ -1,8 +1,7 @@
 import { createReadStream } from 'node:fs';
 import { mkdir, realpath, stat, unlink, writeFile } from 'node:fs/promises';
 import { createHash, randomUUID } from 'node:crypto';
-import { dirname, extname, resolve, sep } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { extname, resolve, sep } from 'node:path';
 
 import multipart from '@fastify/multipart';
 import type { PrismaClient } from '@prisma/client';
@@ -11,8 +10,9 @@ import sharp from 'sharp';
 
 import type { UploadAssetDto } from '../../../../shared/types/domain.js';
 import { failure, success } from '../../shared/http.js';
+import { assertIsolatedPath, resolveUploadsDirectory } from '../../database/paths.js';
 
-const uploadsDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../../data/uploads');
+const uploadsDirectory = resolveUploadsDirectory();
 const thumbnailsDirectory = resolve(uploadsDirectory, 'thumbnails');
 const maxUploadBytes = 8 * 1024 * 1024;
 
@@ -74,21 +74,67 @@ function toDto(asset: {
   };
 }
 
+/**
+ * 解析 MealRecord.photosJson（规范 JSON 字符串数组）。返回 null 表示“无多图列表”，
+ * 非数组/含非字符串/坏 JSON 视为数据损坏 → 抛错快速失败，绝不静默当成“无人引用”。
+ */
+function parsePhotosJson(value: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(value);
+  } catch {
+    throw Object.assign(new Error('MealRecord.photosJson 数据损坏：不是合法 JSON'), { statusCode: 500 });
+  }
+  if (!Array.isArray(parsed) || parsed.some((entry) => typeof entry !== 'string')) {
+    throw Object.assign(new Error('MealRecord.photosJson 数据损坏：不是字符串数组'), { statusCode: 500 });
+  }
+  return parsed as string[];
+}
+
+/**
+ * 上传资产是否被业务数据引用。
+ *
+ * 修复点（Google2 第二轮）：旧实现只匹配各实体单一 imagePath 列，多图记录的第 2/3 张
+ * 会被误判为“无人引用”从而连文件一起删除。现在：
+ *   * MealRecord 同时检查 imagePath（旧单图）与 photosJson（多图有序数组）中的每一张；
+ *   * photosJson 用正规 JSON 解析后逐项精确比对，绝不用 LIKE '%name%' 拼接（避免子串误判与注入）；
+ *   * 坏 JSON / 非数组结构抛错（fail-closed），不会把用户图片当成可删除；
+ *   * 旧单图字段语义完全保留（旧记录 / 旧字段继续保护其图片）。
+ */
 async function isReferenced(
   database: PrismaClient,
   asset: { filename: string; thumbnailPath: string | null }
 ): Promise<boolean> {
   const paths = [`/uploads/${asset.filename}`, asset.filename];
   if (asset.thumbnailPath) paths.push(`/uploads/${asset.thumbnailPath}`, asset.thumbnailPath);
+  const pathSet = new Set(paths);
   const [recipes, stores, records] = await Promise.all([
     database.recipe.count({ where: { deletedAt: null, imagePath: { in: paths } } }),
     database.store.count({ where: { deletedAt: null, imagePath: { in: paths } } }),
-    database.mealRecord.count({ where: { deletedAt: null, imagePath: { in: paths } } })
+    database.mealRecord.findMany({
+      where: { deletedAt: null, NOT: { photosJson: null } },
+      select: { imagePath: true, photosJson: true }
+    })
   ]);
-  return recipes + stores + records > 0;
+  if (recipes + stores > 0) return true;
+
+  const singleImageRecords = await database.mealRecord.count({
+    where: { deletedAt: null, imagePath: { in: paths } }
+  });
+  if (singleImageRecords > 0) return true;
+
+  // 多图：只解析本资产相关的 photosJson 列（逐条精确比对，容量为本地个人库规模）。
+  for (const record of records) {
+    const photos = parsePhotosJson(record.photosJson as string);
+    if (photos.some((photo) => pathSet.has(photo) || pathSet.has(photo.replace(/^\/uploads\//, '')))) {
+      return true;
+    }
+  }
+  return false;
 }
 
 export async function registerUploadRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
+  assertIsolatedPath(thumbnailsDirectory);
   await mkdir(thumbnailsDirectory, { recursive: true });
   await app.register(multipart, {
     limits: {
@@ -136,7 +182,12 @@ export async function registerUploadRoutes(app: FastifyInstance, database: Prism
         .toBuffer();
       const finalMetadata = await sharp(normalized).metadata();
 
-      await Promise.all([writeFile(outputPath, normalized), writeFile(thumbnailPath, thumbnail)]);
+      assertIsolatedPath(outputPath);
+      assertIsolatedPath(thumbnailPath);
+      await Promise.all([
+        writeFile(outputPath, normalized, { flag: 'wx' }),
+        writeFile(thumbnailPath, thumbnail, { flag: 'wx' })
+      ]);
       try {
         const asset = await database.uploadAsset.create({
           data: {
@@ -173,6 +224,8 @@ export async function registerUploadRoutes(app: FastifyInstance, database: Prism
       return reply.code(409).send(failure('REFERENCED_RESOURCE', '图片正在被业务数据使用，不能删除'));
     }
 
+    assertIsolatedPath(resolve(uploadsDirectory, asset.storagePath));
+    if (asset.thumbnailPath) assertIsolatedPath(resolve(uploadsDirectory, asset.thumbnailPath));
     await database.uploadAsset.update({ where: { id: asset.id }, data: { deletedAt: new Date() } });
     await Promise.allSettled([
       unlink(resolve(uploadsDirectory, asset.storagePath)),

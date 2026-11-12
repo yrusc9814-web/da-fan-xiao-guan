@@ -1,13 +1,14 @@
 import { createWriteStream } from 'node:fs';
-import { readFile, rm, writeFile, mkdtemp } from 'node:fs/promises';
+import { readFile, rm, writeFile, mkdtemp, readdir } from 'node:fs/promises';
+import { resolveBackupsDirectory, resolveUploadsDirectory } from '../src/database/paths.js';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
+import { fixtureDirectory as tmpdir } from './setup/fixture-paths.js';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ZipArchive } from 'archiver';
 
 import { buildApp } from '../src/app.js';
 import { createTestPrismaClient } from '../src/database/test-database.js';
-import { backupResourceLimits, createBackup, restoreBackup } from '../src/modules/backup/service.js';
+import { backupResourceLimits, createBackup, restoreBackup, ensureDailyBackup } from '../src/modules/backup/service.js';
 import { setPin } from '../src/modules/settings/service.js';
 
 const database = createTestPrismaClient();
@@ -74,6 +75,52 @@ describe('备份恢复', () => {
       expect((await database.recipe.findUniqueOrThrow({ where: { id: recipe.id } })).name).toBe('备份状态C');
     } finally {
       await backup.cleanup();
+      await rm(temporary, { recursive: true, force: true });
+    }
+  });
+
+  it.skipIf(!process.env.DAFAN_ISOLATION_ROOT)(
+    'isolated retention keeps exactly 30 auto files and preserves manual files',
+    async () => {
+      const root = resolveBackupsDirectory();
+      expect(await readdir(root)).toEqual([]);
+      const manual = join(root, 'manual-forward-test.zip');
+      await writeFile(manual, 'preserve');
+      await database.settings.update({ where: { id: 1 }, data: { autoBackupEnabled: true } });
+      try {
+        for (let i = 0; i < 31; i++)
+          await writeFile(join(root, `auto-2000-01-${String(i).padStart(2, '0')}-fixture.zip`), 'old');
+        const result = await ensureDailyBackup(database);
+        expect(result.created).toBe(true);
+        expect((await readdir(root)).filter((name) => name.startsWith('auto-') && name.endsWith('.zip'))).toHaveLength(
+          30
+        );
+        expect(await readFile(manual, 'utf8')).toBe('preserve');
+        expect((await ensureDailyBackup(database)).created).toBe(false);
+      } finally {
+        await database.settings.update({ where: { id: 1 }, data: { autoBackupEnabled: false } });
+        for (const name of await readdir(root)) await rm(join(root, name), { force: true });
+      }
+    }
+  );
+
+  it('restore rejects unknown ZIP namespace without modifying DB or uploaded file', async () => {
+    const temporary = await mkdtemp(join(tmpdir(), 'negative-restore-'));
+    const sentinel = join(resolveUploadsDirectory(), 'forward-sentinel.txt');
+    const recipe = await database.recipe.create({ data: { name: 'negative-restore-sentinel' } });
+    await writeFile(sentinel, 'unchanged');
+    try {
+      const zip = join(temporary, 'traversal.zip');
+      // archiver normalizes ../, so an unknown absolute namespace is separately rejected by the real extractor.
+      await createZip(zip, [{ name: 'unexpected/outside.txt', content: Buffer.from('reject') }]);
+      await expect(restoreBackup(database, zip)).rejects.toMatchObject({ statusCode: 422 });
+      expect(await readFile(sentinel, 'utf8')).toBe('unchanged');
+      expect((await database.recipe.findUniqueOrThrow({ where: { id: recipe.id } })).name).toBe(
+        'negative-restore-sentinel'
+      );
+    } finally {
+      await rm(sentinel, { force: true });
+      await database.recipe.delete({ where: { id: recipe.id } });
       await rm(temporary, { recursive: true, force: true });
     }
   });

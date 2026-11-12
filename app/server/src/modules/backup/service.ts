@@ -2,20 +2,26 @@ import { createHash, randomUUID } from 'node:crypto';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
 import { dirname, join, posix, resolve, sep } from 'node:path';
-import { tmpdir } from 'node:os';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
-import { fileURLToPath } from 'node:url';
 import type { PrismaClient } from '@prisma/client';
 import { ZipArchive } from 'archiver';
 import unzipper, { type File as ZipEntry } from 'unzipper';
 
-import { filePathFromDatabaseUrl, resolveDatabaseUrl } from '../../database/paths.js';
+import {
+  assertIsolatedPath,
+  filePathFromDatabaseUrl,
+  resolveBackupsDirectory,
+  resolveDatabaseUrl,
+  resolveIsolationTempDirectory,
+  resolveRestoreTempDirectory,
+  resolveUploadsDirectory
+} from '../../database/paths.js';
 import { beginMaintenance, endMaintenance } from '../../plugins/maintenance.js';
 import { clearPinSessions } from '../settings/service.js';
 
-const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '../../../../..');
-const uploadsDirectory = resolve(projectRoot, 'data/uploads');
+const uploadsDirectory = resolveUploadsDirectory();
+const backupsDirectory = resolveBackupsDirectory();
 
 export const backupResourceLimits = {
   zipUploadBytes: 1024 * 1024 * 1024,
@@ -62,6 +68,7 @@ async function filesUnder(root: string, prefix: string): Promise<Array<{ path: s
   async function walk(directory: string): Promise<void> {
     for (const entry of await readdir(directory, { withFileTypes: true }).catch(() => [])) {
       const absolute = join(directory, entry.name);
+      assertIsolatedPath(absolute);
       if (entry.isDirectory()) await walk(absolute);
       else if (entry.isFile()) {
         const relative = absolute
@@ -104,7 +111,9 @@ function sqliteString(value: string): string {
 export async function createBackup(database: PrismaClient) {
   return withBackupLock(async () => {
     databasePath();
-    const directory = await mkdtemp(join(tmpdir(), 'dafan-backup-'));
+    const tempRoot = resolveIsolationTempDirectory();
+    await mkdir(tempRoot, { recursive: true });
+    const directory = await mkdtemp(join(tempRoot, 'dafan-backup-'));
     const zipPath = join(directory, `搭饭小馆-${new Date().toLocaleDateString('sv-SE')}.zip`);
     const databaseCopy = join(directory, 'app.db');
     try {
@@ -154,7 +163,7 @@ export async function createBackup(database: PrismaClient) {
 export async function ensureDailyBackup(database: PrismaClient) {
   const settings = await database.settings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   if (!settings.autoBackupEnabled) return { created: false };
-  const directory = resolve(projectRoot, 'data/backups');
+  const directory = backupsDirectory;
   await mkdir(directory, { recursive: true });
   const day = new Date().toLocaleDateString('sv-SE');
   const existing = (await readdir(directory)).find((name) => name.startsWith(`auto-${day}-`) && name.endsWith('.zip'));
@@ -162,6 +171,7 @@ export async function ensureDailyBackup(database: PrismaClient) {
   const backup = await createBackup(database);
   const target = resolve(directory, `auto-${day}-${Date.now()}.zip`);
   try {
+    assertIsolatedPath(target);
     await copyFile(backup.zipPath, target);
   } finally {
     await backup.cleanup();
@@ -170,7 +180,10 @@ export async function ensureDailyBackup(database: PrismaClient) {
     .filter((name) => name.startsWith('auto-') && name.endsWith('.zip'))
     .sort()
     .reverse();
-  for (const old of backups.slice(30)) await rm(resolve(directory, old), { force: true });
+  for (const old of backups.slice(30)) {
+    assertIsolatedPath(resolve(directory, old));
+    await rm(resolve(directory, old), { force: true });
+  }
   return { created: true, path: target };
 }
 
@@ -321,7 +334,7 @@ export async function restoreBackup(
   allowedInFlight = 0,
   beforeMaintenance?: () => void
 ) {
-  const dataRoot = resolve(projectRoot, 'data');
+  const dataRoot = resolveRestoreTempDirectory();
   const stage = resolve(dataRoot, `.restore-${randomUUID()}`);
   const rollback = resolve(dataRoot, `.rollback-${randomUUID()}`);
   await mkdir(stage, { recursive: true });

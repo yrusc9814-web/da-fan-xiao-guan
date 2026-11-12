@@ -1,7 +1,6 @@
 import { createReadStream, createWriteStream } from 'node:fs';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { join } from 'node:path';
-import { tmpdir } from 'node:os';
 import { pipeline } from 'node:stream/promises';
 import type { PrismaClient } from '@prisma/client';
 import type { FastifyInstance } from 'fastify';
@@ -14,6 +13,7 @@ import {
 } from '../settings/service.js';
 import { clearUploadSessionCookie } from '../settings/routes.js';
 import { backupResourceLimits, createBackup, restoreBackup } from './service.js';
+import { resolveIsolationTempDirectory } from '../../database/paths.js';
 
 export async function registerBackupRoutes(app: FastifyInstance, database: PrismaClient) {
   app.get('/api/v1/backups/export', async (_request, reply) => {
@@ -32,7 +32,9 @@ export async function registerBackupRoutes(app: FastifyInstance, database: Prism
       const token = request.headers['x-high-risk-token'] as string | undefined;
       const reservation = reserveHighRiskAuthorization(token, 'RESTORE');
       let authorizationConsumed = false;
-      const directory = await mkdtemp(join(tmpdir(), 'dafan-restore-upload-'));
+      const tempRoot = resolveIsolationTempDirectory();
+      await mkdir(tempRoot, { recursive: true });
+      const directory = await mkdtemp(join(tempRoot, 'dafan-restore-upload-'));
       const zipPath = join(directory, 'backup.zip');
       try {
         const part = await request.file({ limits: { fileSize: backupResourceLimits.zipUploadBytes, files: 1 } });

@@ -121,12 +121,14 @@ model Settings {
 model Recipe {
   id                       String             @id @default(cuid())
   name                     String
+  category                 String?
   imagePath                String?
   ingredientsText          String?
   cookingTimeMinutes       Int?
   difficulty               String?
   spicyLevel               Int?
   servings                 Int?
+  calories                 Int?
   sourceNote               String?
   notes                    String?
   favorite                 Boolean            @default(false)
@@ -157,6 +159,7 @@ model RecipeIngredient {
   ingredientNameSnapshot String
   quantity               Float?
   unit                   QuantityUnit?
+  amountText             String?
   optional               Boolean       @default(false)
   isPrimary              Boolean       @default(false)
   sortOrder              Int           @default(0)
@@ -170,14 +173,16 @@ model RecipeIngredient {
 }
 
 model RecipeStep {
-  id        String   @id @default(cuid())
-  recipeId  String
-  stepNo    Int
-  content   String
-  imagePath String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-  recipe    Recipe   @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  id           String   @id @default(cuid())
+  recipeId     String
+  stepNo       Int
+  content      String
+  title        String?
+  timerMinutes Int?
+  imagePath    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  recipe       Recipe   @relation(fields: [recipeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
 
   @@unique([recipeId, stepNo])
   @@index([recipeId, stepNo])
@@ -315,6 +320,7 @@ model KitchenTool {
   id        String       @id @default(cuid())
   name      String
   imagePath String?
+  icon      String?
   category  String?
   quantity  Int          @default(1)
   status    String?
@@ -369,6 +375,7 @@ model Store {
   planItems         MealPlanItem[]
   recordItems       MealRecordItem[]
   mealTypes         StoreMealType[]
+  menuItems         StoreMenuItem[]
   uploadAssets      UploadAsset[]    @relation("StoreImageAsset")
 
   @@index([name])
@@ -387,6 +394,22 @@ model StoreMealType {
 
   @@unique([storeId, mealType])
   @@index([mealType])
+}
+
+model StoreMenuItem {
+  id          String   @id @default(cuid())
+  storeId     String
+  name        String
+  price       Int?
+  icon        String?
+  isSignature Boolean  @default(false)
+  desc        String?
+  sortOrder   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  store       Store    @relation(fields: [storeId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+
+  @@index([storeId, sortOrder])
 }
 
 model Diner {
@@ -417,6 +440,10 @@ model MealPlan {
   dinerCount    Int             @default(1)
   status        PlanStatus      @default(UNPLANNED)
   notes         String?
+  time          String?
+  title         String?
+  subtext       String?
+  icon          String?
   version       Int             @default(1)
   completedAt   DateTime?
   deletedAt     DateTime?
@@ -473,9 +500,14 @@ model MealRecord {
   recordTime            String?
   mealType              MealType
   sourceType            RecordSourceType
+  title                 String?
   status                RecordStatus           @default(CONFIRMED)
   imagePath             String?
+  photosJson            String?
   rating                Float?
+  satiety               Int?
+  calories              Int?
+  cost                  Int?
   isNewTry              Boolean                @default(false)
   favorite              Boolean                @default(false)
   notes                 String?
@@ -586,6 +618,16 @@ model RecommendationHistory {
   @@index([recommendationType, createdAt])
 }
 
+model ShoppingCheckinOperation {
+  id             String   @id
+  shoppingListId String
+  payloadHash    String
+  resultJson     String
+  createdAt      DateTime @default(now())
+
+  @@index([shoppingListId, createdAt])
+}
+
 model ShoppingList {
   id        String             @id @default(cuid())
   name      String
@@ -628,6 +670,7 @@ model DeletedItem {
   entityId   String
   deletedAt  DateTime  @default(now())
   expiresAt  DateTime?
+  planUncompleteProof String?
   createdAt  DateTime  @default(now())
   updatedAt  DateTime  @updatedAt
 

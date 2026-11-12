@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { fixtureDirectory as tmpdir } from './setup/fixture-paths.js';
 import { join, normalize, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -369,7 +369,9 @@ describe('测试数据库安全闸', () => {
   });
 
   it('客户端工厂在测试环境下拒绝开发数据库 URL', () => {
-    expect(() => createPrismaClient(`file:${applicationDatabasePath}`)).toThrow(/安全闸|开发数据库/);
+    expect(() => createPrismaClient(`file:${applicationDatabasePath}`)).toThrow(
+      /安全闸|开发数据库|escapes isolation root/
+    );
   });
 
   it('合法的独立测试库继续可用，且不受 DATABASE_URL 干扰', () => {

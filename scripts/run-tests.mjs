@@ -6,14 +6,14 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const testDatabaseUrl = process.env.TEST_DATABASE_URL ?? 'file:../../../data/test.db';
 const prismaCli = resolve(projectRoot, 'node_modules/prisma/build/index.js');
-const environment = {
-  ...process.env,
-  DATABASE_URL: testDatabaseUrl,
-  TEST_DATABASE_URL: testDatabaseUrl,
-  NODE_ENV: 'test'
-};
+const { testEnvironment } = await import('./test-storage-environment.mjs');
+const environment = await testEnvironment();
+let formalGate;
+if (environment.DAFAN_ISOLATION_ROOT) {
+  formalGate = (await import('./formal-storage-gate.mjs')).assertFormalStorageUnchanged;
+  formalGate();
+}
 
 function npmCliPath() {
   const executableDirectory = dirname(process.execPath);
@@ -80,6 +80,7 @@ const applicationDatabaseAfter = await fingerprint(applicationDatabase);
 if (JSON.stringify(applicationDatabaseAfter) !== JSON.stringify(applicationDatabaseBefore)) {
   throw new Error('测试修改了开发数据库 data/app.db');
 }
+formalGate?.();
 if (testFailure) {
   throw testFailure;
 }

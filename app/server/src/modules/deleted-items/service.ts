@@ -65,7 +65,7 @@ export async function listDeletedItems(database: PrismaClient) {
     for (const row of rows) names.set(key('ShoppingList', row.id), row.name);
   }
 
-  return items.map((item) => ({
+  return items.map(({ planUncompleteProof: _internalProof, ...item }) => ({
     ...item,
     name: names.get(key(item.entityType, item.entityId)) ?? item.entityId
   }));

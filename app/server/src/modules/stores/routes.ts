@@ -29,6 +29,19 @@ import {
 type Params = { id: string };
 type RawStoreQuery = Record<string, string | undefined>;
 
+const storeMenuItemSchema = {
+  type: 'object',
+  required: ['name'],
+  properties: {
+    name: stringSchema,
+    price: { type: ['integer', 'null'], minimum: 1, maximum: 999 },
+    icon: nullableStringSchema,
+    isSignature: booleanSchema,
+    desc: nullableStringSchema,
+    sortOrder: { type: 'integer', minimum: 0 }
+  }
+};
+
 const storeBodySchema = {
   type: 'object',
   required: ['name'],
@@ -49,7 +62,9 @@ const storeBodySchema = {
     tagsText: nullableStringSchema,
     notes: nullableStringSchema,
     favorite: booleanSchema,
-    mealTypes: { type: 'array', items: mealTypeSchema }
+    mealTypes: { type: 'array', items: mealTypeSchema },
+    // 招牌菜单：整组数组，省略 = 不改；[] = 清空；元素形状与 #formStoreMenuList 行字段一致。
+    menuItems: { type: 'array', maxItems: 100, items: storeMenuItemSchema }
   }
 };
 

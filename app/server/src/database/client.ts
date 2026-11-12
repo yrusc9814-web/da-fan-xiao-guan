@@ -1,9 +1,19 @@
 import { PrismaClient } from '@prisma/client';
 
 import '../config/env.js';
-import { assertSafeTestDatabaseUrl, resolveDatabaseUrl } from './paths.js';
+import {
+  assertIsolatedPath,
+  assertSafeTestDatabaseUrl,
+  filePathFromDatabaseUrl,
+  resolveStoragePaths
+} from './paths.js';
 
-export function createPrismaClient(databaseUrl = resolveDatabaseUrl()): PrismaClient {
+export function createPrismaClient(databaseUrl = resolveStoragePaths().databaseUrl): PrismaClient {
+  if (process.env.DAFAN_ISOLATION_ROOT !== undefined) {
+    const path = filePathFromDatabaseUrl(databaseUrl);
+    if (!path) throw new Error('隔离模式仅支持 SQLite');
+    assertIsolatedPath(path);
+  }
   if (process.env.NODE_ENV === 'test') {
     assertSafeTestDatabaseUrl(databaseUrl);
   }

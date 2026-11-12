@@ -15,6 +15,7 @@ import {
 import {
   addShoppingItem,
   clearCompleted,
+  checkInShoppingList,
   createShoppingList,
   deleteShoppingItem,
   deleteShoppingList,
@@ -135,6 +136,30 @@ export async function registerShoppingRoutes(app: FastifyInstance, database: Pri
         Number((request.query as { version: string }).version)
       )
     )
+  );
+  app.post(
+    '/api/v1/shopping-lists/:id/check-in',
+    {
+      schema: {
+        body: {
+          type: 'object',
+          required: ['version', 'operationId', 'itemIds'],
+          properties: {
+            version: versionBodySchema,
+            operationId: { type: 'string', minLength: 1, maxLength: 160 },
+            itemIds: { type: 'array', minItems: 1, items: stringSchema }
+          }
+        }
+      }
+    },
+    async (request) =>
+      success(
+        await checkInShoppingList(
+          database,
+          (request.params as { id: string }).id,
+          request.body as { version: number; operationId: string; itemIds: string[] }
+        )
+      )
   );
   app.post('/api/v1/shopping-lists/:id/clear-completed', { schema: { body: versionBodyWrapper } }, async (request) =>
     success(

@@ -14,6 +14,7 @@ import {
 } from '../../shared/validation-schemas.js';
 import {
   adjustInventory,
+  consumeIngredient,
   createIngredient,
   deleteIngredient,
   getIngredient,
@@ -21,6 +22,7 @@ import {
   listInventoryLogs,
   updateIngredient,
   type BatchAdjustmentInput,
+  type ConsumeInput,
   type IngredientWriteInput
 } from './service.js';
 
@@ -79,6 +81,38 @@ const batchAdjustmentBodySchema = {
   }
 };
 
+/**
+ * Google2 库存详情固定按钮的聚合消耗契约：
+ * mode=QUANTITY 时 quantity+unit 必填；mode=ALL 时两者必须省略（“全部用完”按真实全部活批次清零）。
+ * 未知字段 fail-closed，不做静默丢弃。
+ */
+const consumeBodySchema = {
+  type: 'object',
+  required: ['mode', 'ingredientVersion'],
+  additionalProperties: false,
+  properties: {
+    mode: { type: 'string', enum: ['QUANTITY', 'ALL'] },
+    quantity: { type: 'number' },
+    unit: quantityUnitSchema,
+    ingredientVersion: versionBodySchema,
+    notes: nullableStringSchema
+  }
+};
+
+/**
+ * 聚合消耗 body 的允许字段。Fastify 默认 AJV 会静默剥离未知字段（removeAdditional），
+ * 与 fail-closed 契约冲突；preValidation 在 AJV 校验之前执行，可看到原始解析后的 body。
+ */
+const consumeAllowedKeys: readonly string[] = ['mode', 'quantity', 'unit', 'ingredientVersion', 'notes'];
+
+function assertExactKeys(body: unknown, allowed: readonly string[]): void {
+  if (!body || typeof body !== 'object') return;
+  const unknown = Object.keys(body as Record<string, unknown>).filter((key) => !allowed.includes(key));
+  if (unknown.length) {
+    throw Object.assign(new Error(`请求包含未支持的字段：${unknown.join(', ')}`), { statusCode: 400 });
+  }
+}
+
 export async function registerIngredientRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
   app.get<{
     Querystring: { search?: string; category?: string; status?: string; page?: string; pageSize?: string };
@@ -134,6 +168,15 @@ export async function registerIngredientRoutes(app: FastifyInstance, database: P
     '/api/v1/ingredients/:id/adjust',
     { schema: { body: batchAdjustmentBodySchema } },
     async (request) => success(await adjustInventory(database, request.params.id, request.body))
+  );
+  // Google2 库存详情「消耗 100g / 消耗 250g / 全部用完」：聚合食材级消耗，批次顺序由服务端确定。
+  app.post<{ Params: { id: string }; Body: ConsumeInput }>(
+    '/api/v1/ingredients/:id/consume',
+    {
+      schema: { body: consumeBodySchema },
+      preValidation: async (request) => assertExactKeys(request.body, consumeAllowedKeys)
+    },
+    async (request) => success(await consumeIngredient(database, request.params.id, request.body))
   );
   app.get<{ Params: { id: string } }>('/api/v1/ingredients/:id/logs', async (request) =>
     success(await listInventoryLogs(database, request.params.id))
