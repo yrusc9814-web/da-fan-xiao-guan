@@ -205,14 +205,17 @@ async function mergeShortage(tx: Prisma.TransactionClient, listId: string, item:
   const existing = await tx.shoppingListItem.findMany({
     where: { shoppingListId: listId, completed: false, sourceType: 'INSUFFICIENT_STOCK' }
   });
-  const match = existing.find(
-    (candidate) =>
+  const match = existing.find((candidate) => {
+    // 自由规格项（unit 为 null，仅用 amountText 描述）不参与数值合并。
+    if (candidate.unit === null) return false;
+    return (
       (item.ingredientId
         ? candidate.ingredientId === item.ingredientId
         : candidate.ingredientNameSnapshot === item.ingredientName) &&
       convertQuantity(1, item.unit, candidate.unit) !== null
-  );
-  if (match) {
+    );
+  });
+  if (match && match.unit !== null) {
     const quantity = convertQuantity(item.shortageQuantity, item.unit, match.unit);
     if (quantity !== null) {
       await tx.shoppingListItem.update({ where: { id: match.id }, data: { quantity: { increment: quantity } } });

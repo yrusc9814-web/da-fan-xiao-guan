@@ -157,16 +157,18 @@ describe('P1-5 同名 0 库存判缺料并可补货', () => {
     });
   }
 
-  it('土豆 0g 视为缺料：补齐入口把「土豆 (200g)」加入购物清单，牛腩不重复加入', async () => {
+  it('土豆 0g 视为缺料：补齐入口按纯名称土豆 + 200g 批量补货，牛腩库存足够不加入', async () => {
     await bootStock();
-    const added: Array<{ name: string; amount: string }> = [];
-    (window as any).BentoService.shopping.add = async (item: { name: string; amount: string }) => {
-      added.push({ name: item.name, amount: item.amount });
-      return item;
+    const batches: Array<{ recipeId: string; items: any[] }> = [];
+    (window as any).BentoService.shopping.replenishRecipe = async (recipeId: string, items: any[]) => {
+      batches.push({ recipeId, items });
     };
     await (window as any).BentoService.recipes.addMissingIngredientsToShopping('r-potato');
-    expect(added.map((item) => item.name)).toContain('土豆 (200g)');
-    expect(added.map((item) => item.name)).not.toContain('牛腩 (300g)');
+    expect(batches).toHaveLength(1);
+    expect(batches[0].recipeId).toBe('r-potato');
+    // 名称只保留纯食材名，规格不拼进名称
+    expect(batches[0].items.map((item) => item.ingredientName)).toEqual(['土豆']);
+    expect(batches[0].items[0]).toMatchObject({ quantity: 200, unit: 'GRAM', amountText: null });
   });
 
   it('库存推荐把 0 库存食材计入缺料，不再匹配为可做', async () => {

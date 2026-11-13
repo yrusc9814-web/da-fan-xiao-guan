@@ -2373,6 +2373,101 @@ describe('Google2 legacy entry adapter', () => {
     expect(empty.hasStructuredQuantity).toBe(false);
   });
 
+  it('mapShoppingItem：分类只接受字符串并去空白，其余回退空串', () => {
+    // 单用例过滤运行时前序用例不会执行，这里在缺失时自行加载正式适配器源码
+    if (!(window as any).DafanDomainAdapter) {
+      vi.stubGlobal('fetch', vi.fn(async () => jsonFail(503, 'OFFLINE', 'offline')));
+      window.eval(adapter);
+    }
+    const mapShoppingItem = (window as any).DafanDomainAdapter.mapShoppingItem;
+    const base = { id: 'it-cat', ingredientNameSnapshot: '小葱', quantity: 1, unit: 'BAG', sourceType: 'MANUAL' };
+    // 非空分类去首尾空白；内容原样保留（后端 category 是自由文本，不做枚举白名单）
+    expect(mapShoppingItem({ ...base, category: '  调味 ' }).category).toBe('调味');
+    expect(mapShoppingItem({ ...base, category: '肉禽' }).category).toBe('肉禽');
+    // null / undefined / 空白 / 非字符串一律回退空串，绝不透传原值
+    for (const category of [null, undefined, '', '   ', 42, true, ['蔬菜'], { name: '蔬菜' }]) {
+      expect(mapShoppingItem({ ...base, category }).category).toBe('');
+    }
+    // 字段缺失同样回退空串
+    expect(mapShoppingItem(base).category).toBe('');
+  });
+
+  const realPageMarkup = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
+  const realPageScripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((match) => match[1]).join('\n;\n');
+
+  /** 用正式 index.html 的真实脚本与标记渲染购物页，再加载正式 adapter（mapShoppingItem / renderShoppingList 均来自正式源码）。 */
+  async function bootRealShoppingPage() {
+    document.body.innerHTML = realPageMarkup;
+    Object.defineProperty(Element.prototype, 'innerText', {
+      configurable: true,
+      get() {
+        return this.textContent || '';
+      },
+      set(value) {
+        this.textContent = value;
+      }
+    });
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({ success: true, data: { items: [], page: 1, pageSize: 100, total: 0, totalPages: 1 } })
+      }))
+    );
+    vi.stubGlobal('requestAnimationFrame', (cb: FrameRequestCallback) => setTimeout(() => cb(Date.now()), 16));
+    vi.stubGlobal('cancelAnimationFrame', (id: number) => clearTimeout(id));
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined
+      }))
+    });
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    window.eval(realPageScripts);
+    window.eval('var BentoService = window.BentoService;');
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('mapShoppingItem → 真实 renderShoppingList：分类胶囊按纯文本渲染且无注入面', async () => {
+    delete (window as any).__xss;
+    await bootRealShoppingPage();
+    const malicious = '<img src=x onerror="window.__xss=201">';
+    const dtos = [
+      { id: 'it-a', ingredientNameSnapshot: '小葱', quantity: 2, unit: 'PIECE', sourceType: 'MANUAL', category: ' 调味 ' },
+      { id: 'it-b', ingredientNameSnapshot: '盐', quantity: null, unit: null, sourceType: 'MANUAL', category: malicious },
+      { id: 'it-c', ingredientNameSnapshot: '土豆', quantity: 200, unit: 'GRAM', sourceType: 'RECIPE', category: '   ' },
+      { id: 'it-d', ingredientNameSnapshot: '牛腩', quantity: 500, unit: 'GRAM', sourceType: 'MANUAL', category: 7 }
+    ];
+    const mapped = dtos.map((dto) => (window as any).DafanDomainAdapter.mapShoppingItem(dto));
+    expect(mapped.map((item: any) => item.category)).toEqual(['调味', malicious, '', '']);
+    const shopping = (window as any).BentoService.shopping;
+    shopping.data = mapped;
+    shopping.getAll = () => shopping.data;
+    (window as any).renderShoppingList();
+
+    const container = document.getElementById('shoppingListContainer') as HTMLElement;
+    expect(container.querySelectorAll('img, svg, script, iframe, object, embed')).toHaveLength(0);
+    container.querySelectorAll('*').forEach((el) => {
+      for (const attr of Array.from(el.attributes)) expect(attr.name.toLowerCase().startsWith('on')).toBe(false);
+    });
+    expect((window as any).__xss).toBeUndefined();
+    // 只有两个非空分类胶囊；空白/非字符串分类不产生空胶囊
+    const pills = Array.from(container.querySelectorAll('.rounded-full')) as HTMLElement[];
+    expect(pills.map((pill) => pill.textContent)).toEqual(['调味', malicious]);
+    expect(container.textContent).toContain(malicious);
+    // 不把正式页面标记遗留给后续用例（否则残留 #modalPinUnlock 会额外触发会话请求）
+    document.body.innerHTML = '';
+  });
+
   it.each([
     {
       status: 400,

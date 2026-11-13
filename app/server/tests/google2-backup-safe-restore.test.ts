@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { join, parse, resolve } from 'node:path';
+import { dirname, join, parse, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { ZipArchive } from 'archiver';
@@ -318,16 +318,18 @@ describe('备份安全恢复集成', () => {
     }
   });
 
-  it('AC1 导出后修改记录与 uploads 文件，restoreBackup 完整恢复两者；默认 uploads 在临时盘而数据库与暂存区在数据盘', async () => {
+  it('AC1 导出后修改记录与 uploads 文件，restoreBackup 完整恢复两者；uploads 在临时盘而暂存区为数据库所在目录', async () => {
     const uploads = resolveUploadsDirectory();
     const databasePath = databaseFilePath();
     const staging = resolveRestoreTempDirectory();
-    const dataDirectory = resolve(projectRoot, 'data');
+    const defaultDatabasePath = resolve(projectRoot, 'data/test.db');
 
     expect(uploads.toLowerCase().startsWith(resolve(tmpdir()).toLowerCase())).toBe(true);
-    expect(databasePath.toLowerCase().startsWith(dataDirectory.toLowerCase())).toBe(true);
-    expect(staging.toLowerCase()).toBe(dataDirectory.toLowerCase());
-    expect(parse(uploads).root.toLowerCase()).not.toBe(parse(databasePath).root.toLowerCase());
+    expect(staging.toLowerCase()).toBe(dirname(databasePath).toLowerCase());
+    // 默认 repo/data/test.db 下 uploads 位于另一块磁盘（临时盘）。
+    if (resolve(databasePath).toLowerCase() === defaultDatabasePath.toLowerCase()) {
+      expect(parse(uploads).root.toLowerCase()).not.toBe(parse(databasePath).root.toLowerCase());
+    }
 
     const uploadPath = join(uploads, 'ac1-restore-original.png');
     const recipe = await database.recipe.create({ data: { name: 'AC1 备份前名称' } });

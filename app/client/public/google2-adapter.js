@@ -394,7 +394,8 @@
       // 自由规格优先展示（保留用户原文语义），无原文才用结构化 quantity+单位合成
       amount: amountText || quantityText,
       hasStructuredQuantity: quantity != null && Number(quantity) > 0 && item.unit != null,
-      category: '',
+      // 后端 category 为 nullable 纯文本分类；只接受字符串并去空白，其余一律回退空串
+      category: typeof item.category === 'string' ? item.category.trim() : '',
       isChecked: !!item.completed,
       source: SHOPPING_SOURCE_LABELS[item.sourceType] || '备忘'
     };
