@@ -2090,6 +2090,9 @@ describe('Google2 legacy entry adapter', () => {
     operationRoutes: Record<string, unknown | ((init: any) => unknown)>,
     services: Record<string, unknown> = {}
   ) => {
+    // 补量弹窗由 HTML 提供；每个用例默认按“未提供”启动，避免上一个用例的 stub 泄漏
+    delete (window as any).openShoppingCheckinPrompt;
+    delete (window as any).closeShoppingCheckinPrompt;
     const fetchMock = vi.fn() as any;
     fetchMock.mockImplementation((url: string) =>
       String(url).includes('/shopping-lists?status=ACTIVE')
@@ -2269,7 +2272,7 @@ describe('Google2 legacy entry adapter', () => {
     expect(shopping.data).toEqual([]);
   });
 
-  it('shopping add 名称或数量单位不可映射时 422 阻断且无请求', async () => {
+  it('shopping add：名称与规格必填，标准规格走结构化、自由规格按 amountText 原样保存', async () => {
     const fetchMock = vi.fn() as any;
     vi.stubGlobal('fetch', fetchMock);
     const shopping: any = { data: [] };
@@ -2280,15 +2283,94 @@ describe('Google2 legacy entry adapter', () => {
     fetchMock.mockResolvedValue(shoppingJson([shoppingListDto(2, [])]));
     await (window as any).DafanDomainAdapter.replaceShoppingService(shopping)();
     fetchMock.mockClear();
+
     await expect(shopping.add({ name: '', amount: '1份' })).rejects.toMatchObject({ code: 'SHOPPING_ITEM_INVALID' });
-    await expect(shopping.add({ name: '奇怪', amount: '1斗' })).rejects.toMatchObject({
-      code: 'SHOPPING_AMOUNT_UNSUPPORTED'
-    });
-    await expect(shopping.add({ name: '奇怪', amount: '一堆' })).rejects.toMatchObject({
-      code: 'SHOPPING_AMOUNT_UNSUPPORTED'
+    await expect(shopping.add({ name: '奇怪', amount: '   ' })).rejects.toMatchObject({
+      code: 'SHOPPING_ITEM_INVALID'
     });
     expect(fetchMock).not.toHaveBeenCalled();
     expect(shopping.data).toEqual([]);
+
+    const addBody = async (amount: string) => {
+      // 固定回传 version 2 的 DTO：只验证请求体契约，不让版本随响应累积
+      fetchMock.mockResolvedValueOnce(shoppingJson(shoppingListDto(2, [shoppingItemDto()])));
+      await shopping.add({ name: '奇怪', amount });
+      const call = fetchMock.mock.calls.at(-1);
+      expect(call[0]).toBe('/api/v1/shopping-lists/sl1/items');
+      expect(call[1].method).toBe('POST');
+      return JSON.parse(call[1].body);
+    };
+    // 标准写法不额外携带 amountText（兼容既有请求体契约）
+    expect(await addBody('500g')).toEqual({
+      version: 2,
+      ingredientName: '奇怪',
+      sourceType: 'MANUAL',
+      sourceId: null,
+      completed: false,
+      quantity: 500,
+      unit: 'GRAM'
+    });
+    // 原文与标准展示不一致时保留原文语义
+    expect(await addBody('200克')).toMatchObject({ quantity: 200, unit: 'GRAM', amountText: '200克' });
+    expect(await addBody('0.5公斤')).toMatchObject({ quantity: 0.5, unit: 'KILOGRAM', amountText: '0.5公斤' });
+    // 自由规格：不再抛 SHOPPING_AMOUNT_UNSUPPORTED，也不伪映射成 OTHER
+    expect(await addBody('2根')).toEqual({
+      version: 2,
+      ingredientName: '奇怪',
+      sourceType: 'MANUAL',
+      sourceId: null,
+      completed: false,
+      quantity: null,
+      unit: null,
+      amountText: '2根'
+    });
+    expect(await addBody('适量')).toMatchObject({ quantity: null, unit: null, amountText: '适量' });
+    expect(await addBody('1勺')).toMatchObject({ quantity: null, unit: null, amountText: '1勺' });
+  });
+
+  it('mapShoppingItem：名称不含规格，amountText 优先，暴露结构化状态', () => {
+    const mapShoppingItem = (window as any).DafanDomainAdapter.mapShoppingItem;
+    expect(
+      mapShoppingItem({
+        id: 'it1',
+        ingredientNameSnapshot: '葱',
+        quantity: null,
+        unit: null,
+        amountText: '2根',
+        sourceType: 'RECIPE'
+      })
+    ).toMatchObject({
+      name: '葱',
+      amount: '2根',
+      amountText: '2根',
+      quantity: null,
+      unitKey: null,
+      hasStructuredQuantity: false
+    });
+    // 自由规格与结构化并存时仍以原文优先展示
+    expect(
+      mapShoppingItem({
+        id: 'it2',
+        ingredientNameSnapshot: '土豆',
+        quantity: 200,
+        unit: 'GRAM',
+        amountText: '200克',
+        sourceType: 'RECIPE'
+      })
+    ).toMatchObject({ name: '土豆', amount: '200克', hasStructuredQuantity: true });
+    expect(
+      mapShoppingItem({
+        id: 'it3',
+        ingredientNameSnapshot: '土豆',
+        quantity: 200,
+        unit: 'GRAM',
+        amountText: null
+      })
+    ).toMatchObject({ name: '土豆', amount: '200g', amountText: null, quantity: 200, unitKey: 'GRAM' });
+    // 无数量无规格绝不出现 'null'/'undefined' 文案
+    const empty = mapShoppingItem({ id: 'it4', ingredientNameSnapshot: '盐', quantity: null, unit: null });
+    expect(empty.amount).toBe('');
+    expect(empty.hasStructuredQuantity).toBe(false);
   });
 
   it.each([
@@ -2997,7 +3079,7 @@ describe('Google2 legacy entry adapter', () => {
     expect(button.disabled).toBe(false);
   });
 
-  it('pantry addToShopping 解封后映射购物清单写端点，OTHER 单位阻断', async () => {
+  it('pantry addToShopping 解封后映射购物清单写端点，OTHER 单位落为自由规格「适量」', async () => {
     const fetchMock = vi.fn() as any;
     vi.stubGlobal('fetch', fetchMock);
     const close = vi.fn();
@@ -3045,12 +3127,29 @@ describe('Google2 legacy entry adapter', () => {
     expect(close).toHaveBeenCalled();
     expect(toast).toHaveBeenCalledWith('已将「生菜」加入购物清单！', 'success');
 
+    // OTHER/无展示单位：不得生成裸「1」，按自由规格「适量」写入
     close.mockClear();
     toast.mockClear();
-    await expect(pantry.addToShopping('i2')).rejects.toMatchObject({ code: 'SHOPPING_AMOUNT_UNSUPPORTED' });
-    expect(fetchMock.mock.calls.length).toBe(1);
-    expect(close).not.toHaveBeenCalled();
-    expect(toast).not.toHaveBeenCalled();
+    fetchMock.mockResolvedValueOnce(
+      shoppingJson(
+        shoppingListDto(3, [shoppingItemDto({ ingredientNameSnapshot: '散装 (手动补货)', amountText: '适量' })])
+      )
+    );
+    await pantry.addToShopping('i2');
+    const otherCall = fetchMock.mock.calls.at(-1);
+    expect(otherCall[1].method).toBe('POST');
+    expect(JSON.parse(otherCall[1].body)).toEqual({
+      version: 3,
+      ingredientName: '散装 (手动补货)',
+      quantity: null,
+      unit: null,
+      amountText: '适量',
+      sourceType: 'MANUAL',
+      sourceId: null,
+      completed: false
+    });
+    expect(close).toHaveBeenCalled();
+    expect(toast).toHaveBeenCalledWith('已将「散装」加入购物清单！', 'success');
   });
 
   const planDto = (overrides: Record<string, unknown> = {}) => ({
@@ -3951,8 +4050,19 @@ describe('Google2 legacy entry adapter', () => {
     expect(tools.data[0]).toMatchObject({ id: 't-form', icon: '🍲' });
   });
 
-  it('recipes.addMissingIngredientsToShopping 解封：缺料项经清单端点补齐（RECIPE 来源），在库项跳过', async () => {
-    const fetchMock = vi.fn();
+  /** 绑定 recipes/pantry/shopping 三域并返回可直接断言的请求 mock。 */
+  const bootD5 = async (options: {
+    recipe: Record<string, unknown>;
+    pantry?: unknown[];
+    routes?: Record<string, unknown | ((init: any) => unknown)>;
+  }) => {
+    const fetchMock = vi.fn() as any;
+    // boot 阶段宽容 mock（各域都会 reload），避免在途 reload 晚到覆盖后面手工设置的 pantry/recipes 数据
+    fetchMock.mockImplementation((url: string) =>
+      String(url).includes('/shopping-lists?status=ACTIVE')
+        ? Promise.resolve(shoppingJson([shoppingListDto(2, [])]))
+        : Promise.resolve(arrayJson([]))
+    );
     vi.stubGlobal('fetch', fetchMock);
     const toast = vi.fn();
     (window as any).showToast = toast;
@@ -3964,150 +4074,684 @@ describe('Google2 legacy entry adapter', () => {
     (window as any).BentoService = { stores: { data: [] }, recipes, pantry, shopping };
     window.eval(adapter);
     await new Promise((resolve) => setTimeout(resolve, 0));
-    fetchMock
-      .mockReset()
-      .mockResolvedValueOnce(arrayJson([shoppingListDto(2, [])]))
-      .mockResolvedValueOnce(
-        arrayJson(
-          shoppingListDto(3, [
-            shoppingItemDto({
-              id: 'it-tomato',
-              ingredientNameSnapshot: '番茄 (2个)',
-              quantity: 2,
-              unit: 'PIECE',
-              sourceType: 'RECIPE'
-            })
-          ])
-        )
-      )
-      .mockResolvedValueOnce(arrayJson({ id: 'r1', name: '番茄炒蛋', version: 2, ingredients: [], steps: [] }));
     (window as any).DafanDomainAdapter.replaceRecipeService(recipes);
     (window as any).DafanDomainAdapter.replacePantryService(pantry);
-    (window as any).DafanDomainAdapter.replaceShoppingService(shopping);
-    fetchMock.mockClear();
-    recipes.data = [
-      (window as any).DafanDomainAdapter.mapRecipe({
-        id: 'r1',
-        name: '番茄炒蛋',
+    await (window as any).DafanDomainAdapter.replaceShoppingService(shopping)();
+    fetchMock.mockReset();
+    if (options.routes) fetchMock.mockImplementation(routeFetch(options.routes));
+    recipes.data = [(window as any).DafanDomainAdapter.mapRecipe(options.recipe)];
+    pantry.data = options.pantry ?? [];
+    (window as any).DafanDomainAdapter.replaceRecipeService(recipes);
+    (window as any).DafanDomainAdapter.replacePantryService(pantry);
+    return { fetchMock, toast, open, recipes, pantry, shopping };
+  };
+
+  it('D5 一次单事务补齐：中文单位/自由规格全部入清单，名称纯净不拼括号且不抛不可映射', async () => {
+    const { fetchMock, toast, open } = await bootD5({
+      recipe: {
+        id: 'r-d5',
+        name: '五样缺料',
         version: 1,
         ingredients: [
-          { name: '番茄', quantity: 2, unit: '个' },
-          { name: '盐', quantity: 1, unit: '克' }
+          { name: '土豆', amountText: '200克' },
+          { name: '葱', amountText: '适量' },
+          { name: '姜', amountText: '2块' },
+          { name: '蒜', amountText: '2根' },
+          { name: '盐', amountText: '少许' }
         ],
         steps: []
-      })
-    ];
-    pantry.data = [{ id: 'i1', name: '盐', stock: 500 }];
-
-    await (window as any).BentoService.recipes.addMissingIngredientsToShopping('r1');
-    const addCalls = fetchMock.mock.calls.filter(([url]) => url === '/api/v1/shopping-lists/sl1/items');
-    expect(addCalls).toHaveLength(1);
-    expect(addCalls[0][1].method).toBe('POST');
-    expect(JSON.parse(addCalls[0][1].body)).toEqual({
-      version: 2,
-      ingredientName: '番茄 (2个)',
-      quantity: 2,
-      unit: 'PIECE',
-      sourceType: 'RECIPE',
-      sourceId: null,
-      completed: false
+      },
+      routes: {
+        '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(2, [])]),
+        '/api/v1/shopping-lists/sl1/replenish-recipe': shoppingJson(shoppingListDto(3, [])),
+        '/api/v1/recipes/r-d5': shoppingJson({ id: 'r-d5', name: '五样缺料', version: 1, ingredients: [], steps: [] })
+      }
     });
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(open).toHaveBeenCalledWith('recipeDetail', expect.objectContaining({ id: 'r1', name: '番茄炒蛋' }));
+
+    await (window as any).BentoService.recipes.addMissingIngredientsToShopping('r-d5');
+
+    const posts = fetchMock.mock.calls.filter(([, init]: any) => init?.method === 'POST');
+    expect(posts).toHaveLength(1);
+    expect(posts[0][0]).toBe('/api/v1/shopping-lists/sl1/replenish-recipe');
+    const body = JSON.parse(posts[0][1].body);
+    expect(body).toMatchObject({ version: 2, recipeId: 'r-d5' });
+    expect(body.items).toEqual([
+      { ingredientId: null, ingredientName: '土豆', quantity: 200, unit: 'GRAM', amountText: '200克' },
+      { ingredientId: null, ingredientName: '葱', quantity: null, unit: null, amountText: '适量' },
+      { ingredientId: null, ingredientName: '姜', quantity: null, unit: null, amountText: '2块' },
+      { ingredientId: null, ingredientName: '蒜', quantity: null, unit: null, amountText: '2根' },
+      { ingredientId: null, ingredientName: '盐', quantity: null, unit: null, amountText: '少许' }
+    ]);
+    // 名称绝不拼括号规格
+    expect(body.items.every((item: any) => !item.ingredientName.includes('('))).toBe(true);
+    expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('无法映射'), 'error');
+    expect(toast).toHaveBeenCalledWith('已成功将 5 项食材加入购物清单！', 'success');
+    await flush();
+    expect(open).toHaveBeenCalledWith('recipeDetail', expect.objectContaining({ id: 'r-d5', name: '五样缺料' }));
+  });
+
+  it('D5 严格库存匹配：ID 优先、唯一精确同名、歧义不误判、可换算差额与充足跳过、不可换算全量补', async () => {
+    const { fetchMock } = await bootD5({
+      recipe: {
+        id: 'r-match',
+        name: '匹配规则',
+        version: 1,
+        ingredients: [
+          // 洋葱库存不得命中「葱」；无 ID 且库中无同名 → 全量补
+          { name: '葱', quantity: 2, unit: 'PIECE' },
+          // 同名两条歧义 → 不绑定、按实际不充足全量补
+          { name: '蒜', amountText: '2根' },
+          // 250g 需求 vs 0.1kg 库存 → 差额 150g
+          { name: '土豆', amountText: '250g' },
+          // 0.5kg 库存充足 → 跳过
+          { name: '牛肉', amountText: '250g' },
+          // 不可换算：需求 2个、库存 500g → 全量补
+          { name: '鸡蛋', quantity: 2, unit: 'PIECE' },
+          // 有 ID 且 ID 命中：库存充足跳过
+          { name: '牛奶', quantity: 1, unit: 'LITER', ingredientId: 'i-milk' },
+          // 有 ID 但库存已不存在：不绑定失效 ID，全量补
+          { name: '香菜', amountText: '1把', ingredientId: 'i-gone' }
+        ],
+        steps: []
+      },
+      pantry: [
+        { id: 'i-onion', name: '洋葱', stock: 800, unitKey: 'GRAM' },
+        { id: 'i-garlic-1', name: '蒜', stock: 100, unitKey: 'GRAM' },
+        { id: 'i-garlic-2', name: '蒜', stock: 100, unitKey: 'GRAM' },
+        { id: 'i-potato', name: '土豆', stock: 0.1, unitKey: 'KILOGRAM' },
+        { id: 'i-beef', name: '牛肉', stock: 0.5, unitKey: 'KILOGRAM' },
+        { id: 'i-egg', name: '鸡蛋', stock: 500, unitKey: 'GRAM' },
+        { id: 'i-milk', name: '牛奶', stock: 2, unitKey: 'LITER' }
+      ],
+      routes: {
+        '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(2, [])]),
+        '/api/v1/shopping-lists/sl1/replenish-recipe': shoppingJson(shoppingListDto(3, []))
+      }
+    });
+
+    await (window as any).BentoService.recipes.addMissingIngredientsToShopping('r-match');
+
+    const post = fetchMock.mock.calls.find(([url]: any) => url === '/api/v1/shopping-lists/sl1/replenish-recipe');
+    expect(post).toBeTruthy();
+    const body = JSON.parse(post![1].body);
+    expect(body.items).toEqual([
+      { ingredientId: null, ingredientName: '葱', quantity: 2, unit: 'PIECE', amountText: null },
+      { ingredientId: null, ingredientName: '蒜', quantity: null, unit: null, amountText: '2根' },
+      { ingredientId: 'i-potato', ingredientName: '土豆', quantity: 150, unit: 'GRAM', amountText: null },
+      // 唯一精确同名命中 → 绑定库存 ID（补货入库累加到既有食材），但单位不可换算仍按需求全量补
+      { ingredientId: 'i-egg', ingredientName: '鸡蛋', quantity: 2, unit: 'PIECE', amountText: null },
+      { ingredientId: null, ingredientName: '香菜', quantity: null, unit: null, amountText: '1把' }
+    ]);
+    // 充足项（牛肉/牛奶）绝不出现在补货批次里
+    const names = body.items.map((item: any) => item.ingredientName);
+    expect(names).not.toContain('牛肉');
+    expect(names).not.toContain('牛奶');
+  });
+
+  it('D5 库存全充足：仅提示无需补货且零请求；补齐接口失败如实抛出且不报成功', async () => {
+    const sufficient = await bootD5({
+      recipe: {
+        id: 'r-full',
+        name: '全都够',
+        version: 1,
+        ingredients: [{ name: '鸡蛋', amountText: '2个' }],
+        steps: []
+      },
+      pantry: [{ id: 'i-egg', name: '鸡蛋', stock: 10, unitKey: 'PIECE' }],
+      routes: {
+        '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(2, [])])
+      }
+    });
+    await (window as any).BentoService.recipes.addMissingIngredientsToShopping('r-full');
+    expect(sufficient.toast).toHaveBeenCalledWith('菜谱食材均已在库，无需补货', 'success');
+    expect(sufficient.fetchMock).not.toHaveBeenCalled();
+
+    const failing = await bootD5({
+      recipe: {
+        id: 'r-fail',
+        name: '写入失败',
+        version: 1,
+        ingredients: [{ name: '番茄', quantity: 2, unit: 'PIECE' }],
+        steps: []
+      },
+      routes: {
+        '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(2, [])]),
+        '/api/v1/shopping-lists/sl1/replenish-recipe': errorJson(500, 'INTERNAL_ERROR', '服务器内部错误')
+      }
+    });
+    await expect((window as any).BentoService.recipes.addMissingIngredientsToShopping('r-fail')).rejects.toMatchObject({
+      status: 500,
+      code: 'INTERNAL_ERROR'
+    });
+    expect(failing.toast).not.toHaveBeenCalledWith(expect.stringContaining('已成功将'), 'success');
+    expect(failing.open).not.toHaveBeenCalled();
+  });
+
+  it('D5 补货遇 409 版本冲突：先 reload 最新清单再用最新 version 重试一次', async () => {
+    let attempt = 0;
+    const { fetchMock, toast } = await bootD5({
+      recipe: {
+        id: 'r-conflict',
+        name: '版本冲突',
+        version: 1,
+        ingredients: [{ name: '番茄', quantity: 2, unit: 'PIECE' }],
+        steps: []
+      },
+      routes: {
+        '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(2, [])]),
+        '/api/v1/shopping-lists/sl1': shoppingJson(shoppingListDto(6, [])),
+        '/api/v1/shopping-lists/sl1/replenish-recipe': () => {
+          attempt += 1;
+          return attempt === 1 ? errorJson(409, 'VERSION_CONFLICT', '版本冲突') : shoppingJson(shoppingListDto(7, []));
+        }
+      }
+    });
+
+    await (window as any).BentoService.recipes.addMissingIngredientsToShopping('r-conflict');
+
+    const posts = fetchMock.mock.calls.filter(([url]: any) => url === '/api/v1/shopping-lists/sl1/replenish-recipe');
+    expect(posts).toHaveLength(2);
+    expect(JSON.parse(posts[0][1].body).version).toBe(2);
+    expect(JSON.parse(posts[1][1].body).version).toBe(6);
+    expect(fetchMock.mock.calls.find(([url]: any) => url === '/api/v1/shopping-lists/sl1')).toBeTruthy();
     expect(toast).toHaveBeenCalledWith('已成功将 1 项食材加入购物清单！', 'success');
   });
 
-  it('recipes.addMissingIngredientsToShopping：数量单位不可映射时阻断、全部在库时仅提示且无请求', async () => {
-    const fetchMock = vi.fn();
-    vi.stubGlobal('fetch', fetchMock);
-    const toast = vi.fn();
-    (window as any).showToast = toast;
-    const recipes: any = { data: [] };
-    const pantry: any = { data: [] };
-    const shopping: any = { data: [] };
-    (window as any).BentoService = { stores: { data: [] }, recipes, pantry, shopping };
-    window.eval(adapter);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    fetchMock.mockReset();
-    fetchMock.mockResolvedValue(arrayJson([shoppingListDto(2, [])]));
-    (window as any).DafanDomainAdapter.replaceRecipeService(recipes);
-    (window as any).DafanDomainAdapter.replacePantryService(pantry);
-    (window as any).DafanDomainAdapter.replaceShoppingService(shopping);
-    fetchMock.mockClear();
-
-    recipes.data = [
-      (window as any).DafanDomainAdapter.mapRecipe({
-        id: 'r1',
-        name: '暗黑料理',
+  it('D5 非版本冲突的 409 不重试，避免无界重复写入', async () => {
+    const { fetchMock } = await bootD5({
+      recipe: {
+        id: 'r-locked',
+        name: '清单不可补',
         version: 1,
-        ingredients: [{ name: '神秘食材', quantity: 1, unit: '斗' }],
+        ingredients: [{ name: '番茄', quantity: 2, unit: 'PIECE' }],
         steps: []
-      })
+      },
+      routes: {
+        '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(2, [])]),
+        '/api/v1/shopping-lists/sl1/replenish-recipe': errorJson(409, 'SHOPPING_LIST_NOT_ACTIVE', '清单已完成')
+      }
+    });
+    await expect(
+      (window as any).BentoService.recipes.addMissingIngredientsToShopping('r-locked')
+    ).rejects.toMatchObject({ status: 409 });
+    expect(
+      fetchMock.mock.calls.filter(([url]: any) => url === '/api/v1/shopping-lists/sl1/replenish-recipe')
+    ).toHaveLength(1);
+  });
+
+  it('shopping 清理已购与勾选完成只写清单状态，绝不触发任何库存变动', async () => {
+    const checked = shoppingItemDto({ id: 'it1', completed: true, quantity: 2, unit: 'PIECE' });
+    const unchecked = shoppingItemDto({ id: 'it2', completed: false });
+    const routes: Record<string, unknown | ((init: any) => unknown)> = {
+      '/api/v1/shopping-lists/sl1/clear-completed': shoppingJson({
+        list: shoppingListDto(3, [unchecked]),
+        cleared: 1
+      }),
+      '/api/v1/shopping-list-items/it2': shoppingJson(shoppingListDto(3, [{ ...unchecked, completed: true }]))
+    };
+    const { fetchMock, toast, shopping } = await bootShopping(shoppingListDto(2, [checked, unchecked]), routes);
+
+    expect(await shopping.clearCompleted()).toMatchObject({ id: 'sl1', version: 3 });
+    const clearCall = fetchMock.mock.calls.find(([url]: any) => String(url).includes('/clear-completed'));
+    expect(clearCall?.[1].method).toBe('POST');
+    expect(JSON.parse(clearCall![1].body)).toEqual({ version: 2 });
+    // 只回传 list 作为清单 DTO，cleared 数量用于提示
+    expect(shopping.data.map((x: any) => x.id)).toEqual(['it2']);
+    expect(toast).toHaveBeenCalledWith('已清理 1 项已购物品', 'success');
+
+    await shopping.toggle('it2');
+    const toggleCall = fetchMock.mock.calls.find(([url]: any) => String(url) === '/api/v1/shopping-list-items/it2');
+    expect(toggleCall?.[1].method).toBe('PUT');
+    // 勾选完成只发 completed，绝不附带数量单位或库存动作
+    expect(JSON.parse(toggleCall![1].body)).toEqual({ version: 3, completed: true });
+    // 全程零库存/清单条目以外的写请求
+    const paths = fetchMock.mock.calls.map(([url]: any) => String(url));
+    expect(paths.every((path: string) => !path.includes('/ingredients') && !path.includes('/check-in'))).toBe(true);
+  });
+
+  it('shopping 写失败（clearCompleted / toggle）错误向上抛，清单与提示不变', async () => {
+    const cases = [
+      {
+        run: (shopping: any) => shopping.clearCompleted(),
+        route: '/api/v1/shopping-lists/sl1/clear-completed',
+        method: 'POST'
+      },
+      { run: (shopping: any) => shopping.toggle('it1'), route: '/api/v1/shopping-list-items/it1', method: 'PUT' }
     ];
-    await expect((window as any).BentoService.recipes.addMissingIngredientsToShopping('r1')).rejects.toMatchObject({
-      code: 'SHOPPING_AMOUNT_UNSUPPORTED'
+    for (const testCase of cases) {
+      const checked = shoppingItemDto({ id: 'it1', completed: true, quantity: 2, unit: 'PIECE' });
+      const { fetchMock, toast, shopping } = await bootShopping(shoppingListDto(2, [checked]), {
+        [testCase.route]: errorJson(409, 'VERSION_CONFLICT', '版本冲突')
+      });
+      const before = structuredClone(shopping.data);
+      await expect(testCase.run(shopping)).rejects.toMatchObject({ status: 409, code: 'VERSION_CONFLICT' });
+      expect(shopping.data).toEqual(before);
+      expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('已清理'), 'success');
+      const call = fetchMock.mock.calls.find(([url]: any) => String(url) === testCase.route);
+      expect(call?.[1].method).toBe(testCase.method);
+    }
+  });
+
+  it('shopping updateItem 补填数量单位：串 version、不传 ingredientId/amountText，失败不吞错', async () => {
+    const target = shoppingItemDto({
+      id: 'it-free',
+      ingredientNameSnapshot: '葱',
+      quantity: null,
+      unit: null,
+      amountText: '适量',
+      completed: true,
+      ingredientId: 'ing-scallion'
+    });
+    const { fetchMock, shopping } = await bootShopping(shoppingListDto(2, [target]), {
+      '/api/v1/shopping-list-items/it-free': shoppingJson(
+        shoppingListDto(3, [{ ...target, quantity: 2, unit: 'BAG', amountText: null }])
+      )
+    });
+
+    await shopping.updateItem('it-free', { quantity: 2, unit: '袋' });
+    const call = fetchMock.mock.calls.find(([url]: any) => String(url) === '/api/v1/shopping-list-items/it-free');
+    expect(call?.[1].method).toBe('PUT');
+    const body = JSON.parse(call![1].body);
+    expect(body).toEqual({ version: 2, quantity: 2, unit: 'BAG' });
+    // 未传 ingredientId 表示保留后端关系；未传 amountText 由后端清空旧自由规格
+    expect(body).not.toHaveProperty('ingredientId');
+    expect(body).not.toHaveProperty('amountText');
+    expect(shopping.data[0]).toMatchObject({ quantity: 2, unitKey: 'BAG', amountText: null, amount: '2袋' });
+
+    // 非法补填值在本地快速失败且零请求
+    fetchMock.mockClear();
+    await expect(shopping.updateItem('it-free', { quantity: 0, unit: '袋' })).rejects.toMatchObject({
+      code: 'SHOPPING_ITEM_INVALID'
+    });
+    await expect(shopping.updateItem('it-free', { quantity: 2, unit: '斗' })).rejects.toMatchObject({
+      code: 'SHOPPING_ITEM_INVALID'
+    });
+    await expect(shopping.updateItem('it-free', { quantity: 2 })).rejects.toMatchObject({
+      code: 'SHOPPING_ITEM_INVALID'
     });
     expect(fetchMock).not.toHaveBeenCalled();
 
-    recipes.data = [
-      (window as any).DafanDomainAdapter.mapRecipe({
-        id: 'r2',
-        name: '家常小炒',
-        version: 1,
-        ingredients: [{ name: '鸡蛋', quantity: 2, unit: '个' }],
-        steps: []
-      })
-    ];
-    pantry.data = [{ id: 'i2', name: '鸡蛋', stock: 10 }];
-    await (window as any).BentoService.recipes.addMissingIngredientsToShopping('r2');
-    expect(toast).toHaveBeenCalledWith('菜谱食材均已在库，无需补货', 'success');
+    // 后端写失败：错误原样传播
+    fetchMock.mockReset().mockResolvedValue(errorJson(503, 'MAINTENANCE', '服务维护中'));
+    await expect(shopping.updateItem('it-free', { quantity: 1, unit: '袋' })).rejects.toMatchObject({
+      status: 503,
+      code: 'MAINTENANCE'
+    });
+  });
+
+  /**
+   * 补量入库弹窗三条分支的公共脚手架：真实 DOM 渲染由 HTML 代理负责，
+   * 这里用 stub openShoppingCheckinPrompt 捕获适配器传出的 items 与两个回调。
+   */
+  const bootCheckinPrompt = async (
+    items: unknown[],
+    routes: Record<string, unknown | ((init: any) => unknown)>,
+    promptImpl?: (payload: any) => unknown
+  ) => {
+    const { fetchMock, toast, shopping } = await bootShopping(shoppingListDto(2, items), routes);
+    const calls: any[] = [];
+    (window as any).openShoppingCheckinPrompt = vi.fn((payload: any) => {
+      calls.push(payload);
+      return promptImpl ? promptImpl(payload) : undefined;
+    });
+    (window as any).closeShoppingCheckinPrompt = vi.fn();
+    return { fetchMock, toast, shopping, calls, prompt: (window as any).openShoppingCheckinPrompt };
+  };
+
+  const freeSpecItem = () =>
+    shoppingItemDto({
+      id: 'it-free',
+      ingredientNameSnapshot: '葱',
+      quantity: null,
+      unit: null,
+      amountText: '适量',
+      completed: true,
+      ingredientId: 'ing-scallion'
+    });
+  const structuredItem = () =>
+    shoppingItemDto({
+      id: 'it-egg',
+      ingredientNameSnapshot: '鸡蛋',
+      quantity: 6,
+      unit: 'PIECE',
+      completed: true,
+      ingredientId: 'ing-egg'
+    });
+
+  it('补量入库：缺量项打开弹窗且不提前写 check-in pending，取消零请求', async () => {
+    const { fetchMock, shopping, calls } = await bootCheckinPrompt([freeSpecItem(), structuredItem()], {});
+    const result = await shopping.importCheckedToPantry();
+    expect(result).toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0].hasStructuredItems).toBe(true);
+    expect(calls[0].items).toEqual([
+      expect.objectContaining({ id: 'it-free', name: '葱', amount: '适量', amountText: '适量' })
+    ]);
+    expect(typeof calls[0].onSubmit).toBe('function');
+    expect(typeof calls[0].onStructuredOnly).toBe('function');
+    // 只打开弹窗（HTML 负责关闭）；适配器不得提前发 check-in 或写未决记录
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readPendingRecord()).toBeNull();
+    expect((window as any).closeShoppingCheckinPrompt).not.toHaveBeenCalled();
+  });
+
+  it('补量入库「补填并一并入库」：按 version 依次 PUT 补填后整批 check-in，保留 ingredientId', async () => {
+    const free = freeSpecItem();
+    const egg = structuredItem();
+    const routes: Record<string, unknown | ((init: any) => unknown)> = {
+      '/api/v1/shopping-list-items/it-free': (init: any) => {
+        expect(JSON.parse(init.body)).toEqual({ version: 2, quantity: 2, unit: 'BAG' });
+        return shoppingJson(shoppingListDto(3, [{ ...free, quantity: 2, unit: 'BAG', amountText: null }, egg]));
+      },
+      '/api/v1/shopping-lists/sl1/check-in': (init: any) => {
+        expect(JSON.parse(init.body)).toMatchObject({ version: 3, itemIds: ['it-egg', 'it-free'] });
+        return shoppingJson(shoppingListDto(4, []));
+      },
+      '/api/v1/shopping-lists/sl1': shoppingJson(shoppingListDto(4, [])),
+      '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(4, [])])
+    };
+    const { fetchMock, toast, shopping, calls } = await bootCheckinPrompt([free, egg], routes);
+
+    await shopping.importCheckedToPantry();
+    expect(calls).toHaveLength(1);
+    expect(await calls[0].onSubmit([{ id: 'it-free', quantity: 2, unit: '袋' }])).toBe(true);
+
+    const paths = fetchMock.mock.calls.map(([url]: any) => String(url));
+    expect(paths).toEqual([
+      '/api/v1/shopping-list-items/it-free',
+      '/api/v1/shopping-lists/sl1/check-in',
+      '/api/v1/shopping-lists/sl1',
+      '/api/v1/shopping-lists?status=ACTIVE'
+    ]);
+    // PUT 只补数量单位：不传 ingredientId（后端保留关系）、不传 amountText（后端清空旧自由规格）
+    expect(fetchMock.mock.calls[0][1].method).toBe('PUT');
+    const checkinBody = JSON.parse(fetchMock.mock.calls[1][1].body);
+    expect(checkinBody.itemIds).toEqual(['it-egg', 'it-free']);
+    expect(checkinBody.operationId).toBeTruthy();
+    expect(toast).toHaveBeenCalledWith('已将 2 件采购食材入库冰箱', 'success');
+  });
+
+  it('补量入库「仅入库已填数量项」：只提交结构化项，自由规格项保留且仍为已购态', async () => {
+    const free = freeSpecItem();
+    const egg = structuredItem();
+    const remaining = { ...free };
+    const routes: Record<string, unknown | ((init: any) => unknown)> = {
+      '/api/v1/shopping-lists/sl1/check-in': (init: any) => {
+        expect(JSON.parse(init.body)).toMatchObject({ itemIds: ['it-egg'] });
+        return shoppingJson(shoppingListDto(3, [remaining]));
+      },
+      '/api/v1/shopping-lists/sl1': shoppingJson(shoppingListDto(3, [remaining])),
+      '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(3, [remaining])])
+    };
+    const { fetchMock, toast, shopping, calls } = await bootCheckinPrompt([free, egg], routes);
+
+    await shopping.importCheckedToPantry();
+    expect(await calls[0].onStructuredOnly()).toBe(true);
+    const paths = fetchMock.mock.calls.map(([url]: any) => String(url));
+    expect(paths).toEqual([
+      '/api/v1/shopping-lists/sl1/check-in',
+      '/api/v1/shopping-lists/sl1',
+      '/api/v1/shopping-lists?status=ACTIVE'
+    ]);
+    // 零 PUT：不补填自由规格项
+    expect(fetchMock.mock.calls.some(([, init]: any) => init?.method === 'PUT')).toBe(false);
+    // 自由规格项原样留在清单且保持 completed=true
+    expect(shopping.data).toEqual([expect.objectContaining({ id: 'it-free', amountText: '适量', isChecked: true })]);
+    expect(toast).toHaveBeenCalledWith('已将 1 件采购食材入库冰箱', 'success');
+  });
+
+  it('补量入库：全部勾选项都缺量时「仅入库已填数量项」返回 false 且零请求', async () => {
+    const { fetchMock, shopping, calls } = await bootCheckinPrompt(
+      [freeSpecItem(), { ...freeSpecItem(), id: 'it-free-2', ingredientNameSnapshot: '姜', amountText: '2块' }],
+      {}
+    );
+    await shopping.importCheckedToPantry();
+    expect(calls[0].hasStructuredItems).toBe(false);
+    expect(await calls[0].onStructuredOnly()).toBe(false);
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('D5 补齐缺料部分失败：如实报告已加入与失败项，不报整批成功', async () => {
-    const toast = vi.fn();
-    (window as any).showToast = toast;
-    const fetchMock = vi.fn(async (url: string, init?: any) => {
-      const path = String(url);
-      if (path.startsWith('/api/v1/shopping-lists?status=ACTIVE')) return arrayJson([shoppingListDto(2, [])]);
-      if (path === '/api/v1/shopping-lists/sl1/items') {
-        const body = JSON.parse(init.body);
-        if (String(body.ingredientName).startsWith('鸡蛋')) throw new Error('网络中断');
-        return arrayJson(shoppingListDto(3, [shoppingItemDto({ id: 'ok' })]));
-      }
-      return arrayJson({ items: [], page: 1, pageSize: 100, total: 0, totalPages: 1 });
-    });
-    vi.stubGlobal('fetch', fetchMock);
-    const recipes: any = { data: [] };
-    const pantry: any = { data: [] };
-    const shopping: any = { data: [] };
-    (window as any).BentoService = { stores: { data: [] }, recipes, pantry, shopping };
-    window.eval(adapter);
-    await new Promise((resolve) => setTimeout(resolve, 0));
-    (window as any).DafanDomainAdapter.replaceRecipeService(recipes);
-    (window as any).DafanDomainAdapter.replacePantryService(pantry);
-    (window as any).DafanDomainAdapter.replaceShoppingService(shopping);
-    recipes.data = [
-      (window as any).DafanDomainAdapter.mapRecipe({
-        id: 'r-partial',
-        name: '两道缺料',
-        version: 1,
-        ingredients: [
-          { name: '番茄', quantity: 2, unit: '个' },
-          { name: '鸡蛋', quantity: 2, unit: '个' }
-        ],
-        steps: []
-      })
+  it('补量入库：onSubmit 数据不合法时 fail-closed 零请求', async () => {
+    const { fetchMock, shopping, calls } = await bootCheckinPrompt([freeSpecItem(), structuredItem()], {});
+    await shopping.importCheckedToPantry();
+    // 数量非法 / 单位不受支持 / 缺项 / 多条重复 / 空数组 全部拒绝
+    const invalidCases = [
+      [{ id: 'it-free', quantity: 0, unit: '袋' }],
+      [{ id: 'it-free', quantity: 2, unit: '斗' }],
+      [{ id: 'it-free', quantity: Number.NaN, unit: '袋' }],
+      [],
+      [{ id: 'it-other', quantity: 2, unit: '袋' }],
+      [
+        { id: 'it-free', quantity: 2, unit: '袋' },
+        { id: 'it-free', quantity: 3, unit: '袋' }
+      ]
     ];
+    for (const updates of invalidCases) {
+      await expect(calls[0].onSubmit(updates)).rejects.toMatchObject({
+        code: 'SHOPPING_CHECKIN_QUANTITY_INVALID'
+      });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readPendingRecord()).toBeNull();
+  });
 
-    const error = await (window as any).BentoService.recipes.addMissingIngredientsToShopping('r-partial').then(
-      () => null,
-      (reason: any) => reason
+  it('补量入库：缺少 HTML 弹窗函数时 fail-closed，不编造默认量也不直接 check-in', async () => {
+    const { fetchMock, toast, shopping } = await bootShopping(shoppingListDto(2, [freeSpecItem()]), {});
+    expect((window as any).openShoppingCheckinPrompt).toBeUndefined();
+    expect(await shopping.importCheckedToPantry()).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readPendingRecord()).toBeNull();
+    expect(toast).toHaveBeenCalledWith('补量入库弹窗不可用，已阻止本次入库；请先为缺量项补填数量与单位', 'error');
+  });
+
+  it('补量入库：已存在 pending 时严格重放原 payload，弹窗与新勾选不参与', async () => {
+    const free = freeSpecItem();
+    localStorage.setItem(
+      'dafan-shopping-checkin-pending',
+      JSON.stringify({ listId: 'sl1', version: 2, operationId: 'op-pending', itemIds: ['it-old'] })
     );
-    expect(error).toMatchObject({ code: 'SHOPPING_ADD_PARTIAL_FAILED' });
-    expect(error.message).toContain('已加入：番茄 (2个)');
-    expect(error.message).toContain('未加入：鸡蛋 (2个)');
-    expect(toast).not.toHaveBeenCalledWith(expect.stringContaining('已成功将'), 'success');
+    const { fetchMock, shopping, prompt } = await bootCheckinPrompt([free], {
+      '/api/v1/shopping-lists/sl1/check-in': shoppingJson(shoppingListDto(3, [])),
+      '/api/v1/shopping-lists/sl1': shoppingJson(shoppingListDto(3, [])),
+      '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(3, [])])
+    });
+    expect(await shopping.importCheckedToPantry()).toBe(true);
+    expect(prompt).not.toHaveBeenCalled();
+    const checkin = fetchMock.mock.calls.find(([url]: any) => String(url).includes('/check-in'));
+    expect(JSON.parse(checkin![1].body)).toEqual({
+      version: 2,
+      operationId: 'op-pending',
+      itemIds: ['it-old']
+    });
+    expect(readPendingRecord()).toBeNull();
+  });
+
+  it('补量入库：全部为结构化项时直接入库，不打开补量弹窗', async () => {
+    const { fetchMock, shopping, prompt, toast } = await bootCheckinPrompt([structuredItem()], {
+      '/api/v1/shopping-lists/sl1/check-in': shoppingJson(shoppingListDto(3, [])),
+      '/api/v1/shopping-lists/sl1': shoppingJson(shoppingListDto(3, [])),
+      '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([shoppingListDto(3, [])])
+    });
+    expect(await shopping.importCheckedToPantry()).toBe(true);
+    expect(prompt).not.toHaveBeenCalled();
+    expect(fetchMock.mock.calls.map(([url]: any) => String(url))).toEqual([
+      '/api/v1/shopping-lists/sl1/check-in',
+      '/api/v1/shopping-lists/sl1',
+      '/api/v1/shopping-lists?status=ACTIVE'
+    ]);
+    expect(toast).toHaveBeenCalledWith('已将 1 件采购食材入库冰箱', 'success');
+  });
+
+  it('补量入库：check-in 500 后再次提交严格重放原 operation，不重复 PUT 也不覆盖 pending', async () => {
+    const free = freeSpecItem();
+    const egg = structuredItem();
+    const checkinBodies: any[] = [];
+    const routes: Record<string, unknown | ((init: any) => unknown)> = {
+      '/api/v1/shopping-list-items/it-free': (init: any) => {
+        expect(JSON.parse(init.body)).toEqual({ version: 2, quantity: 2, unit: 'BAG' });
+        return shoppingJson(shoppingListDto(3, [{ ...free, quantity: 2, unit: 'BAG', amountText: null }, egg]));
+      },
+      '/api/v1/shopping-lists/sl1/check-in': (init: any) => {
+        checkinBodies.push(JSON.parse(init.body));
+        return errorJson(500, 'INTERNAL_ERROR', '模拟故障');
+      }
+    };
+    const { fetchMock, shopping, calls } = await bootCheckinPrompt([free, egg], routes);
+    await shopping.importCheckedToPantry();
+    const updates = [{ id: 'it-free', quantity: 2, unit: '袋' }];
+
+    await expect(calls[0].onSubmit(updates)).rejects.toMatchObject({ status: 500 });
+    const firstPending = localStorage.getItem(pendingCheckinKey);
+    expect(readPendingRecord()).toMatchObject({ listId: 'sl1', version: 3, itemIds: ['it-egg', 'it-free'] });
+    const putCount = () => fetchMock.mock.calls.filter(([, init]: any) => init?.method === 'PUT').length;
+    expect(putCount()).toBe(1);
+
+    // 用户在同一弹窗重试：必须原样重放 opA（原 version/operationId/itemIds），不能再补一次量
+    await expect(calls[0].onSubmit(updates)).rejects.toMatchObject({ status: 500 });
+    expect(putCount()).toBe(1);
+    expect(checkinBodies).toHaveLength(2);
+    expect(checkinBodies[1]).toEqual(checkinBodies[0]);
+    expect(localStorage.getItem(pendingCheckinKey)).toBe(firstPending);
+  });
+
+  it('补量入库：既有 pending 时「仅入库已填数量项」同样只重放原 operation，不覆盖也不补 PUT', async () => {
+    const free = freeSpecItem();
+    const egg = structuredItem();
+    const checkinBodies: any[] = [];
+    const routes: Record<string, unknown | ((init: any) => unknown)> = {
+      '/api/v1/shopping-list-items/it-free': shoppingJson(
+        shoppingListDto(3, [{ ...free, quantity: 2, unit: 'BAG', amountText: null }, egg])
+      ),
+      '/api/v1/shopping-lists/sl1/check-in': (init: any) => {
+        checkinBodies.push(JSON.parse(init.body));
+        return errorJson(503, 'MAINTENANCE', '服务维护中');
+      }
+    };
+    const { fetchMock, shopping, calls } = await bootCheckinPrompt([free, egg], routes);
+    await shopping.importCheckedToPantry();
+    await expect(calls[0].onSubmit([{ id: 'it-free', quantity: 2, unit: '袋' }])).rejects.toMatchObject({ status: 503 });
+    const firstPending = localStorage.getItem(pendingCheckinKey);
+    expect(readPendingRecord()).toMatchObject({ itemIds: ['it-egg', 'it-free'] });
+
+    await expect(calls[0].onStructuredOnly()).rejects.toMatchObject({ status: 503 });
+    expect(fetchMock.mock.calls.filter(([, init]: any) => init?.method === 'PUT')).toHaveLength(1);
+    expect(checkinBodies).toHaveLength(2);
+    expect(checkinBodies[1]).toEqual(checkinBodies[0]);
+    expect(checkinBodies[1].itemIds).toEqual(['it-egg', 'it-free']);
+    expect(localStorage.getItem(pendingCheckinKey)).toBe(firstPending);
+  });
+
+  it('补量入库：弹窗打开后 localStorage 损坏或读取抛错，任一回调都 fail-closed 零写入', async () => {
+    const { fetchMock, shopping, calls } = await bootCheckinPrompt([freeSpecItem(), structuredItem()], {});
+    await shopping.importCheckedToPantry();
+    const updates = [{ id: 'it-free', quantity: 2, unit: '袋' }];
+
+    localStorage.setItem(pendingCheckinKey, '{not json');
+    expect(await calls[0].onSubmit(updates)).toBe(false);
+    expect(await calls[0].onStructuredOnly()).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(localStorage.getItem(pendingCheckinKey)).toBe('{not json');
+
+    localStorage.removeItem(pendingCheckinKey);
+    stubStorage({
+      getItem: () => {
+        throw new Error('SecurityError');
+      }
+    });
+    expect(await calls[0].onSubmit(updates)).toBe(false);
+    expect(await calls[0].onStructuredOnly()).toBe(false);
+    stubStorage({});
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readPendingRecord()).toBeNull();
+  });
+
+  it('补量入库：OTHER 与中文非标准单位在本地 fail-closed，零请求且不写 pending', async () => {
+    const { fetchMock, shopping, calls } = await bootCheckinPrompt([freeSpecItem(), structuredItem()], {});
+    await shopping.importCheckedToPantry();
+    for (const unit of ['OTHER', '根', '斗', '']) {
+      await expect(calls[0].onSubmit([{ id: 'it-free', quantity: 2, unit }])).rejects.toMatchObject({
+        code: 'SHOPPING_CHECKIN_QUANTITY_INVALID'
+      });
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readPendingRecord()).toBeNull();
+  });
+
+  it('补量入库：弹窗打开后清单被切换，旧 callback 拒绝且零 PUT/POST', async () => {
+    const otherList = {
+      ...shoppingListDto(5, [shoppingItemDto({ id: 'it-other', ingredientNameSnapshot: '别的清单项', quantity: 1 })]),
+      id: 'sl2'
+    };
+    const { fetchMock, shopping, calls, toast } = await bootCheckinPrompt([freeSpecItem(), structuredItem()], {
+      '/api/v1/shopping-lists?status=ACTIVE': shoppingJson([otherList])
+    });
+    await shopping.importCheckedToPantry();
+    await shopping.reload();
+    expect(shopping.data.map((x: any) => x.id)).toEqual(['it-other']);
+    fetchMock.mockClear();
+
+    expect(await calls[0].onSubmit([{ id: 'it-free', quantity: 2, unit: '袋' }])).toBe(false);
+    expect(await calls[0].onStructuredOnly()).toBe(false);
+    expect(fetchMock).not.toHaveBeenCalled();
+    expect(readPendingRecord()).toBeNull();
+    expect(toast).toHaveBeenCalledWith('当前购物清单已切换，本次补量未提交；请重新选择条目后重试', 'error');
+  });
+
+  it('shopping updateItem：category/ingredientId/sortOrder 仅显式传入时白名单透传', async () => {
+    const target = shoppingItemDto({ id: 'it-x', ingredientNameSnapshot: '葱', quantity: 2, unit: 'PIECE' });
+    const { fetchMock, shopping } = await bootShopping(shoppingListDto(2, [target]), {
+      '/api/v1/shopping-list-items/it-x': shoppingJson(shoppingListDto(2, [target]))
+    });
+    const lastBody = () => JSON.parse(fetchMock.mock.calls.at(-1)![1].body);
+
+    // 不显式传：保持后端原值，不凭空携带关联/分类/排序字段
+    await shopping.updateItem('it-x', { completed: true });
+    expect(lastBody()).toEqual({ version: 2, completed: true });
+
+    fetchMock.mockClear();
+    await shopping.updateItem('it-x', {
+      completed: true,
+      category: '蔬菜',
+      ingredientId: 'ing-9',
+      sortOrder: 3
+    });
+    expect(lastBody()).toEqual({
+      version: 2,
+      completed: true,
+      category: '蔬菜',
+      ingredientId: 'ing-9',
+      sortOrder: 3
+    });
+
+    // 非法白名单值本地快速失败且零请求
+    fetchMock.mockClear();
+    await expect(shopping.updateItem('it-x', { sortOrder: 1.5 })).rejects.toMatchObject({
+      code: 'SHOPPING_ITEM_INVALID'
+    });
+    await expect(shopping.updateItem('it-x', { ingredientId: 123 as any })).rejects.toMatchObject({
+      code: 'SHOPPING_ITEM_INVALID'
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+
+    // shopping.add 显式 category 透传，名称/规格契约不变；未给则不带该字段
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue(shoppingJson(shoppingListDto(2, [target])));
+    await shopping.add({ name: '葱', amount: '适量', category: '蔬菜' });
+    expect(fetchMock.mock.calls.at(-1)![0]).toBe('/api/v1/shopping-lists/sl1/items');
+    expect(lastBody()).toEqual({
+      version: 2,
+      ingredientName: '葱',
+      sourceType: 'MANUAL',
+      sourceId: null,
+      completed: false,
+      quantity: null,
+      unit: null,
+      amountText: '适量',
+      category: '蔬菜'
+    });
+    fetchMock.mockClear();
+    await shopping.add({ name: '葱', amount: '适量' });
+    expect(lastBody()).not.toHaveProperty('category');
   });
 
   it('recipe form 未编辑保存：食材行自身 ID 与库存 ingredientId 不同时不丢关联与 flags（P1 返修回归）', async () => {
@@ -4304,38 +4948,76 @@ describe('Google2 legacy entry adapter', () => {
 
   it('PIN 401 并发请求复用单例解锁，成功后各自仅重试一次且不重放禁区', async () => {
     document.body.innerHTML = '';
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ success: true, data: {} }) });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ success: true, data: {} })
+    });
     vi.stubGlobal('fetch', fetchMock);
     window.eval(adapter);
-    document.body.innerHTML = '<div id="modalPinUnlock"><form id="google2PinUnlockForm"><input id="google2PinInput"><p id="google2PinError"></p><button id="google2PinSubmit" type="submit"></button><button id="google2PinCancel" type="button"></button></form></div>';
+    document.body.innerHTML =
+      '<div id="modalPinUnlock"><form id="google2PinUnlockForm"><input id="google2PinInput"><p id="google2PinError"></p><button id="google2PinSubmit" type="submit"></button><button id="google2PinCancel" type="button"></button></form></div>';
     fetchMock.mockReset();
     fetchMock
-      .mockResolvedValueOnce({ ok: false, status: 401, headers: new Headers(), text: async () => JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: '需要 PIN' } }) })
-      .mockResolvedValueOnce({ ok: false, status: 401, headers: new Headers(), text: async () => JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: '需要 PIN' } }) })
-      .mockResolvedValueOnce({ ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ success: true, data: { valid: true, required: true, token: 'test-token' } }) })
-      .mockResolvedValue({ ok: true, status: 200, headers: new Headers(), text: async () => JSON.stringify({ success: true, data: { ok: true } }) });
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        text: async () => JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: '需要 PIN' } })
+      })
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 401,
+        headers: new Headers(),
+        text: async () => JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: '需要 PIN' } })
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify({ success: true, data: { valid: true, required: true, token: 'test-token' } })
+      })
+      .mockResolvedValue({
+        ok: true,
+        status: 200,
+        headers: new Headers(),
+        text: async () => JSON.stringify({ success: true, data: { ok: true } })
+      });
     const first = (window as any).DafanApiClient.get('/recipes');
     const second = (window as any).DafanApiClient.get('/stores');
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(false);
     expect(fetchMock).toHaveBeenCalledTimes(2);
     (document.getElementById('google2PinInput') as HTMLInputElement).value = '1234';
-    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    document
+      .getElementById('google2PinUnlockForm')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await expect(Promise.all([first, second])).resolves.toEqual([{ ok: true }, { ok: true }]);
     expect(fetchMock).toHaveBeenCalledTimes(5);
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/settings/pin/verify'))).toHaveLength(1);
-    const retriedCalls = fetchMock.mock.calls.filter(([, init]) => typeof init?.headers?.['X-App-Pin-Token'] === 'string' && init.headers['X-App-Pin-Token']);
+    const retriedCalls = fetchMock.mock.calls.filter(
+      ([, init]) => typeof init?.headers?.['X-App-Pin-Token'] === 'string' && init.headers['X-App-Pin-Token']
+    );
     expect(retriedCalls).toHaveLength(2);
   });
 
   it('FormData 恢复请求保留浏览器 boundary，且恢复端点 401 不自动重放', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: false, status: 401, headers: new Headers(), text: async () => JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: '需要 PIN' } }) });
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 401,
+      headers: new Headers(),
+      text: async () => JSON.stringify({ success: false, error: { code: 'UNAUTHORIZED', message: '需要 PIN' } })
+    });
     vi.stubGlobal('fetch', fetchMock);
     document.body.innerHTML = '<div id="modalPinUnlock" class="hidden"></div>';
     window.eval(adapter);
     fetchMock.mockClear();
-    const form = new FormData(); form.append('file', new Blob(['zip']), 'backup.zip');
-    await expect((window as any).DafanApiClient.request('/backups/restore', { method: 'POST', body: form, _skipPinRetry: true })).rejects.toMatchObject({ status: 401, code: 'UNAUTHORIZED' });
+    const form = new FormData();
+    form.append('file', new Blob(['zip']), 'backup.zip');
+    await expect(
+      (window as any).DafanApiClient.request('/backups/restore', { method: 'POST', body: form, _skipPinRetry: true })
+    ).rejects.toMatchObject({ status: 401, code: 'UNAUTHORIZED' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Content-Type');
   });
@@ -4374,7 +5056,9 @@ describe('Google2 legacy entry adapter', () => {
 
     const input = document.getElementById('google2PinInput') as HTMLInputElement;
     input.value = '1111';
-    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    document
+      .getElementById('google2PinUnlockForm')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await waitFor(() => (document.getElementById('google2PinError')?.textContent || '') === 'PIN 不正确，请重试');
     expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(false);
     expect(input.value).toBe('');
@@ -4384,7 +5068,9 @@ describe('Google2 legacy entry adapter', () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/settings/pin/verify'))).toHaveLength(1);
 
     input.value = '1234';
-    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    document
+      .getElementById('google2PinUnlockForm')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     const [recipeResult, storeResult] = await Promise.all([recipe, store]);
     expect(settled).toBe(2);
     expect(recipeResult).toEqual({ endpoint: '/api/v1/recipes', token: expect.any(String) });
@@ -4437,7 +5123,9 @@ describe('Google2 legacy entry adapter', () => {
       expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(false);
 
       input.value = '1111';
-      document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      document
+        .getElementById('google2PinUnlockForm')
+        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
       await vi.advanceTimersByTimeAsync(0);
       expect(submit.disabled).toBe(true);
       expect(error()).toBe('尝试次数过多，请 2 秒后再试');
@@ -4454,7 +5142,9 @@ describe('Google2 legacy entry adapter', () => {
       expect(settled).toBe(false);
 
       input.value = '1234';
-      document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      document
+        .getElementById('google2PinUnlockForm')
+        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
       await vi.advanceTimersByTimeAsync(0);
       await expect(pending).resolves.toEqual({ ok: true });
       expect(settled).toBe(true);
@@ -4499,7 +5189,9 @@ describe('Google2 legacy entry adapter', () => {
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/pin/verify'))).toHaveLength(0);
 
     (document.getElementById('google2PinInput') as HTMLInputElement).value = '1234';
-    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    document
+      .getElementById('google2PinUnlockForm')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await expect(pending).resolves.toBe(unlockToken);
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/pin/session'))).toHaveLength(1);
     expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(true);
@@ -4553,7 +5245,9 @@ describe('Google2 legacy entry adapter', () => {
     const revokeObjectURL = vi.fn();
     vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
     const downloads: { href: string; download: string }[] = [];
-    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (
+      this: HTMLAnchorElement
+    ) {
       downloads.push({ href: this.href, download: this.download });
     });
     const toast = vi.fn();
@@ -4567,7 +5261,9 @@ describe('Google2 legacy entry adapter', () => {
       // token 只通过真实解锁流程写入，不依赖硬编码本地存储键
       const pending = (window as any).DafanPinAdapter.ensurePinUnlock();
       (document.getElementById('google2PinInput') as HTMLInputElement).value = '1234';
-      document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      document
+        .getElementById('google2PinUnlockForm')
+        ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
       const unlockToken = await pending;
       expect(storedValues()).toEqual([unlockToken]);
 
@@ -4607,7 +5303,9 @@ describe('Google2 legacy entry adapter', () => {
     await waitFor(() => (document.getElementById('google2RestoreState')?.textContent || '') === '请先勾选恢复确认项');
     expect(document.getElementById('google2RestoreState')?.textContent).toBe('请先勾选恢复确认项');
     expect(
-      mounted.fetchMock.mock.calls.filter(([url]) => /\/settings\/high-risk\/authorize|\/backups\/restore/.test(String(url)))
+      mounted.fetchMock.mock.calls.filter(([url]) =>
+        /\/settings\/high-risk\/authorize|\/backups\/restore/.test(String(url))
+      )
     ).toHaveLength(0);
 
     (document.getElementById('google2RestoreConfirmation') as HTMLInputElement).checked = true;
@@ -4659,7 +5357,9 @@ describe('Google2 legacy entry adapter', () => {
     const submit = document.getElementById('google2RestoreSubmit') as HTMLButtonElement;
 
     submit.click();
-    await waitFor(() => (document.getElementById('google2RestoreState')?.textContent || '') === '请输入 4～8 位数字 PIN');
+    await waitFor(
+      () => (document.getElementById('google2RestoreState')?.textContent || '') === '请输入 4～8 位数字 PIN'
+    );
     expect(document.getElementById('google2RestoreState')?.textContent).toBe('请输入 4～8 位数字 PIN');
     expect(
       mounted.fetchMock.mock.calls.filter(([url]) => /high-risk\/authorize|\/backups\/restore/.test(String(url)))
@@ -4674,12 +5374,22 @@ describe('Google2 legacy entry adapter', () => {
       () => mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/backups/restore')).length === 1
     );
     await flush();
-    expect(mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/high-risk/authorize'))).toHaveLength(1);
-    expect(JSON.parse(String(mounted.fetchMock.mock.calls.find(([url]) => String(url).endsWith('/settings/high-risk/authorize'))![1].body))).toEqual({
+    expect(
+      mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/high-risk/authorize'))
+    ).toHaveLength(1);
+    expect(
+      JSON.parse(
+        String(
+          mounted.fetchMock.mock.calls.find(([url]) => String(url).endsWith('/settings/high-risk/authorize'))![1].body
+        )
+      )
+    ).toEqual({
       action: 'RESTORE',
       pin: '4321'
     });
-    expect(mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/pin/session'))).toHaveLength(1);
+    expect(mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/pin/session'))).toHaveLength(
+      1
+    );
     expect(Object.values(mounted.reloadSpies).every((spy) => spy.mock.calls.length === 0)).toBe(true);
     expect(mounted.dashboard).not.toHaveBeenCalled();
     expect(localStorage.length).toBe(0);
@@ -4753,8 +5463,7 @@ describe('Google2 legacy entry adapter', () => {
     const newToken = 'new-library-test-session';
     mounted.fetchMock.mockImplementation(async (url: any, init?: any) => {
       if (String(url).endsWith('/settings/pin/session')) return jsonFail(401, 'UNAUTHORIZED', '需要新库 PIN');
-      if (String(url).endsWith('/settings/pin/verify'))
-        return jsonOk({ valid: true, required: true, token: newToken });
+      if (String(url).endsWith('/settings/pin/verify')) return jsonOk({ valid: true, required: true, token: newToken });
       return originalFetch(url, init);
     });
     await openRestoreDialogWith(new File(['backup'], 'pin-backup.zip', { type: 'application/zip' }));
@@ -4776,7 +5485,9 @@ describe('Google2 legacy entry adapter', () => {
     expect(sessionCall[1]?.headers).not.toHaveProperty('X-App-Pin-Token');
 
     (document.getElementById('google2PinInput') as HTMLInputElement).value = '9876';
-    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    document
+      .getElementById('google2PinUnlockForm')
+      ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
     await waitFor(() => mounted.reloadSpies.tools.mock.calls.length === 1);
     expect(storedValues()).toEqual([newToken]);
     expect(mounted.dashboard).toHaveBeenCalledTimes(1);

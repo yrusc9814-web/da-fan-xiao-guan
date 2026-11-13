@@ -2812,6 +2812,9 @@
             <h2 class="text-lg font-black m-0">购物补货清单</h2>
           </div>
           <div class="flex items-center gap-2">
+            <button class="neo-btn-secondary text-xs py-2 px-3 flex items-center gap-1" onclick="clearCompletedShoppingItems()">
+              <span>🧹</span> 清理已购
+            </button>
             <button class="neo-btn-secondary text-xs py-2 px-3 flex items-center gap-1" onclick="importCheckedShoppingToPantry()">
               <span>📥</span> 采购项一键入库冰箱
             </button>
@@ -3920,13 +3923,15 @@
               <select id="formIngStockUnit" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]">
                 <option value="g">克 (g)</option>
                 <option value="kg">千克 (kg)</option>
+                <option value="ml">毫升 (ml)</option>
+                <option value="L">升 (L)</option>
                 <option value="个">个</option>
-                <option value="根">根</option>
-                <option value="块">块</option>
                 <option value="盒">盒</option>
-                <option value="份">份</option>
-                <option value="瓶">瓶</option>
                 <option value="袋">袋</option>
+                <option value="瓶">瓶</option>
+                <option value="罐">罐</option>
+                <option value="包">包</option>
+                <option value="份">份</option>
               </select>
             </div>
           </div>
@@ -4093,6 +4098,30 @@
             <button type="submit" class="neo-btn-primary text-xs py-2 px-5 shadow-[var(--shadow-primary)]">加入清单</button>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- 【VAN-201】补量入库弹窗：勾选项中存在自由规格（适量/2根等）时，先补真实数量与标准单位再入库 -->
+    <div id="modalShoppingCheckinPrompt" class="hidden fixed inset-0 z-[130] flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+      <div id="shoppingCheckinPromptBackdrop" class="fixed inset-0 modal-backdrop"></div>
+      <div class="modal-dialog relative w-full max-w-md bg-[#FCFAF7] border-2 border-[#FEDBC5] rounded-3xl shadow-2xl p-4 sm:p-5 z-10 max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="flex items-center justify-between pb-2.5 border-b border-[#F0E8DC] flex-shrink-0 mb-3">
+          <div class="flex items-center gap-2">
+            <span class="text-lg">📥</span>
+            <div>
+              <h3 class="text-sm font-black text-[#2D2621] m-0">补量后入库冰箱</h3>
+              <p id="shoppingCheckinPromptHint" class="text-[10px] text-stone-400 m-0">请为缺量项填写实际采购数量与标准单位</p>
+            </div>
+          </div>
+          <button type="button" id="shoppingCheckinPromptCloseBtn" class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]">✕</button>
+        </div>
+        <div id="shoppingCheckinPromptList" class="overflow-y-auto pr-1 text-xs space-y-2 flex-1"></div>
+        <p id="shoppingCheckinPromptError" class="hidden text-[10px] font-bold text-red-500 m-0 mt-2"></p>
+        <div class="flex items-center justify-end gap-2 pt-2.5 mt-2 border-t border-[#F0E8DC] flex-shrink-0">
+          <button type="button" id="shoppingCheckinPromptCancelBtn" class="neo-btn-secondary text-xs py-2 px-3">取消</button>
+          <button type="button" id="shoppingCheckinPromptStructuredBtn" class="neo-btn-secondary text-xs py-2 px-3">仅入库已填数量项</button>
+          <button type="button" id="shoppingCheckinPromptSubmitBtn" class="neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]">补填并一并入库</button>
+        </div>
       </div>
     </div>
 
@@ -5240,6 +5269,7 @@
           ingredientForm: 'modalIngredientForm',
           recordForm: 'modalRecordForm',
           shoppingForm: 'modalShoppingForm',
+          shoppingCheckinPrompt: 'modalShoppingCheckinPrompt',
           pantryRecommend: 'modalPantryRecommend',
           toolForm: 'modalToolForm',
           wheelWinner: 'modalWheelWinner',
@@ -7430,31 +7460,356 @@
       }).join('');
     }
 
+    // 【VAN-140】购物清单渲染：100% 安全 DOM（createElement + textContent + addEventListener）。
+    // 食材名/来源/规格/分类/id 一律作为纯文本写入，绝不拼进 innerHTML 或内联事件属性，彻底消除注入面。
+    function shoppingWriteActionError(error) {
+      showToast(error && error.message ? error.message : '操作失败，请稍后重试', 'error');
+      return false;
+    }
+
     function renderShoppingList() {
       const container = document.getElementById('shoppingListContainer');
       if (!container) return;
       const items = BentoService.shopping.getAll();
 
-      if (items.length === 0) {
-        container.innerHTML = '<div class="p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100">购物清单空空如也，可在菜谱缺料时一键补齐！</div>';
+      if (!items.length) {
+        const empty = document.createElement('div');
+        empty.className = 'p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100';
+        empty.textContent = '购物清单空空如也，可在菜谱缺料时一键补齐！';
+        container.replaceChildren(empty);
         return;
       }
 
-      container.innerHTML = items.map(item => `
-        <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl flex items-center justify-between gap-3 shadow-sm hover:border-[#FEDBC5] transition-all ${item.isChecked ? 'opacity-60 bg-stone-50' : ''}">
-          <div class="flex items-center gap-2.5 min-w-0 flex-1">
-            <input type="checkbox" ${item.isChecked ? 'checked' : ''} onchange="BentoService.shopping.toggle('${item.id}')" class="w-4 h-4 rounded text-[#FF6B57] accent-[#FF6B57] cursor-pointer" />
-            <div class="min-w-0">
-              <div class="text-xs font-black ${item.isChecked ? 'line-through text-stone-400' : 'text-stone-800'} truncate">${item.name}</div>
-              <div class="text-[10px] text-stone-400 truncate">${item.source || '备忘'} · 需补 ${item.amount}</div>
-            </div>
-          </div>
-          <div class="flex items-center gap-2 flex-shrink-0">
-            <span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-stone-100 text-stone-500">${item.category}</span>
-            <button class="text-stone-300 hover:text-red-500 text-xs font-black px-1" onclick="confirmDeleteShoppingItem('${item.id}')">✕</button>
-          </div>
-        </div>
-      `).join('');
+      const fragment = document.createDocumentFragment();
+      items.forEach((item) => {
+        // id 只保存在闭包里：特殊字符 id 既不拼进属性也不拼进 HTML
+        const itemId = item && item.id != null ? String(item.id) : '';
+        const checked = !!(item && item.isChecked);
+
+        const card = document.createElement('div');
+        card.className = `p-3 bg-white border border-[#F0E8DC] rounded-2xl flex items-center justify-between gap-3 shadow-sm hover:border-[#FEDBC5] transition-all${checked ? ' opacity-60 bg-stone-50' : ''}`;
+
+        const main = document.createElement('div');
+        main.className = 'flex items-center gap-2.5 min-w-0 flex-1';
+
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'w-4 h-4 rounded text-[#FF6B57] accent-[#FF6B57] cursor-pointer';
+        checkbox.checked = checked;
+        checkbox.addEventListener('change', () => {
+          try {
+            const result = BentoService.shopping.toggle(itemId);
+            if (result && typeof result.catch === 'function') result.catch(shoppingWriteActionError);
+          } catch (error) {
+            shoppingWriteActionError(error);
+          }
+        });
+
+        const textBox = document.createElement('div');
+        textBox.className = 'min-w-0';
+
+        const title = document.createElement('div');
+        title.className = `text-xs font-black ${checked ? 'line-through text-stone-400' : 'text-stone-800'} truncate`;
+        title.textContent = item && item.name != null ? String(item.name) : '';
+
+        const sourceText = (item && item.source) || '备忘';
+        const amountText = item && item.amount != null ? String(item.amount) : '';
+        const sub = document.createElement('div');
+        sub.className = 'text-[10px] text-stone-400 truncate';
+        // 规格为空时不留下悬空的「需补 」
+        sub.textContent = amountText ? `${sourceText} · 需补 ${amountText}` : sourceText;
+
+        textBox.append(title, sub);
+        main.append(checkbox, textBox);
+
+        const actions = document.createElement('div');
+        actions.className = 'flex items-center gap-2 flex-shrink-0';
+
+        // category 为空时不渲染空胶囊
+        if (item && item.category) {
+          const badge = document.createElement('span');
+          badge.className = 'px-2 py-0.5 rounded-full text-[9px] font-black bg-stone-100 text-stone-500';
+          badge.textContent = String(item.category);
+          actions.append(badge);
+        }
+
+        const delBtn = document.createElement('button');
+        delBtn.type = 'button';
+        delBtn.className = 'text-stone-300 hover:text-red-500 text-xs font-black px-1';
+        delBtn.textContent = '✕';
+        delBtn.addEventListener('click', () => confirmDeleteShoppingItem(itemId));
+
+        actions.append(delBtn);
+        card.append(main, actions);
+        fragment.append(card);
+      });
+      container.replaceChildren(fragment);
+    }
+
+    // -------------------------------------------------------------------------
+    // 【补量入库弹窗】与适配器的 UI 桥接契约（VAN-201）：
+    // window.openShoppingCheckinPrompt({ items, hasStructuredItems, onSubmit, onStructuredOnly })
+    // - 打开只构建并展示，绝不发请求；取消只关闭。
+    // - onSubmit(updates) / onStructuredOnly() 返回 true 才关闭；false 或抛错保持弹窗可重试并提示。
+    // - updates = [{ id, quantity: number, unit: QuantityUnit }]，id 全部来自闭包，绝不拼进 HTML。
+    // 弹窗列表 100% createElement + textContent + value + addEventListener。
+    // -------------------------------------------------------------------------
+    const SHOPPING_CHECKIN_UNITS = [
+      { value: 'GRAM', label: '克 (g)' },
+      { value: 'KILOGRAM', label: '千克 (kg)' },
+      { value: 'MILLILITER', label: '毫升 (ml)' },
+      { value: 'LITER', label: '升 (L)' },
+      { value: 'PIECE', label: '个' },
+      { value: 'BOX', label: '盒' },
+      { value: 'BAG', label: '袋' },
+      { value: 'BOTTLE', label: '瓶' },
+      { value: 'CAN', label: '罐' },
+      { value: 'PACK', label: '包' },
+      { value: 'PORTION', label: '份' }
+    ];
+    // 桥接契约允许 SERVING，后端 QuantityUnit 只有 PORTION：归一为真实可写枚举
+    const SHOPPING_CHECKIN_UNIT_ALIASES = { SERVING: 'PORTION' };
+    let shoppingCheckinPromptState = null;
+
+    function normalizeShoppingCheckinUnit(value) {
+      const key = String(value || '').trim();
+      if (!key) return '';
+      if (SHOPPING_CHECKIN_UNITS.some((unit) => unit.value === key)) return key;
+      return SHOPPING_CHECKIN_UNIT_ALIASES[key] || '';
+    }
+
+    function setShoppingCheckinPromptError(message) {
+      const el = document.getElementById('shoppingCheckinPromptError');
+      if (!el) return;
+      el.textContent = message || '';
+      el.classList.toggle('hidden', !message);
+    }
+
+    function setShoppingCheckinPromptBusy(state, busy) {
+      const modal = document.getElementById('modalShoppingCheckinPrompt');
+      if (!modal) return;
+      state.busy = !!busy;
+      const submitBtn = document.getElementById('shoppingCheckinPromptSubmitBtn');
+      const structuredBtn = document.getElementById('shoppingCheckinPromptStructuredBtn');
+      const cancelBtn = document.getElementById('shoppingCheckinPromptCancelBtn');
+      if (submitBtn) submitBtn.disabled = !!busy;
+      if (structuredBtn) structuredBtn.disabled = !!busy || !state.hasStructuredItems;
+      if (cancelBtn) cancelBtn.disabled = !!busy;
+      modal.querySelectorAll('#shoppingCheckinPromptList input, #shoppingCheckinPromptList select').forEach((el) => {
+        el.disabled = !!busy;
+      });
+      // neo 按钮没有 :disabled 视觉态，禁用必须显式置灰提示
+      [submitBtn, structuredBtn, cancelBtn].forEach((btn) => {
+        if (!btn) return;
+        btn.classList.toggle('opacity-50', btn.disabled);
+        btn.classList.toggle('cursor-not-allowed', btn.disabled);
+      });
+    }
+
+    function renderShoppingCheckinPromptRows(state) {
+      const list = document.getElementById('shoppingCheckinPromptList');
+      if (!list) return;
+      list.replaceChildren();
+      state.rows = [];
+
+      state.items.forEach((item, index) => {
+        const itemId = item && item.id != null ? String(item.id) : '';
+        const row = document.createElement('div');
+        row.className = 'p-2.5 bg-white border border-[#F0E8DC] rounded-2xl space-y-2';
+
+        const head = document.createElement('div');
+        head.className = 'flex items-center justify-between gap-2 min-w-0';
+
+        const nameEl = document.createElement('span');
+        nameEl.className = 'text-xs font-black text-stone-800 truncate';
+        nameEl.textContent = item && item.name != null ? String(item.name) : '';
+
+        const specEl = document.createElement('span');
+        specEl.className = 'text-[10px] font-bold text-stone-400 flex-shrink-0';
+        specEl.textContent = `原规格：${item && item.amount ? String(item.amount) : '未填写'}`;
+
+        head.append(nameEl, specEl);
+
+        const fields = document.createElement('div');
+        fields.className = 'grid grid-cols-2 gap-2';
+
+        const quantityEl = document.createElement('input');
+        quantityEl.type = 'number';
+        quantityEl.min = '0';
+        quantityEl.step = 'any';
+        quantityEl.inputMode = 'decimal';
+        quantityEl.placeholder = '实际采购数量';
+        quantityEl.className =
+          'w-full px-2.5 py-1.5 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]';
+        quantityEl.setAttribute('aria-label', `第 ${index + 1} 项实际采购数量`);
+
+        const unitEl = document.createElement('select');
+        unitEl.className =
+          'w-full px-2.5 py-1.5 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]';
+        unitEl.setAttribute('aria-label', `第 ${index + 1} 项标准单位`);
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = '请选择单位';
+        unitEl.append(placeholder);
+        SHOPPING_CHECKIN_UNITS.forEach((unit) => {
+          const option = document.createElement('option');
+          option.value = unit.value;
+          option.textContent = unit.label;
+          unitEl.append(option);
+        });
+
+        quantityEl.addEventListener('input', () => setShoppingCheckinPromptError(''));
+        unitEl.addEventListener('change', () => setShoppingCheckinPromptError(''));
+
+        fields.append(quantityEl, unitEl);
+        row.append(head, fields);
+        list.append(row);
+        state.rows.push({ id: itemId, quantityEl, unitEl });
+      });
+    }
+
+    function bindShoppingCheckinPromptControls() {
+      const modal = document.getElementById('modalShoppingCheckinPrompt');
+      if (!modal || modal.dataset.controlsBound === 'true') return;
+      modal.dataset.controlsBound = 'true';
+      const on = (id, handler) => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('click', handler);
+      };
+      on('shoppingCheckinPromptSubmitBtn', () => runShoppingCheckinPromptAction('all'));
+      on('shoppingCheckinPromptStructuredBtn', () => runShoppingCheckinPromptAction('structured'));
+      on('shoppingCheckinPromptCancelBtn', () => closeShoppingCheckinPrompt());
+      on('shoppingCheckinPromptCloseBtn', () => closeShoppingCheckinPrompt());
+      on('shoppingCheckinPromptBackdrop', () => closeShoppingCheckinPrompt());
+    }
+
+    function openShoppingCheckinPrompt(options) {
+      const modal = document.getElementById('modalShoppingCheckinPrompt');
+      if (!modal) return false;
+      const config = options && typeof options === 'object' ? options : {};
+      const state = {
+        items: Array.isArray(config.items) ? config.items : [],
+        hasStructuredItems: !!config.hasStructuredItems,
+        onSubmit: typeof config.onSubmit === 'function' ? config.onSubmit : null,
+        onStructuredOnly: typeof config.onStructuredOnly === 'function' ? config.onStructuredOnly : null,
+        rows: [],
+        busy: false,
+        closed: false
+      };
+      shoppingCheckinPromptState = state;
+      bindShoppingCheckinPromptControls();
+      renderShoppingCheckinPromptRows(state);
+      setShoppingCheckinPromptError('');
+      const hint = document.getElementById('shoppingCheckinPromptHint');
+      if (hint) {
+        hint.textContent = state.hasStructuredItems
+          ? '可只入库已填数量的项，缺量项会原样保留在清单中。'
+          : '当前勾选项都缺少标准数量/单位，需全部补填后才能一并入库。';
+        hint.classList.toggle('text-stone-400', state.hasStructuredItems);
+        hint.classList.toggle('text-amber-600', !state.hasStructuredItems);
+      }
+      setShoppingCheckinPromptBusy(state, false);
+      // 打开只构建并展示：不发任何请求
+      const top = typeof BentoModal.getTop === 'function' ? BentoModal.getTop() : null;
+      if (top && top.name === 'shoppingCheckinPrompt') {
+        modal.classList.remove('hidden');
+        return true;
+      }
+      if (typeof BentoModal.open === 'function' && BentoModal.open('shoppingCheckinPrompt') === false) {
+        modal.classList.add('hidden');
+        shoppingCheckinPromptState = null;
+        return false;
+      }
+      modal.classList.remove('hidden');
+      return true;
+    }
+
+    function closeShoppingCheckinPrompt() {
+      const state = shoppingCheckinPromptState;
+      if (state) {
+        state.closed = true;
+        state.busy = false;
+      }
+      shoppingCheckinPromptState = null;
+      const modal = document.getElementById('modalShoppingCheckinPrompt');
+      const top = typeof BentoModal.getTop === 'function' ? BentoModal.getTop() : null;
+      if (top && top.name === 'shoppingCheckinPrompt') {
+        BentoModal.close(true);
+        return;
+      }
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function collectShoppingCheckinUpdates(state) {
+      const updates = [];
+      let valid = true;
+      state.rows.forEach((row) => {
+        const raw = String(row.quantityEl.value ?? '').trim();
+        const quantity = Number(raw);
+        const unit = normalizeShoppingCheckinUnit(row.unitEl.value);
+        const rowValid = raw !== '' && Number.isFinite(quantity) && quantity > 0 && unit !== '';
+        row.quantityEl.classList.toggle('border-red-400', !rowValid);
+        row.unitEl.classList.toggle('border-red-400', !rowValid);
+        if (!rowValid) valid = false;
+        else updates.push({ id: row.id, quantity, unit });
+      });
+      return { valid, updates };
+    }
+
+    async function runShoppingCheckinPromptAction(mode) {
+      const state = shoppingCheckinPromptState;
+      if (!state || state.busy || state.closed) return false;
+      if (mode === 'structured' && !state.hasStructuredItems) return false;
+      setShoppingCheckinPromptError('');
+
+      let payload = null;
+      if (mode === 'all') {
+        const collected = collectShoppingCheckinUpdates(state);
+        if (!collected.valid) {
+          setShoppingCheckinPromptError('请为每一行填写大于 0 的数量并选择标准单位');
+          return false;
+        }
+        payload = collected.updates;
+      }
+
+      const action = mode === 'all' ? state.onSubmit : state.onStructuredOnly;
+      if (typeof action !== 'function') {
+        setShoppingCheckinPromptError('入库操作不可用，请关闭弹窗后重试');
+        return false;
+      }
+
+      setShoppingCheckinPromptBusy(state, true);
+      try {
+        const result = await action(payload);
+        if (result === true) {
+          closeShoppingCheckinPrompt();
+          return true;
+        }
+        if (!state.closed) setShoppingCheckinPromptError('入库未完成，请检查后重试');
+        return false;
+      } catch (error) {
+        // 异步失败不关弹窗：保留已填内容供原地重试
+        if (!state.closed) setShoppingCheckinPromptError(error && error.message ? error.message : '入库失败，请重试');
+        return false;
+      } finally {
+        if (!state.closed) setShoppingCheckinPromptBusy(state, false);
+      }
+    }
+
+    // 「清理已购」只移除已完成项，绝不改冰箱库存
+    function clearCompletedShoppingItems() {
+      const service = BentoService.shopping;
+      if (!service || typeof service.clearCompleted !== 'function') {
+        showToast('当前购物清单服务不支持清理已购', 'error');
+        return Promise.resolve(false);
+      }
+      try {
+        const result = service.clearCompleted();
+        if (result && typeof result.then === 'function') return result.catch(shoppingWriteActionError);
+        return Promise.resolve(result);
+      } catch (error) {
+        return Promise.resolve(shoppingWriteActionError(error));
+      }
     }
 
     function changeCalendarMonth(delta) {
@@ -8584,8 +8939,16 @@
           return;
         }
 
-        // Level 4: 顶层 Modal 为转盘结果 Winner 弹窗 -> 拦截并禁止 ESC 关闭
+        // 补量入库弹窗：ESC 走统一关闭入口，确保内部状态复位
         const top = BentoModal.getTop();
+        if (top && top.name === 'shoppingCheckinPrompt') {
+          e.stopPropagation();
+          e.preventDefault();
+          closeShoppingCheckinPrompt();
+          return;
+        }
+
+        // Level 4: 顶层 Modal 为转盘结果 Winner 弹窗 -> 拦截并禁止 ESC 关闭
         if (top && top.name === 'wheelWinner') {
           e.stopPropagation();
           e.preventDefault();
@@ -9699,6 +10062,9 @@
     window.closeStorePlanModal = () => BentoModal.close();
     window.handleWheelWinnerPlan = () => BentoModal.handleWheelResult();
     window.importCheckedShoppingToPantry = () => BentoService.pantry.importCheckedShoppingToPantry ? BentoService.pantry.importCheckedShoppingToPantry() : BentoService.shopping.importCheckedToPantry ? BentoService.shopping.importCheckedToPantry() : showToast('已将清单勾选食材一键入库！', '🥬');
+    window.openShoppingCheckinPrompt = openShoppingCheckinPrompt;
+    window.closeShoppingCheckinPrompt = closeShoppingCheckinPrompt;
+    window.clearCompletedShoppingItems = clearCompletedShoppingItems;
     
     // 全局方法挂载
     window.switchPage = switchPage;

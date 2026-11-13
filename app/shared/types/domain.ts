@@ -308,8 +308,10 @@ export interface ShoppingListItemDto {
   id: ID;
   ingredientId: ID | null;
   ingredientName: string;
-  quantity: number;
-  unit: QuantityUnit;
+  quantity: number | null;
+  unit: QuantityUnit | null;
+  amountText: string | null;
+  category: string | null;
   sourceType: ShoppingSourceType;
   sourceId: ID | null;
   completed: boolean;

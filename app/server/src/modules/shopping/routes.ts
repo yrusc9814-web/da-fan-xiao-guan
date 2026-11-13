@@ -4,8 +4,8 @@ import type { PrismaClient, ShoppingListStatus } from '@prisma/client';
 import { success } from '../../shared/http.js';
 import {
   booleanSchema,
+  nullableQuantityUnitSchema,
   nullableStringSchema,
-  quantityUnitSchema,
   shoppingListStatusSchema,
   shoppingSourceTypeSchema,
   stringSchema,
@@ -22,6 +22,7 @@ import {
   generateShoppingList,
   getShoppingList,
   listShoppingLists,
+  replenishRecipeItems,
   updateShoppingItem,
   updateShoppingList,
   type ShoppingItemInput,
@@ -31,8 +32,12 @@ import {
 const shoppingItemProperties = {
   ingredientId: { type: ['string', 'null'] },
   ingredientName: stringSchema,
-  quantity: { type: 'number' },
-  unit: quantityUnitSchema,
+  // 结构化数量/单位与自由规格 amountText 构成“二选一或并存”的语义契约，由 service 统一校验：
+  // 数量单位必须成对、数量为有限正数、至少一项非空。
+  quantity: { type: ['number', 'null'] },
+  unit: nullableQuantityUnitSchema,
+  amountText: nullableStringSchema,
+  category: nullableStringSchema,
   sourceType: shoppingSourceTypeSchema,
   sourceId: { type: ['string', 'null'] },
   completed: booleanSchema,
@@ -42,7 +47,7 @@ const shoppingItemProperties = {
 
 const shoppingItemSchema = {
   type: 'object',
-  required: ['ingredientName', 'quantity', 'unit'],
+  required: ['ingredientName'],
   properties: shoppingItemProperties
 };
 
@@ -70,8 +75,18 @@ const shoppingListUpdateBodySchema = {
 
 const shoppingItemAddBodySchema = {
   type: 'object',
-  required: ['version', 'ingredientName', 'quantity', 'unit'],
+  required: ['version', 'ingredientName'],
   properties: { ...shoppingItemProperties, version: versionBodySchema }
+};
+
+const replenishRecipeBodySchema = {
+  type: 'object',
+  required: ['version', 'recipeId', 'items'],
+  properties: {
+    version: versionBodySchema,
+    recipeId: stringSchema,
+    items: { type: 'array', minItems: 1, items: shoppingItemSchema }
+  }
 };
 
 const shoppingItemUpdateBodySchema = {
@@ -128,6 +143,20 @@ export async function registerShoppingRoutes(app: FastifyInstance, database: Pri
     const { version, ...input } = request.body as Partial<ShoppingItemInput> & { version: number };
     return success(await updateShoppingItem(database, (request.params as { id: string }).id, version, input));
   });
+  app.post(
+    '/api/v1/shopping-lists/:id/replenish-recipe',
+    { schema: { body: replenishRecipeBodySchema } },
+    async (request) => {
+      const { version, recipeId, items } = request.body as {
+        version: number;
+        recipeId: string;
+        items: ShoppingItemInput[];
+      };
+      return success(
+        await replenishRecipeItems(database, (request.params as { id: string }).id, { version, recipeId, items })
+      );
+    }
+  );
   app.delete('/api/v1/shopping-list-items/:id', { schema: { querystring: versionQueryWrapper } }, async (request) =>
     success(
       await deleteShoppingItem(

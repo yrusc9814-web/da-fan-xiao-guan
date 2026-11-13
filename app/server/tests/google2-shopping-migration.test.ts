@@ -1,7 +1,8 @@
 import { spawnSync } from 'node:child_process';
-import { fixtureDataRoot, prismaConfigImport } from './setup/fixture-paths.js';
+import { prismaConfigImport } from './setup/fixture-paths.js';
 import { existsSync } from 'node:fs';
 import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -9,11 +10,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 /**
  * VAN-31 购物清单入库迁移（20261001000000_google2_shopping_checkin）兼容性证据。
  *
- * 做法：在 data/ 下的一次性临时目录里复制一份 prisma 工程（schema + 已冻结的历史迁移），
+ * 做法：在 os.tmpdir() 下的一次性临时目录里复制一份 prisma 工程（schema + 已冻结的历史迁移），
  * 只应用新迁移之前的历史迁移 → 写入真实旧购物清单/ShoppingListItem 记录 →
  * deploy 新版迁移 → 断言新表存在、旧记录一字未改；最后再 deploy 一次验证幂等。
  *
- * 不触碰 data/app.db，也不修改任何已冻结的历史迁移文件。临时工程与临时库都位于 gitignored 的 data/ 下。
+ * 不触碰 data/app.db，也不修改任何已冻结的历史迁移文件。
  */
 
 const projectRoot = resolve(import.meta.dirname, '../../..');
@@ -53,10 +54,20 @@ async function prepareWorkspace(): Promise<void> {
 
 function deployMigrations(): { status: number; output: string } {
   const started = performance.now();
+  const env: NodeJS.ProcessEnv = {
+    ...process.env,
+    NODE_ENV: 'test',
+    DATABASE_URL: databaseUrl,
+    TEST_DATABASE_URL: databaseUrl,
+    DAFAN_DATABASE_PATH: databasePath
+  };
+  // 临时迁移工程不得继承父进程隔离根/基线开关，必须只由本文件的临时库决定行为
+  delete env.DAFAN_ISOLATION_ROOT;
+  delete env.DAFAN_FORWARD_BASELINE;
   const result = spawnSync(process.execPath, [prismaCli, 'migrate', 'deploy'], {
     cwd: workRoot,
     encoding: 'utf8',
-    env: { ...process.env, DATABASE_URL: databaseUrl, TEST_DATABASE_URL: databaseUrl, NODE_ENV: 'test' }
+    env
   });
   console.info(`migration deploy: ${Math.round(performance.now() - started)}ms, exit=${result.status}`);
   console.info(result.stdout);
@@ -82,7 +93,7 @@ describe('VAN-31 购物清单入库迁移兼容性（历史库 → 新迁移）'
     if (!existsSync(prismaCli)) {
       throw new Error('未找到 Prisma CLI，请先执行 npm ci / npm install');
     }
-    workRoot = await mkdtemp(join(fixtureDataRoot(projectRoot), 'tmp-van31-migration-'));
+    workRoot = await mkdtemp(join(tmpdir(), 'dafan-van31-migration-'));
     databasePath = join(workRoot, 'legacy.db');
     databaseUrl = `file:${databasePath.replaceAll('\\', '/')}`;
     await writeFile(databasePath, '');
@@ -91,15 +102,18 @@ describe('VAN-31 购物清单入库迁移兼容性（历史库 → 新迁移）'
 
   afterAll(async () => {
     // 断言中途失败时可能仍有未关闭的 SQLite 连接；Windows 上目录可能短暂被占用，
-    // 因此做有限次退避重试。清理失败不得掩盖真正的断言错误。
+    // 因此做有限次退避重试。清理失败必须显式失败，不能静默放过临时库残留。
+    let lastError: unknown;
     for (let attempt = 0; attempt < 5; attempt += 1) {
       try {
         await rm(workRoot, { recursive: true, force: true, maxRetries: 3, retryDelay: 100 });
         return;
-      } catch {
+      } catch (error) {
+        lastError = error;
         await new Promise((resolve) => setTimeout(resolve, 200));
       }
     }
+    throw new Error(`临时迁移目录清理失败：${workRoot}`, { cause: lastError });
   });
 
   // 两次真实 Prisma CLI deploy 的启动/迁移耗时合计接近或超过默认 5 秒。

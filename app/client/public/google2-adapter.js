@@ -13,16 +13,30 @@
       this.retryAfter = retryAfter;
     }
   }
-  const PIN_RETRY_EXCLUDED = ['/settings/pin/verify', '/settings/pin/session', '/settings/high-risk/authorize', '/backups/restore'];
+  const PIN_RETRY_EXCLUDED = [
+    '/settings/pin/verify',
+    '/settings/pin/session',
+    '/settings/high-risk/authorize',
+    '/backups/restore'
+  ];
   let pinUnlockPromise = null;
   let pinUnlockResolve = null;
   let pinUnlockReject = null;
   let pinUnlockCooldownTimer = null;
-  function normalizedPath(path) { return String(path).split('?')[0]; }
-  function pinRetryAllowed(path, options, status, code) {
-    return !options._pinRetried && status === 401 && code === 'UNAUTHORIZED' && !PIN_RETRY_EXCLUDED.includes(normalizedPath(path));
+  function normalizedPath(path) {
+    return String(path).split('?')[0];
   }
-  function pinUnlockError(message = '已取消 PIN 解锁') { return new ApiError(401, 'PIN_UNLOCK_CANCELLED', message); }
+  function pinRetryAllowed(path, options, status, code) {
+    return (
+      !options._pinRetried &&
+      status === 401 &&
+      code === 'UNAUTHORIZED' &&
+      !PIN_RETRY_EXCLUDED.includes(normalizedPath(path))
+    );
+  }
+  function pinUnlockError(message = '已取消 PIN 解锁') {
+    return new ApiError(401, 'PIN_UNLOCK_CANCELLED', message);
+  }
   function pinDialog() {
     return {
       root: document.getElementById('modalPinUnlock'),
@@ -33,13 +47,19 @@
       cancel: document.getElementById('google2PinCancel')
     };
   }
-  function setPinDialogError(message = '') { const node = pinDialog().error; if (node) node.textContent = message; }
+  function setPinDialogError(message = '') {
+    const node = pinDialog().error;
+    if (node) node.textContent = message;
+  }
   function closePinUnlockDialog() {
     const { root, input } = pinDialog();
     root?.classList.add('hidden');
     if (input) input.value = '';
     setPinDialogError('');
-    if (pinUnlockCooldownTimer) { clearInterval(pinUnlockCooldownTimer); pinUnlockCooldownTimer = null; }
+    if (pinUnlockCooldownTimer) {
+      clearInterval(pinUnlockCooldownTimer);
+      pinUnlockCooldownTimer = null;
+    }
   }
   function finishPinUnlock(token) {
     if (!token || !pinUnlockResolve) return;
@@ -59,11 +79,19 @@
   async function verifyPinFromDialog() {
     const { input, submit } = pinDialog();
     const pin = input?.value || '';
-    if (!/^\d{4,8}$/.test(pin)) { setPinDialogError('请输入 4～8 位数字 PIN'); input?.focus(); return; }
+    if (!/^\d{4,8}$/.test(pin)) {
+      setPinDialogError('请输入 4～8 位数字 PIN');
+      input?.focus();
+      return;
+    }
     if (submit) submit.disabled = true;
     setPinDialogError('正在验证…');
     try {
-      const result = await request('/settings/pin/verify', { method: 'POST', body: JSON.stringify({ pin }), _pinRetried: true });
+      const result = await request('/settings/pin/verify', {
+        method: 'POST',
+        body: JSON.stringify({ pin }),
+        _pinRetried: true
+      });
       if (result?.valid !== true || typeof result.token !== 'string' || !result.token) {
         setPinDialogError(result?.required === true ? 'PIN 不正确，请重试' : '当前未启用 PIN，请刷新后重试');
         if (input) input.value = '';
@@ -77,20 +105,37 @@
         if (pinUnlockCooldownTimer) clearInterval(pinUnlockCooldownTimer);
         pinUnlockCooldownTimer = setInterval(() => {
           remaining -= 1;
-          if (remaining <= 0) { clearInterval(pinUnlockCooldownTimer); pinUnlockCooldownTimer = null; setPinDialogError('可以再次尝试验证'); if (submit) submit.disabled = false; }
-          else setPinDialogError(`尝试次数过多，请 ${remaining} 秒后再试`);
+          if (remaining <= 0) {
+            clearInterval(pinUnlockCooldownTimer);
+            pinUnlockCooldownTimer = null;
+            setPinDialogError('可以再次尝试验证');
+            if (submit) submit.disabled = false;
+          } else setPinDialogError(`尝试次数过多，请 ${remaining} 秒后再试`);
         }, 1000);
       } else setPinDialogError('PIN 验证失败，请稍后重试');
-    } finally { if (submit && !pinUnlockCooldownTimer) submit.disabled = false; }
+    } finally {
+      if (submit && !pinUnlockCooldownTimer) submit.disabled = false;
+    }
   }
   function ensurePinUnlock() {
     if (pinUnlockPromise) return pinUnlockPromise;
     pinUnlockPromise = new Promise((resolve, reject) => {
-      pinUnlockResolve = resolve; pinUnlockReject = reject;
+      pinUnlockResolve = resolve;
+      pinUnlockReject = reject;
       const { root, form, input, cancel, submit } = pinDialog();
-      if (!root || !form || !input) { pinUnlockPromise = pinUnlockResolve = pinUnlockReject = null; reject(pinUnlockError('PIN 解锁界面不可用')); return; }
-      root.classList.remove('hidden'); input.value = ''; setPinDialogError(''); if (submit) submit.disabled = false;
-      form.onsubmit = (event) => { event.preventDefault(); void verifyPinFromDialog(); };
+      if (!root || !form || !input) {
+        pinUnlockPromise = pinUnlockResolve = pinUnlockReject = null;
+        reject(pinUnlockError('PIN 解锁界面不可用'));
+        return;
+      }
+      root.classList.remove('hidden');
+      input.value = '';
+      setPinDialogError('');
+      if (submit) submit.disabled = false;
+      form.onsubmit = (event) => {
+        event.preventDefault();
+        void verifyPinFromDialog();
+      };
       cancel.onclick = cancelPinUnlock;
       queueMicrotask(() => input.focus());
     });
@@ -99,14 +144,23 @@
   async function parseApiResponse(response) {
     const text = typeof response?.text === 'function' ? await response.text() : '';
     let payload = null;
-    try { payload = text ? JSON.parse(text) : null; } catch { payload = null; }
+    try {
+      payload = text ? JSON.parse(text) : null;
+    } catch {
+      payload = null;
+    }
     return payload;
   }
   async function fetchWithPinRetry(path, options = {}) {
     const { _pinRetried = false, _skipPinRetry = false, ...fetchOptions } = options || {};
     const headers = { ...(fetchOptions.headers || {}) };
     const hasBody = fetchOptions.body !== undefined && fetchOptions.body !== null;
-    if (hasBody && !(fetchOptions.body instanceof FormData) && !Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')) headers['Content-Type'] = 'application/json';
+    if (
+      hasBody &&
+      !(fetchOptions.body instanceof FormData) &&
+      !Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')
+    )
+      headers['Content-Type'] = 'application/json';
     const token = localStorage.getItem(PIN_KEY);
     if (token) headers['X-App-Pin-Token'] = token;
     const response = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
@@ -114,13 +168,24 @@
     const apiError = payload?.error || {};
     const code = apiError.code || (response.status === 503 ? 'MAINTENANCE' : 'HTTP_ERROR');
     if (!response.ok || !payload || payload.success !== true) {
-      const error = new ApiError(response.status, code, apiError.message || `请求失败（${response.status}）`, apiError.details, Number(response.headers?.get?.('retry-after')) || undefined);
-      if (!_skipPinRetry && pinRetryAllowed(path, { _pinRetried }, response.status, code)) { await ensurePinUnlock(); return fetchWithPinRetry(path, { ...options, _pinRetried: true }); }
+      const error = new ApiError(
+        response.status,
+        code,
+        apiError.message || `请求失败（${response.status}）`,
+        apiError.details,
+        Number(response.headers?.get?.('retry-after')) || undefined
+      );
+      if (!_skipPinRetry && pinRetryAllowed(path, { _pinRetried }, response.status, code)) {
+        await ensurePinUnlock();
+        return fetchWithPinRetry(path, { ...options, _pinRetried: true });
+      }
       throw error;
     }
     return payload.data;
   }
-  async function request(path, options = {}) { return fetchWithPinRetry(path, options); }
+  async function request(path, options = {}) {
+    return fetchWithPinRetry(path, options);
+  }
   async function requestBlob(path, options = {}) {
     const { _pinRetried = false, _skipPinRetry = false, ...fetchOptions } = options || {};
     const headers = { ...(fetchOptions.headers || {}) };
@@ -128,10 +193,20 @@
     if (token) headers['X-App-Pin-Token'] = token;
     const response = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
     if (!response.ok) {
-      const payload = await parseApiResponse(response); const apiError = payload?.error || {};
+      const payload = await parseApiResponse(response);
+      const apiError = payload?.error || {};
       const code = apiError.code || (response.status === 503 ? 'MAINTENANCE' : 'HTTP_ERROR');
-      const error = new ApiError(response.status, code, apiError.message || `请求失败（${response.status}）`, apiError.details, Number(response.headers?.get?.('retry-after')) || undefined);
-      if (!_skipPinRetry && pinRetryAllowed(path, { _pinRetried }, response.status, code)) { await ensurePinUnlock(); return requestBlob(path, { ...options, _pinRetried: true }); }
+      const error = new ApiError(
+        response.status,
+        code,
+        apiError.message || `请求失败（${response.status}）`,
+        apiError.details,
+        Number(response.headers?.get?.('retry-after')) || undefined
+      );
+      if (!_skipPinRetry && pinRetryAllowed(path, { _pinRetried }, response.status, code)) {
+        await ensurePinUnlock();
+        return requestBlob(path, { ...options, _pinRetried: true });
+      }
       throw error;
     }
     return response.blob();
@@ -210,15 +285,25 @@
     'PORTION',
     'OTHER'
   ]);
+  // 只保留无歧义、后端真实支持且展示文案可无损往返的单位。
+  // 「根」「块」等没有标准后端单位，绝不伪映射成 OTHER（会把「2根」显示成「2」）。
   const UNIT_TO_BACKEND = {
     g: 'GRAM',
     kg: 'KILOGRAM',
+    ml: 'MILLILITER',
+    L: 'LITER',
+    l: 'LITER',
+    克: 'GRAM',
+    千克: 'KILOGRAM',
+    公斤: 'KILOGRAM',
+    毫升: 'MILLILITER',
+    升: 'LITER',
     个: 'PIECE',
-    根: 'OTHER',
-    块: 'OTHER',
     盒: 'BOX',
     份: 'PORTION',
     瓶: 'BOTTLE',
+    罐: 'CAN',
+    包: 'PACK',
     袋: 'BAG'
   };
   const UNIT_LABELS = {
@@ -235,10 +320,28 @@
     PORTION: '份',
     OTHER: ''
   };
+  // 真正可用于结构化写回的标准单位（不含 OTHER 伪映射）：补量弹窗与 UPDATE 回写只接受这些
+  const STANDARD_SHOPPING_UNITS = new Set([
+    'GRAM',
+    'KILOGRAM',
+    'MILLILITER',
+    'LITER',
+    'PIECE',
+    'BOX',
+    'BAG',
+    'BOTTLE',
+    'CAN',
+    'PACK',
+    'PORTION'
+  ]);
   function toBackendUnit(unit) {
     if (!unit) return null;
     if (BACKEND_UNITS.has(unit)) return unit;
     return UNIT_TO_BACKEND[unit] || null;
+  }
+  function toStandardShoppingUnit(unit) {
+    const backend = toBackendUnit(unit);
+    return backend && STANDARD_SHOPPING_UNITS.has(backend) ? backend : null;
   }
   function localDateKey(daysFromToday) {
     const date = new Date();
@@ -277,13 +380,20 @@
   };
   function mapShoppingItem(item) {
     const unitLabel = UNIT_LABELS[item.unit] ?? '';
+    const quantity = item.quantity ?? null;
+    const amountText = typeof item.amountText === 'string' && item.amountText.trim() ? item.amountText.trim() : null;
+    const quantityText = quantity == null ? '' : `${quantity}${unitLabel}`;
     return {
       ...item,
-      unitKey: item.unit,
+      unitKey: item.unit ?? null,
       unit: unitLabel,
+      // 名称只取纯食材名：绝不再把规格拼进名字
       name: item.ingredientNameSnapshot || '',
-      // 数量/单位缺失时留空，绝不把 null 拼进「需补 nullg」这类文案
-      amount: item.quantity == null ? '' : `${item.quantity}${unitLabel}`,
+      amountText,
+      quantity,
+      // 自由规格优先展示（保留用户原文语义），无原文才用结构化 quantity+单位合成
+      amount: amountText || quantityText,
+      hasStructuredQuantity: quantity != null && Number(quantity) > 0 && item.unit != null,
       category: '',
       isChecked: !!item.completed,
       source: SHOPPING_SOURCE_LABELS[item.sourceType] || '备忘'
@@ -788,49 +898,75 @@
       const recipe = service.getById(id);
       if (!recipe) return false;
       const shopping = window.BentoService?.shopping;
-      if (!shopping?.add) return toast();
+      if (!shopping?.replenishRecipe) return toast();
       const pantry = window.BentoService?.pantry?.data || [];
-      // 同名但数量为 0 的库存行仍是缺料（土豆 0g、需 200g 必须能补货）：匹配必须带 stock > 0
-      const missing = (recipe.ingredients || []).filter(
-        (ing) =>
-          !pantry.some(
-            (p) => p.stock > 0 && (p.name.includes(ing.pantryKeyword || ing.name) || ing.name.includes(p.name))
-          )
-      );
-      if (!missing.length) {
+      const items = [];
+      for (const ing of recipe.ingredients || []) {
+        const name = String(ing.name ?? '').trim();
+        if (!name) continue;
+        const rawAmount = String(ing.amountText ?? ing.amount ?? '').trim();
+        // 严格库存匹配：有 ingredientId 只按 ID；无 ID 只按归一化精确同名且必须唯一命中。
+        // 绝不用 includes 子串（「洋葱」不能命中「葱」），同名多条歧义也不当作库存充足。
+        let matched = null;
+        let ingredientId = null;
+        if (ing.ingredientId) {
+          matched = pantry.find((p) => p.id === ing.ingredientId) || null;
+          // 库存中已不存在该 ID：视作未匹配，且不再绑定失效关联
+          if (matched) ingredientId = ing.ingredientId;
+        } else {
+          const matches = pantry.filter((p) => normalizeShoppingName(p.name) === normalizeShoppingName(name));
+          if (matches.length === 1) {
+            matched = matches[0];
+            ingredientId = matched.id ?? null;
+          }
+        }
+        // 需求规格：优先结构化 quantity+unit（OTHER 视为自由规格），否则解析原文
+        const structuredDemand =
+          ing.quantity != null && Number(ing.quantity) > 0 && ing.unit && ing.unit !== 'OTHER'
+            ? { quantity: Number(ing.quantity), unit: ing.unit }
+            : null;
+        const demand = structuredDemand || parseShoppingAmount(rawAmount);
+        const stock = matched ? Number(matched.stock) : 0;
+        let deficit = null;
+        if (demand && matched && Number.isFinite(stock) && stock > 0) {
+          const converted = convertQuantity(stock, matched.unitKey, demand.unit);
+          if (converted != null) deficit = roundQuantity(demand.quantity - converted);
+        }
+        // 需求与库存同维且有正库存：差额 <= 0 表示充足，跳过；否则按差额补货
+        if (deficit !== null && deficit <= 0) continue;
+        if (demand) {
+          const isDeficit = deficit !== null;
+          const quantity = isDeficit ? deficit : demand.quantity;
+          const standardText = `${demand.quantity}${UNIT_LABELS[demand.unit] ?? ''}`;
+          items.push({
+            ingredientId,
+            ingredientName: name,
+            quantity,
+            unit: demand.unit,
+            amountText: !isDeficit && rawAmount && rawAmount !== standardText ? rawAmount : null
+          });
+        } else {
+          // 自由规格 / 不可换算 / 无库存：全量按原文补货，绝不静默漏买，也绝不拼括号进名称
+          items.push({
+            ingredientId,
+            ingredientName: name,
+            quantity: null,
+            unit: null,
+            amountText: rawAmount || '适量'
+          });
+        }
+      }
+      if (!items.length) {
         toast('菜谱食材均已在库，无需补货', 'success');
         return recipe;
       }
-      const items = missing.map((ing) => {
-        const amount = String(ing.amount ?? '').trim();
-        if (!parseShoppingAmount(amount))
-          throw new ApiError(
-            422,
-            'SHOPPING_AMOUNT_UNSUPPORTED',
-            `食材「${ing.name}」的数量单位无法映射到采购单位，无法加入清单`
-          );
-        return { name: `${ing.name} (${amount})`, amount, isChecked: false, source: `菜谱: ${recipe.name}` };
-      });
-      // 写入阶段逐项加入：不做批量事务，但要如实汇报已完成与失败的项，绝不整批报成功
-      const added = [];
-      const failed = [];
-      for (const item of items) {
-        try {
-          await shopping.add(item, false);
-          added.push(item.name);
-        } catch (error) {
-          failed.push(`${item.name}（${error instanceof Error ? error.message : '加入失败'}）`);
-        }
+      await shopping.replenishRecipe(recipe.id, items);
+      // 详情刷新失败不影响已成功的补货结果：错误只提示，不回滚、不误报失败
+      try {
+        await window.BentoModal?.open?.('recipeDetail', id);
+      } catch {
+        /* keep the successful replenish result visible */
       }
-      if (failed.length) {
-        const addedText = added.length ? `已加入：${added.join('、')}；` : '';
-        throw new ApiError(
-          500,
-          'SHOPPING_ADD_PARTIAL_FAILED',
-          `${addedText}未加入：${failed.join('、')}。请稍后重试或手动加入。`
-        );
-      }
-      window.BentoModal?.open('recipeDetail', id);
       toast(`已成功将 ${items.length} 项食材加入购物清单！`, 'success');
       return recipe;
     };
@@ -984,10 +1120,13 @@
       if (!item) return;
       const shopping = window.BentoService?.shopping;
       if (!shopping?.add) return toast();
+      // OTHER/无展示单位（unitKey === 'OTHER' 或空字符串）派生不出标准规格：
+      // 直接按自由规格「适量」加入，绝不生成裸「1」这种无单位字符串。
+      const hasUnit = !!item.unit && item.unitKey !== 'OTHER';
       await shopping.add(
         {
           name: `${item.name} (手动补货)`,
-          amount: `1${item.unit || ''}`,
+          amount: hasUnit ? `1${item.unit}` : '适量',
           isChecked: false,
           source: '冰箱档案手动补货'
         },
@@ -1008,6 +1147,31 @@
     const unit = toBackendUnit(match[2]);
     if (!Number.isFinite(quantity) || quantity <= 0 || !unit) return null;
     return { quantity, unit };
+  }
+  // 后端单位换算只覆盖无争议的同维度缩放；其他组合一律视为不可换算（不猜、不近似）。
+  const UNIT_CONVERSION = {
+    GRAM: { dimension: 'MASS', factor: 1 },
+    KILOGRAM: { dimension: 'MASS', factor: 1000 },
+    MILLILITER: { dimension: 'VOLUME', factor: 1 },
+    LITER: { dimension: 'VOLUME', factor: 1000 }
+  };
+  function convertQuantity(value, fromUnit, toUnit) {
+    const amount = Number(value);
+    if (!Number.isFinite(amount)) return null;
+    if (fromUnit === toUnit) return amount;
+    const from = UNIT_CONVERSION[fromUnit];
+    const to = UNIT_CONVERSION[toUnit];
+    if (!from || !to || from.dimension !== to.dimension) return null;
+    return (amount * from.factor) / to.factor;
+  }
+  function roundQuantity(value, digits = 4) {
+    const rounded = Number(Number(value).toFixed(digits));
+    return Number.isFinite(rounded) ? rounded : null;
+  }
+  function normalizeShoppingName(value) {
+    return String(value ?? '')
+      .trim()
+      .toLocaleLowerCase();
   }
   function replaceShoppingService(service) {
     let list = null;
@@ -1100,26 +1264,126 @@
     service.getAll = () => service.data;
     service.getById = (id) => service.data.find((x) => x.id === id);
     service.reload = reload;
+    const requireList = () => {
+      if (!list) throw new ApiError(409, 'SHOPPING_LIST_NOT_LOADED', '购物清单尚未加载完成，请稍后重试');
+      return list;
+    };
+    const validateStructured = (quantity, unit) => {
+      if (quantity == null && unit == null) return { quantity: null, unit: null };
+      if (quantity == null || unit == null)
+        throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '采购数量与单位必须同时提供或同时为空');
+      const value = Number(quantity);
+      if (!Number.isFinite(value) || value <= 0) throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '采购数量必须大于 0');
+      // OTHER 不是可写回的真实标准单位：只接受 11 种标准单位
+      const backendUnit = toStandardShoppingUnit(unit);
+      if (!backendUnit) throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '采购单位无法映射到后端单位');
+      return { quantity: value, unit: backendUnit };
+    };
     service.add = async (item, notify = true) => {
       const name = String(item?.name ?? '').trim();
-      if (!name) throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '采购物品名称不能为空');
-      const parsed = parseShoppingAmount(item.amount);
-      if (!parsed)
-        throw new ApiError(422, 'SHOPPING_AMOUNT_UNSUPPORTED', '采购数量/单位无法映射到后端单位，无法加入清单');
+      const rawAmount = String(item?.amount ?? '').trim();
+      // 名称与规格都必须非空：无规格的裸条目无法入库，直接快速失败而不是造默认量
+      if (!name || !rawAmount) throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '采购物品名称与数量规格不能为空');
+      const parsed = parseShoppingAmount(rawAmount);
       const current = await ensureList();
       const sourceType = typeof item.source === 'string' && item.source.startsWith('菜谱:') ? 'RECIPE' : 'MANUAL';
-      const dto = await ApiClient.post(`/shopping-lists/${encodeURIComponent(current.id)}/items`, {
+      const body = {
         version: current.version,
         ingredientName: name,
-        quantity: parsed.quantity,
-        unit: parsed.unit,
         sourceType,
         sourceId: null,
         completed: !!item.isChecked
-      });
+      };
+      if (parsed) {
+        body.quantity = parsed.quantity;
+        body.unit = parsed.unit;
+        // 只有用户原文与标准展示不一致时才保留原文（例如「200克」），标准写法不额外携带
+        if (rawAmount !== `${parsed.quantity}${UNIT_LABELS[parsed.unit]}`) body.amountText = rawAmount;
+      } else {
+        // 自由规格（适量 / 2根 / 1勺）：保留原文，绝不伪映射成 OTHER 或默认 1 份
+        body.quantity = null;
+        body.unit = null;
+        body.amountText = rawAmount;
+      }
+      // 分类只在调用方显式给出时透传，名称/规格契约不变
+      if (item?.category !== undefined) body.category = item.category;
+      const dto = await ApiClient.post(`/shopping-lists/${encodeURIComponent(current.id)}/items`, body);
       applyList(dto);
       if (notify !== false) toast(`已将「${name}」加入购物清单！`, 'success');
       return dto;
+    };
+    /**
+     * 更新单条购物项（补量入库/结构化回写）。
+     * - 未传 ingredientId 时保留后端既有关系（请求体不携带该字段）；
+     * - 未传 amountText 且显式补填了结构化数量单位时让后端清空旧自由规格（不发送 amountText）。
+     */
+    service.updateItem = async (id, updates = {}) => {
+      const target = service.getById(id);
+      if (!target) throw new ApiError(404, 'SHOPPING_ITEM_NOT_FOUND', '购物清单项目不存在');
+      const current = requireList();
+      const body = { version: current.version };
+      if (updates.completed !== undefined) body.completed = !!updates.completed;
+      if (updates.quantity !== undefined || updates.unit !== undefined) {
+        const structured = validateStructured(
+          updates.quantity !== undefined ? updates.quantity : null,
+          updates.unit !== undefined ? updates.unit : null
+        );
+        body.quantity = structured.quantity;
+        body.unit = structured.unit;
+      }
+      if (updates.ingredientName !== undefined) {
+        const nextName = String(updates.ingredientName ?? '').trim();
+        if (!nextName) throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '采购物品名称不能为空');
+        body.ingredientName = nextName;
+      }
+      if (updates.amountText !== undefined) body.amountText = updates.amountText;
+      // 白名单透传：仅在调用方显式给出时才发送，未给出时保持后端原值（尤其是 ingredientId 关联）
+      if (updates.category !== undefined) body.category = updates.category;
+      if (updates.ingredientId !== undefined) {
+        if (updates.ingredientId !== null && typeof updates.ingredientId !== 'string')
+          throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '食材关联 ID 必须是字符串或 null');
+        body.ingredientId = updates.ingredientId;
+      }
+      if (updates.sortOrder !== undefined) {
+        if (!Number.isInteger(updates.sortOrder))
+          throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '排序值必须是整数');
+        body.sortOrder = updates.sortOrder;
+      }
+      if (updates.notes !== undefined) body.notes = updates.notes;
+      const dto = await ApiClient.put(`/shopping-list-items/${encodeURIComponent(target.id)}`, body);
+      return applyList(dto);
+    };
+    service.clearCompleted = async () => {
+      const current = requireList();
+      const dto = await ApiClient.post(`/shopping-lists/${encodeURIComponent(current.id)}/clear-completed`, {
+        version: current.version
+      });
+      // 后端返回 { list, cleared }：只有 list 才是清单 DTO
+      const nextList = dto?.list ?? dto;
+      applyList(nextList);
+      const cleared = Number(dto?.cleared ?? 0);
+      toast(cleared > 0 ? `已清理 ${cleared} 项已购物品` : '没有可清理的已购物品', 'success');
+      return nextList;
+    };
+    // 菜谱缺料批量补齐（单事务）：同菜谱同食材对齐更新、跨菜谱/手动项保持独立行，整批只推进一次版本
+    service.replenishRecipe = async (recipeId, items) => {
+      const id = String(recipeId ?? '').trim();
+      if (!id) throw new ApiError(422, 'SHOPPING_RECIPE_REQUIRED', '菜谱 ID 不能为空');
+      if (!Array.isArray(items) || items.length === 0)
+        throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '补货项目不能为空');
+      const current = await ensureList();
+      const path = `/shopping-lists/${encodeURIComponent(current.id)}/replenish-recipe`;
+      try {
+        const dto = await ApiClient.post(path, { version: current.version, recipeId: id, items });
+        return applyList(dto);
+      } catch (error) {
+        // 只在明确的版本冲突时用最新 version 重试一次；其余错误原样抛出，不做无界重试
+        if (error?.status !== 409 || error?.code !== 'VERSION_CONFLICT') throw error;
+        const latest = await fetchListById(current.id);
+        applyList(latest);
+        const dto = await ApiClient.post(path, { version: latest.version, recipeId: id, items });
+        return applyList(dto);
+      }
     };
     service.toggle = async (id) => {
       const item = service.getById(id);
@@ -1155,30 +1419,12 @@
       emit('shopping:changed');
       return true;
     };
-    service.importCheckedToPantry = async () => {
+    /**
+     * 执行一次幂等入库。resume 非空时严格重放原 listId/version/operationId/itemIds；
+     * 否则按传入的固定 ID 集合生成新 operation（排序后提交，保证同集合稳定）。
+     */
+    const checkinWith = (targetListId, selectedIds, resume) => {
       if (checkinPromise) return checkinPromise;
-      const pending = readPending();
-      if (pending.status === 'invalid') {
-        // fail-closed：本地有无法解析/无法读取的未决入库记录时，既不能重放也不能用新勾选覆盖
-        toast(
-          '检测到无法解析的入库待处理记录，已阻止本次入库以避免重复或遗漏；该记录已保留，请先排查后再重试',
-          'error'
-        );
-        return false;
-      }
-      const resume = pending.status === 'ok' ? pending.value : null;
-      if (!resume && !list) {
-        toast('购物清单尚未加载完成，未执行入库', 'error');
-        return false;
-      }
-      const checked = (list ? service.data : []).filter((x) => x.isChecked);
-      // pending 优先：即使当前清单不同、当前已无勾选、清单 version 已更新，也重放原 listId + 原 payload
-      const selectedIds = resume ? [...resume.itemIds] : checked.map((x) => x.id).sort();
-      if (!selectedIds.length) {
-        toast('请先勾选已采购的物品再入库', 'error');
-        return false;
-      }
-      const targetListId = resume ? resume.listId : list.id;
       const operationId = resume
         ? resume.operationId
         : crypto.randomUUID
@@ -1187,11 +1433,11 @@
       const payload = {
         version: resume ? resume.version : list.version,
         operationId,
-        itemIds: selectedIds
+        itemIds: resume ? [...resume.itemIds] : [...selectedIds].sort()
       };
       if (!writePending({ listId: targetListId, ...payload })) {
         toast('无法保存入库待处理操作，未执行入库', 'error');
-        return false;
+        return Promise.resolve(false);
       }
       checkinPromise = (async () => {
         try {
@@ -1224,7 +1470,7 @@
             }
           }
           // 入库已经真实成功：任何刷新/清理失败绝不误报为入库失败，也不自动新建 operation（pending 可幂等重放）
-          if (complete) toast(`已将 ${selectedIds.length} 件采购食材入库冰箱`, 'success');
+          if (complete) toast(`已将 ${payload.itemIds.length} 件采购食材入库冰箱`, 'success');
           else toast('已入库，刷新未完成', 'warning');
           return true;
         } catch (error) {
@@ -1241,6 +1487,149 @@
         }
       })();
       return checkinPromise;
+    };
+    /**
+     * 校验补量弹窗回传的数据（HTML 也会校验，适配器这里不依赖上层）：
+     * 每个缺量项必须且只能有一条合法更新，数量为有限正数，单位能映射到后端单位。
+     */
+    const normalizePromptUpdates = (updates, expectedIds) => {
+      if (!Array.isArray(updates)) throw new ApiError(422, 'SHOPPING_CHECKIN_QUANTITY_INVALID', '补填数据格式无效');
+      const byId = new Map();
+      for (const update of updates) {
+        const id = typeof update?.id === 'string' ? update.id.trim() : '';
+        if (!id) throw new ApiError(422, 'SHOPPING_CHECKIN_QUANTITY_INVALID', '补填数据缺少条目 ID');
+        const quantity = Number(update?.quantity);
+        // 只接受 11 种真实标准单位：OTHER 等伪映射在这里直接 fail-closed
+        const unit = toStandardShoppingUnit(update?.unit);
+        if (!Number.isFinite(quantity) || quantity <= 0)
+          throw new ApiError(422, 'SHOPPING_CHECKIN_QUANTITY_INVALID', '补填数量必须是大于 0 的数字');
+        if (!unit) throw new ApiError(422, 'SHOPPING_CHECKIN_QUANTITY_INVALID', '补填单位不是受支持的单位');
+        if (byId.has(id)) throw new ApiError(422, 'SHOPPING_CHECKIN_QUANTITY_INVALID', '同一条目不能重复补填');
+        byId.set(id, { id, quantity, unit });
+      }
+      if (byId.size !== expectedIds.length)
+        throw new ApiError(422, 'SHOPPING_CHECKIN_QUANTITY_INVALID', '存在未补填的缺量条目');
+      return expectedIds.map((id) => {
+        const next = byId.get(id);
+        if (!next) throw new ApiError(422, 'SHOPPING_CHECKIN_QUANTITY_INVALID', '存在未补填的缺量条目');
+        return next;
+      });
+    };
+    service.importCheckedToPantry = async () => {
+      if (checkinPromise) return checkinPromise;
+      const pending = readPending();
+      if (pending.status === 'invalid') {
+        // fail-closed：本地有无法解析/无法读取的未决入库记录时，既不能重放也不能用新勾选覆盖
+        toast(
+          '检测到无法解析的入库待处理记录，已阻止本次入库以避免重复或遗漏；该记录已保留，请先排查后再重试',
+          'error'
+        );
+        return false;
+      }
+      const resume = pending.status === 'ok' ? pending.value : null;
+      if (!resume && !list) {
+        toast('购物清单尚未加载完成，未执行入库', 'error');
+        return false;
+      }
+      // pending 优先：即使当前清单不同、当前已无勾选、清单 version 已更新，也重放原 listId + 原 payload，
+      // 绝不被新勾选或新弹窗改变。
+      if (resume) return checkinWith(resume.listId, resume.itemIds, resume);
+      const checked = service.data.filter((x) => x.isChecked);
+      if (!checked.length) {
+        toast('请先勾选已采购的物品再入库', 'error');
+        return false;
+      }
+      // 本次点击的固定快照：后续补填/勾选变化都不改变要处理的 ID 集合
+      const snapshotIds = checked.map((x) => x.id);
+      const structuredIds = checked.filter((x) => x.hasStructuredQuantity).map((x) => x.id);
+      const missing = checked.filter((x) => !x.hasStructuredQuantity);
+      // 全部具备结构化数量单位：直接走既有幂等入库流程
+      if (!missing.length) return checkinWith(list.id, snapshotIds, null);
+      const openPrompt = window.openShoppingCheckinPrompt;
+      if (typeof openPrompt !== 'function') {
+        // 无补量弹窗 → fail-closed：不编造默认量、不直接 check-in（后端必 422）
+        toast('补量入库弹窗不可用，已阻止本次入库；请先为缺量项补填数量与单位', 'error');
+        return false;
+      }
+      const promptListId = list.id;
+      const missingIds = missing.map((x) => x.id);
+      /**
+       * 弹窗回调执行前的统一闸门（AC2 硬性 pending 保护）：
+       * - 有进行中的 check-in：复用同一 promise，绝不并发写入；
+       * - pending 合法：严格按原 listId + 原 payload + 原 operationId 重放，绝不 PUT 补量、绝不覆盖 operation；
+       * - pending 损坏/不可读：fail-closed，零写入且原记录原样保留；
+       * - 无 pending 但当前清单已不是打开弹窗时那张：fail-closed，绝不把旧 snapshotIds 发向新清单。
+       */
+      const resolvePromptAttempt = () => {
+        if (checkinPromise) return { status: 'busy', promise: checkinPromise };
+        const pending = readPending();
+        if (pending.status === 'invalid') return { status: 'invalid' };
+        if (pending.status === 'ok') return { status: 'replay', promise: checkinWith(pending.value.listId, pending.value.itemIds, pending.value) };
+        if (!list || list.id !== promptListId) return { status: 'list-changed' };
+        return { status: 'fresh' };
+      };
+      const blockedByPromptGate = (attempt) => {
+        if (attempt.status === 'invalid') {
+          toast(
+            '检测到无法解析的入库待处理记录，已阻止本次入库以避免重复或遗漏；该记录已保留，请先排查后再重试',
+            'error'
+          );
+          return true;
+        }
+        if (attempt.status === 'list-changed') {
+          toast('当前购物清单已切换，本次补量未提交；请重新选择条目后重试', 'error');
+          return true;
+        }
+        return false;
+      };
+      try {
+        const opened = await openPrompt({
+          items: missing.map((x) => ({
+            id: x.id,
+            name: x.name,
+            amount: x.amount,
+            amountText: x.amountText,
+            source: x.source
+          })),
+          hasStructuredItems: structuredIds.length > 0,
+          onSubmit: async (updates) => {
+            // 每次执行前先过闸：进行中/pending/清单切换优先于本次表单内容，
+            // 合法 pending 必须严格重放原操作，不能被新输入覆盖。
+            const attempt = resolvePromptAttempt();
+            if (blockedByPromptGate(attempt)) return false;
+            if (attempt.status !== 'fresh') return attempt.promise;
+            const normalized = normalizePromptUpdates(updates, missingIds);
+            // 按最新 version 依次回写结构化数量单位：不传 ingredientId（保留后端关系），
+            // 不传 amountText（后端据此清空过期自由规格）。
+            for (const update of normalized) {
+              await service.updateItem(update.id, { quantity: update.quantity, unit: update.unit });
+            }
+            // 回写期间可能已产生未决入库/并发点击：再次过闸，绝不新建覆盖原 operation
+            const after = resolvePromptAttempt();
+            if (blockedByPromptGate(after)) return false;
+            if (after.status !== 'fresh') return after.promise;
+            return checkinWith(promptListId, snapshotIds, null);
+          },
+          onStructuredOnly: async () => {
+            if (!structuredIds.length) return false;
+            const attempt = resolvePromptAttempt();
+            if (blockedByPromptGate(attempt)) return false;
+            if (attempt.status !== 'fresh') return attempt.promise;
+            return checkinWith(promptListId, structuredIds, null);
+          }
+        });
+        // HTML 明确表示弹窗无法展示（缺 DOM/被拦截）时 fail-closed，绝不当成已打开
+        if (opened === false) {
+          toast('补量入库弹窗不可用，已阻止本次入库；请先为缺量项补填数量与单位', 'error');
+          return false;
+        }
+      } catch (error) {
+        // 弹窗渲染/校验异常：明确提示并保持零写入（pending 尚未创建，可重试）
+        toast(error instanceof Error ? error.message : '补量入库弹窗打开失败，未执行入库', 'error');
+        return false;
+      }
+      // 弹窗已打开：真实提交由 onSubmit / onStructuredOnly 异步完成，这里不得提前写 check-in pending
+      return undefined;
     };
     return reload;
   }
@@ -1845,7 +2234,7 @@
     stores: ['save', 'delete', 'toggleFavorite'],
     recipes: ['save', 'delete', 'toggleFavorite', 'addMissingIngredientsToShopping'],
     pantry: ['save', 'delete', 'consume'],
-    shopping: ['add', 'toggle', 'delete', 'clearCompleted'],
+    shopping: ['add', 'toggle', 'delete', 'clearCompleted', 'updateItem', 'replenishRecipe'],
     plans: ['save', 'delete', 'remove', 'checkin', 'uncheckin'],
     records: ['save', 'delete', 'remove'],
     tools: ['save', 'delete']
@@ -1946,8 +2335,11 @@
       anchor.click();
       URL.revokeObjectURL(href);
       toast('备份下载已开始', 'success');
-    } catch (error) { fail(error); }
-    finally { button.disabled = false; }
+    } catch (error) {
+      fail(error);
+    } finally {
+      button.disabled = false;
+    }
   }
   function setRestoreState(state) {
     const node = document.getElementById('google2RestoreState');
@@ -2006,13 +2398,20 @@
     if (!confirmed?.checked) throw new ApiError(422, 'RESTORE_CONFIRMATION_REQUIRED', '请先勾选恢复确认项');
     const challenge = await ApiClient.post('/settings/high-risk/authorize', { action: 'RESTORE' });
     if (!challenge?.challenge) throw new ApiError(401, 'HIGH_RISK_AUTHORIZATION_INVALID', '恢复确认已失效，请重试');
-    const result = await ApiClient.post('/settings/high-risk/authorize', { action: 'RESTORE', challenge: challenge.challenge, confirmation: 'RESTORE_LOCAL_DATA' });
+    const result = await ApiClient.post('/settings/high-risk/authorize', {
+      action: 'RESTORE',
+      challenge: challenge.challenge,
+      confirmation: 'RESTORE_LOCAL_DATA'
+    });
     if (!result?.token) throw new ApiError(401, 'HIGH_RISK_AUTHORIZATION_INVALID', '恢复授权失败');
     return result.token;
   }
   async function restoreBackupFromDialog() {
     const file = document.getElementById('google2RestoreFile')?.files?.[0];
-    if (!file || !file.name.toLowerCase().endsWith('.zip')) { setRestoreState('请选择 ZIP 备份文件'); return; }
+    if (!file || !file.name.toLowerCase().endsWith('.zip')) {
+      setRestoreState('请选择 ZIP 备份文件');
+      return;
+    }
     const button = document.getElementById('google2RestoreSubmit');
     let restored = false;
     if (button) button.disabled = true;
@@ -2023,7 +2422,12 @@
       const form = new FormData();
       form.append('file', file, file.name);
       setRestoreState('正在隔离校验并恢复，请勿关闭页面…');
-      await ApiClient.request('/backups/restore', { method: 'POST', body: form, headers: { 'X-High-Risk-Token': token }, _skipPinRetry: true });
+      await ApiClient.request('/backups/restore', {
+        method: 'POST',
+        body: form,
+        headers: { 'X-High-Risk-Token': token },
+        _skipPinRetry: true
+      });
       restored = true;
       localStorage.removeItem(PIN_KEY);
       closeRestoreDialog();
@@ -2043,7 +2447,9 @@
     } catch (error) {
       if (restored) toast(`备份已恢复，会话尚未同步：${error?.message || '请稍后重新解锁'}`, 'warning');
       else setRestoreState(error?.message || '恢复失败，请检查备份文件');
-    } finally { if (button) button.disabled = false; }
+    } finally {
+      if (button) button.disabled = false;
+    }
   }
   const SETTINGS_ROW_TITLES = { backup: '数据备份与导出', taboo: '食用者忌口偏好' };
   const TABOO_BLOCKED_MESSAGE = 'Google 2.0 暂无可用的忌口编辑入口';
@@ -2068,7 +2474,10 @@
     if (restoreButton && restoreInput && !restoreButton.dataset.restoreBound) {
       restoreButton.dataset.restoreBound = 'true';
       restoreButton.addEventListener('click', () => restoreInput.click());
-      restoreInput.addEventListener('change', () => { const file = restoreInput.files?.[0]; if (file) void openRestoreDialog(file); });
+      restoreInput.addEventListener('change', () => {
+        const file = restoreInput.files?.[0];
+        if (file) void openRestoreDialog(file);
+      });
     }
     const restoreSubmit = document.getElementById('google2RestoreSubmit');
     if (restoreSubmit && !restoreSubmit.dataset.restoreBound) {

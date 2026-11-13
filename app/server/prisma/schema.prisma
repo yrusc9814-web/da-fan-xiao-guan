@@ -648,8 +648,10 @@ model ShoppingListItem {
   shoppingListId         String
   ingredientId           String?
   ingredientNameSnapshot String
-  quantity               Float
-  unit                   QuantityUnit
+  quantity               Float?
+  unit                   QuantityUnit?
+  amountText             String?
+  category               String?
   sourceType             ShoppingSourceType
   sourceId               String?
   completed              Boolean            @default(false)
