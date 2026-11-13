@@ -171,8 +171,22 @@ export function resolveIsolationTempDirectory(env: NodeJS.ProcessEnv = process.e
   return temporary;
 }
 
+/**
+ * 恢复暂存/回滚目录必须与正式数据库同卷（backup service 的 assertSameStorageVolume）。
+ * 显式隔离 root 时沿用隔离临时目录；NODE_ENV=test 且无隔离 root 时取实际测试库父目录，
+ * 使外部 TEST_DATABASE_URL（如 os.tmpdir 下独立 test*.db）不必与仓库 data 同盘。
+ * 测试分支复用既有安全闸（resolveDatabaseUrl → assertDatabaseEnvironment /
+ * assertSafeTestDatabaseUrl），缺失/危险 URL 或非本地 SQLite 一律 fail-closed，
+ * 绝不回落到正式 data 目录。非 test 保持仓库 data 默认行为。
+ */
 export function resolveRestoreTempDirectory(env: NodeJS.ProcessEnv = process.env): string {
-  return env.DAFAN_ISOLATION_ROOT === undefined ? resolve(projectRoot, 'data') : resolveIsolationTempDirectory(env);
+  if (env.DAFAN_ISOLATION_ROOT !== undefined) return resolveIsolationTempDirectory(env);
+  if (env.NODE_ENV === 'test') {
+    const databasePath = filePathFromDatabaseUrl(resolveDatabaseUrl(env));
+    if (!databasePath) throw new Error('恢复暂存区仅支持本地 SQLite 测试数据库');
+    return dirname(databasePath);
+  }
+  return resolve(projectRoot, 'data');
 }
 
 export function filePathFromDatabaseUrl(databaseUrl: string): string | null {

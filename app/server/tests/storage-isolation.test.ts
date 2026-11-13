@@ -1,6 +1,6 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { dirname, parse, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import {
   assertIsolatedPath,
@@ -48,6 +48,70 @@ describe('storage isolation actual resolver', () => {
     expect(paths.uploadsDirectory).toBe(resolve(root, 'data/uploads'));
     expect(paths.backupsDirectory).toBe(resolve(root, 'data/backups'));
     expect(resolveRestoreTempDirectory({})).toBe(resolve(root, 'data'));
+  });
+  it('derives the test restore staging directory from the default data/test.db parent', () => {
+    const projectRoot = resolve(import.meta.dirname, '../../..');
+    const defaultTestUrl = 'file:../../../data/test.db';
+    expect(resolveRestoreTempDirectory({ NODE_ENV: 'test', TEST_DATABASE_URL: defaultTestUrl })).toBe(
+      dirname(filePathFromDatabaseUrl(defaultTestUrl)!)
+    );
+    expect(resolveRestoreTempDirectory({ NODE_ENV: 'test', TEST_DATABASE_URL: defaultTestUrl })).toBe(
+      resolve(projectRoot, 'data')
+    );
+  });
+  it('uses the external os.tmpdir test database parent even across volumes', () => {
+    const externalDb = resolve(tmpdir(), `test-external-${process.pid}-${Date.now()}.db`);
+    const staging = resolveRestoreTempDirectory({
+      NODE_ENV: 'test',
+      TEST_DATABASE_URL: `file:${externalDb}`
+    });
+    expect(staging).toBe(dirname(externalDb));
+    expect(staging).toBe(resolve(tmpdir()));
+    if (process.platform === 'win32') {
+      const sameVolume = (left: string, right: string) =>
+        parse(left).root.toLowerCase() === parse(right).root.toLowerCase();
+      const repoData = resolve(import.meta.dirname, '../../..', 'data');
+      expect(sameVolume(staging, externalDb)).toBe(true);
+      // 跨盘（如 C 盘 tmpdir 与 D 盘仓库）时暂存区跟随实际测试库所在卷，而非仓库 data 所在卷
+      expect(sameVolume(staging, repoData)).toBe(sameVolume(externalDb, repoData));
+    }
+  });
+  it('fails closed for test restore staging without a test database URL', () => {
+    expect(() => resolveRestoreTempDirectory({ NODE_ENV: 'test' })).toThrow('安全闸');
+    expect(() => resolveRestoreTempDirectory({ NODE_ENV: 'test', TEST_DATABASE_URL: '  ' })).toThrow('安全闸');
+  });
+  it('fails closed for test restore staging pointing at formal storage ranges', () => {
+    const projectRoot = resolve(import.meta.dirname, '../../..');
+    for (const dangerous of [
+      defaultDatabaseUrl,
+      `file:${resolve(projectRoot, 'data/uploads/rogue.db')}`,
+      `file:${resolve(projectRoot, 'data/backups/rogue.db')}`
+    ])
+      expect(() => resolveRestoreTempDirectory({ NODE_ENV: 'test', TEST_DATABASE_URL: dangerous })).toThrow('安全闸');
+  });
+  it('rejects test DAFAN_DATABASE_PATH conflicting with the test database URL', () => {
+    const externalDb = resolve(tmpdir(), `test-conflict-${process.pid}-${Date.now()}.db`);
+    expect(() =>
+      resolveRestoreTempDirectory({
+        NODE_ENV: 'test',
+        TEST_DATABASE_URL: `file:${externalDb}`,
+        DAFAN_DATABASE_PATH: resolve(fixture, 'other.db')
+      })
+    ).toThrow('冲突');
+  });
+  it('keeps production defaults and isolation root restore staging behavior', () => {
+    const projectRoot = resolve(import.meta.dirname, '../../..');
+    expect(resolveRestoreTempDirectory({ NODE_ENV: 'production' })).toBe(resolve(projectRoot, 'data'));
+    expect(resolveRestoreTempDirectory({})).toBe(resolve(projectRoot, 'data'));
+    expect(resolveRestoreTempDirectory(isolated)).toBe(resolve(scratch, '.tmp'));
+    expect(
+      resolveRestoreTempDirectory({
+        ...isolated,
+        NODE_ENV: 'test',
+        TEST_DATABASE_URL: `file:${db}`,
+        DATABASE_URL: defaultDatabaseUrl
+      })
+    ).toBe(resolve(scratch, '.tmp'));
   });
   it('uses all explicit overrides and scratch temporary path', () => {
     expect(resolveStoragePaths(isolated)).toEqual({
