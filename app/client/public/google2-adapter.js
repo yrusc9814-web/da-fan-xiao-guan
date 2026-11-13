@@ -1953,20 +1953,46 @@
     const node = document.getElementById('google2RestoreState');
     if (node) node.textContent = state || '';
   }
+  let restoreDialogVersion = 0;
   function closeRestoreDialog() {
+    restoreDialogVersion += 1;
     document.getElementById('modalBackupRestore')?.classList.add('hidden');
     const input = document.getElementById('google2RestorePin');
+    const confirmation = document.getElementById('google2RestoreConfirmation');
     const file = document.getElementById('google2RestoreFile');
+    const submit = document.getElementById('google2RestoreSubmit');
     if (input) input.value = '';
+    if (confirmation) confirmation.checked = false;
     if (file) file.value = '';
+    if (submit) submit.disabled = false;
     setRestoreState('');
   }
-  function openRestoreDialog(file) {
+  async function openRestoreDialog(file) {
+    const version = ++restoreDialogVersion;
     const name = document.getElementById('google2RestoreFileName');
     const size = document.getElementById('google2RestoreFileSize');
+    const pinGroup = document.getElementById('google2RestorePinGroup');
+    const confirmGroup = document.getElementById('google2RestoreConfirmGroup');
+    const submit = document.getElementById('google2RestoreSubmit');
     if (name) name.textContent = file.name;
     if (size) size.textContent = `${(file.size / 1024 / 1024).toFixed(2)} MB`;
+    if (pinGroup) pinGroup.classList.add('hidden');
+    if (confirmGroup) confirmGroup.classList.add('hidden');
+    if (submit) submit.disabled = true;
     document.getElementById('modalBackupRestore')?.classList.remove('hidden');
+    setRestoreState('正在读取本地安全设置…');
+    try {
+      const settings = await loadSettings();
+      if (version !== restoreDialogVersion) return;
+      const pinEnabled = settings?.pinEnabled === true;
+      if (pinGroup) pinGroup.classList.toggle('hidden', !pinEnabled);
+      if (confirmGroup) confirmGroup.classList.toggle('hidden', pinEnabled);
+      if (submit) submit.disabled = false;
+      setRestoreState('');
+    } catch (error) {
+      if (version !== restoreDialogVersion) return;
+      setRestoreState(error?.message || '无法读取本地安全设置，请稍后重试');
+    }
   }
   async function authorizeRestore(pinEnabled) {
     if (pinEnabled) {
@@ -1988,6 +2014,7 @@
     const file = document.getElementById('google2RestoreFile')?.files?.[0];
     if (!file || !file.name.toLowerCase().endsWith('.zip')) { setRestoreState('请选择 ZIP 备份文件'); return; }
     const button = document.getElementById('google2RestoreSubmit');
+    let restored = false;
     if (button) button.disabled = true;
     try {
       setRestoreState('正在读取设置并申请高风险授权…');
@@ -1997,13 +2024,26 @@
       form.append('file', file, file.name);
       setRestoreState('正在隔离校验并恢复，请勿关闭页面…');
       await ApiClient.request('/backups/restore', { method: 'POST', body: form, headers: { 'X-High-Risk-Token': token }, _skipPinRetry: true });
+      restored = true;
       localStorage.removeItem(PIN_KEY);
       closeRestoreDialog();
       toast('本地备份已恢复，正在重新加载数据', 'success');
-      await Promise.allSettled([loadSettings(), window.DafanDashboardAdapter?.refreshDashboard?.(), window.BentoService?.stores?.reload?.(), window.BentoService?.recipes?.reload?.(), window.BentoService?.plans?.reload?.(), window.BentoService?.records?.reload?.()]);
-      await syncPinSession().catch(() => undefined);
-    } catch (error) { setRestoreState(error?.message || '恢复失败，请检查备份文件'); }
-    finally { if (button) button.disabled = false; }
+      await syncPinSession();
+      await Promise.allSettled([
+        loadSettings(),
+        window.DafanDashboardAdapter?.refreshDashboard?.(),
+        window.BentoService?.stores?.reload?.(),
+        window.BentoService?.recipes?.reload?.(),
+        window.BentoService?.pantry?.reload?.(),
+        window.BentoService?.shopping?.reload?.(),
+        window.BentoService?.plans?.reload?.(),
+        window.BentoService?.records?.reload?.(),
+        window.BentoService?.tools?.reload?.()
+      ]);
+    } catch (error) {
+      if (restored) toast(`备份已恢复，会话尚未同步：${error?.message || '请稍后重新解锁'}`, 'warning');
+      else setRestoreState(error?.message || '恢复失败，请检查备份文件');
+    } finally { if (button) button.disabled = false; }
   }
   const SETTINGS_ROW_TITLES = { backup: '数据备份与导出', taboo: '食用者忌口偏好' };
   const TABOO_BLOCKED_MESSAGE = 'Google 2.0 暂无可用的忌口编辑入口';
@@ -2028,7 +2068,7 @@
     if (restoreButton && restoreInput && !restoreButton.dataset.restoreBound) {
       restoreButton.dataset.restoreBound = 'true';
       restoreButton.addEventListener('click', () => restoreInput.click());
-      restoreInput.addEventListener('change', () => { const file = restoreInput.files?.[0]; if (file) openRestoreDialog(file); });
+      restoreInput.addEventListener('change', () => { const file = restoreInput.files?.[0]; if (file) void openRestoreDialog(file); });
     }
     const restoreSubmit = document.getElementById('google2RestoreSubmit');
     if (restoreSubmit && !restoreSubmit.dataset.restoreBound) {
@@ -2036,10 +2076,13 @@
       restoreSubmit.addEventListener('click', () => void restoreBackupFromDialog());
     }
     const restoreCancel = document.getElementById('google2RestoreCancel');
-    if (restoreCancel && !restoreCancel.dataset.restoreBound) {
-      restoreCancel.dataset.restoreBound = 'true';
-      restoreCancel.addEventListener('click', closeRestoreDialog);
-    }
+    const restoreClose = document.getElementById('google2RestoreClose');
+    [restoreCancel, restoreClose].forEach((button) => {
+      if (button && !button.dataset.restoreBound) {
+        button.dataset.restoreBound = 'true';
+        button.addEventListener('click', closeRestoreDialog);
+      }
+    });
     const tabooButton = settingsRowButton(SETTINGS_ROW_TITLES.taboo);
     if (tabooButton && !tabooButton.dataset.tabooBound) {
       tabooButton.dataset.tabooBound = 'true';

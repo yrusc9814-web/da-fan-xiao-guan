@@ -12,6 +12,7 @@ export default tseslint.config(
       'runtime/**',
       'node_modules/**',
       'docs/**',
+      'closeout-browser-sol1/**',
       'app/client/public/assets/tailwind/tailwindcss-3.4.17.browser.min.js'
     ]
   },

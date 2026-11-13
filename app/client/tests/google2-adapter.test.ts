@@ -23,6 +23,129 @@ const settingsButton = (title: string) => {
   return (row?.querySelector('button') as HTMLButtonElement) || null;
 };
 
+const jsonOk = (data: unknown) => ({
+  ok: true,
+  status: 200,
+  headers: new Headers(),
+  text: async () => JSON.stringify({ success: true, data })
+});
+const jsonFail = (status: number, code: string, message = code, headers = new Headers()) => ({
+  ok: false,
+  status,
+  headers,
+  text: async () => JSON.stringify({ success: false, error: { code, message } })
+});
+const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
+const waitFor = async (predicate: () => boolean) => {
+  for (let attempt = 0; attempt < 100; attempt += 1) {
+    if (predicate()) return;
+    await flush();
+  }
+  throw new Error('condition not met');
+};
+const storedValues = () =>
+  Array.from({ length: localStorage.length }, (_, index) => localStorage.getItem(localStorage.key(index)!));
+const pinMarkup = () => sourceSection('#modalPinUnlock');
+const restoreMarkup = () =>
+  `${sourceSection('#page-settings')}${sourceSection('#modalBackupRestore')}<section id="page-home" class="active"></section>`;
+
+// 模拟真实文件输入的 value='' 语义（jsdom 不会联动清空 files），以便验证取消/关闭是否真正丢弃已选文件
+const setRestoreFile = (file: File) => {
+  const input = document.getElementById('google2RestoreFile') as HTMLInputElement;
+  let files: File[] = [file];
+  let value = `C:\\fakepath\\${file.name}`;
+  Object.defineProperty(input, 'files', { configurable: true, get: () => files });
+  Object.defineProperty(input, 'value', {
+    configurable: true,
+    get: () => value,
+    set: (next: string) => {
+      value = next;
+      if (next === '') files = [];
+    }
+  });
+  return input;
+};
+
+const openRestoreDialogWith = async (file: File) => {
+  const input = setRestoreFile(file);
+  input.dispatchEvent(new Event('change', { bubbles: true }));
+  await flush();
+};
+
+async function mountBackupRestore(options: { pinEnabled: boolean; settingsFailure?: boolean; deferSession?: boolean }) {
+  document.body.innerHTML = restoreMarkup();
+  const order: string[] = [];
+  const reloadSpies = {
+    stores: vi.fn(() => order.push('stores')),
+    recipes: vi.fn(() => order.push('recipes')),
+    pantry: vi.fn(() => order.push('pantry')),
+    shopping: vi.fn(() => order.push('shopping')),
+    plans: vi.fn(() => order.push('plans')),
+    records: vi.fn(() => order.push('records')),
+    tools: vi.fn(() => order.push('tools'))
+  };
+  const service: any = {};
+  Object.keys(reloadSpies).forEach((key) => {
+    service[key] = { data: [], reload: (reloadSpies as any)[key] };
+  });
+  (window as any).BentoService = service;
+  (window as any).showToast = vi.fn();
+  const sessionToken = '{{SECRET_fsm3vb9q}}';
+  const riskToken = '{{SECRET_9xqk2mna}}';
+  const challengeToken = 'restore-challenge-1';
+  const sessionResponse = jsonOk(
+    options.pinEnabled ? { valid: true, required: true, token: sessionToken } : { valid: true }
+  );
+  let settingsFailure = false;
+  let resolveSession: (() => void) | null = null;
+  const fetchMock = vi.fn(async (url: any, init?: any) => {
+    const target = String(url);
+    if (target.endsWith('/settings/pin/session')) {
+      if (!options.deferSession) return sessionResponse;
+      return new Promise((resolve) => {
+        resolveSession = () => resolve(sessionResponse);
+      });
+    }
+    if (target.endsWith('/settings/high-risk/authorize')) {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      if (body.pin || body.confirmation === 'RESTORE_LOCAL_DATA') return jsonOk({ token: riskToken });
+      return jsonOk({ challenge: challengeToken });
+    }
+    if (target.endsWith('/backups/restore')) return jsonOk({ restored: true });
+    if (target.endsWith('/settings')) {
+      if (settingsFailure) return jsonFail(500, 'SETTINGS_READ_FAILED', '设置读取失败');
+      return jsonOk({ pinEnabled: options.pinEnabled });
+    }
+    return jsonOk({});
+  });
+  vi.stubGlobal('fetch', fetchMock);
+  window.eval(adapter);
+  await flush();
+  await flush();
+  Object.keys(reloadSpies).forEach((key) => {
+    service[key].reload = (reloadSpies as any)[key];
+  });
+  const dashboard = vi.fn();
+  (window as any).DafanDashboardAdapter.refreshDashboard = dashboard;
+  document.getElementById('page-home')?.classList.add('active');
+  await (window as any).DafanSettingsAdapter.wireSettings().catch(() => undefined);
+  settingsFailure = options.settingsFailure === true;
+  fetchMock.mockClear();
+  return {
+    fetchMock,
+    reloadSpies,
+    dashboard,
+    order,
+    sessionToken,
+    riskToken,
+    challengeToken,
+    setSettingsFailure: (value: boolean) => {
+      settingsFailure = value;
+    },
+    resolveSession: () => resolveSession?.()
+  };
+}
+
 describe('Google2 legacy entry adapter', () => {
   it('正式入口引用 adapter，DOMContentLoaded 后清除 legacy mock state', async () => {
     expect(html).toContain('<script src="/google2-adapter.js"></script>');
@@ -4215,6 +4338,497 @@ describe('Google2 legacy entry adapter', () => {
     await expect((window as any).DafanApiClient.request('/backups/restore', { method: 'POST', body: form, _skipPinRetry: true })).rejects.toMatchObject({ status: 401, code: 'UNAUTHORIZED' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
     expect(fetchMock.mock.calls[0][1].headers).not.toHaveProperty('Content-Type');
+  });
+  it('PIN 验证 200 valid:false 时弹窗保持打开、清空输入并挂起业务请求，正确 PIN 解锁后各自只重试一次', async () => {
+    document.body.innerHTML = pinMarkup();
+    const unlockToken = 'test-token-unlock';
+    let verifyCount = 0;
+    let gateArmed = false;
+    const fetchMock = vi.fn(async (url: any, init?: any) => {
+      const target = String(url);
+      if (target.endsWith('/settings/pin/verify')) {
+        verifyCount += 1;
+        return verifyCount === 1
+          ? jsonOk({ valid: false, required: true, token: null })
+          : jsonOk({ valid: true, required: true, token: unlockToken });
+      }
+      const token = init?.headers?.['X-App-Pin-Token'];
+      if (gateArmed && !token) return jsonFail(401, 'UNAUTHORIZED', '需要 PIN');
+      return jsonOk({ endpoint: target, token: token || null });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    window.eval(adapter);
+    await flush();
+    await flush();
+    expect(document.getElementById('google2PinUnlockForm')).not.toBeNull();
+    gateArmed = true;
+    fetchMock.mockClear();
+    verifyCount = 0;
+
+    let settled = 0;
+    const recipe = (window as any).DafanApiClient.get('/recipes').finally(() => (settled += 1));
+    const store = (window as any).DafanApiClient.get('/stores').finally(() => (settled += 1));
+    await waitFor(() => document.getElementById('modalPinUnlock')?.classList.contains('hidden') === false);
+    expect(settled).toBe(0);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    const input = document.getElementById('google2PinInput') as HTMLInputElement;
+    input.value = '1111';
+    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await waitFor(() => (document.getElementById('google2PinError')?.textContent || '') === 'PIN 不正确，请重试');
+    expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(false);
+    expect(input.value).toBe('');
+    expect(document.getElementById('google2PinError')?.textContent).toBe('PIN 不正确，请重试');
+    expect(settled).toBe(0);
+    expect(localStorage.length).toBe(0);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/settings/pin/verify'))).toHaveLength(1);
+
+    input.value = '1234';
+    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    const [recipeResult, storeResult] = await Promise.all([recipe, store]);
+    expect(settled).toBe(2);
+    expect(recipeResult).toEqual({ endpoint: '/api/v1/recipes', token: expect.any(String) });
+    expect(storeResult).toEqual({ endpoint: '/api/v1/stores', token: expect.any(String) });
+    expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(true);
+    expect(input.value).toBe('');
+
+    const tokens = storedValues();
+    expect(tokens).toHaveLength(1);
+    expect(tokens[0]).toBe(unlockToken);
+    expect(recipeResult.token).toBe(unlockToken);
+    expect(storeResult.token).toBe(unlockToken);
+    const businessCalls = fetchMock.mock.calls.filter(([url]) => !String(url).includes('/settings/pin/verify'));
+    expect(businessCalls).toHaveLength(4);
+    expect(businessCalls.filter(([url]) => String(url).endsWith('/recipes'))).toHaveLength(2);
+    expect(businessCalls.filter(([url]) => String(url).endsWith('/stores'))).toHaveLength(2);
+    expect(businessCalls.filter(([, init]) => init?.headers?.['X-App-Pin-Token'])).toHaveLength(2);
+  });
+
+  it('PIN 验证 429 PIN_ATTEMPTS_EXCEEDED 按 retry-after 禁用提交并倒计时，结束后可再试且只重试一次', async () => {
+    vi.useFakeTimers();
+    try {
+      document.body.innerHTML = '';
+      let verifyCount = 0;
+      const fetchMock = vi.fn(async (url: any, init?: any) => {
+        const target = String(url);
+        if (target.endsWith('/settings/pin/verify')) {
+          verifyCount += 1;
+          if (verifyCount === 1)
+            return jsonFail(429, 'PIN_ATTEMPTS_EXCEEDED', '尝试次数过多', new Headers({ 'retry-after': '2' }));
+          return jsonOk({ valid: true, required: true, token: 'test-token' });
+        }
+        return init?.headers?.['X-App-Pin-Token'] ? jsonOk({ ok: true }) : jsonFail(401, 'UNAUTHORIZED', '需要 PIN');
+      });
+      vi.stubGlobal('fetch', fetchMock);
+      window.eval(adapter);
+      document.body.innerHTML = pinMarkup();
+      fetchMock.mockClear();
+      verifyCount = 0;
+
+      let settled = false;
+      const pending = (window as any).DafanApiClient.get('/recipes').then((value: unknown) => {
+        settled = true;
+        return value;
+      });
+      await vi.advanceTimersByTimeAsync(0);
+      const input = document.getElementById('google2PinInput') as HTMLInputElement;
+      const submit = document.getElementById('google2PinSubmit') as HTMLButtonElement;
+      const error = () => document.getElementById('google2PinError')?.textContent || '';
+      expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(false);
+
+      input.value = '1111';
+      document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await vi.advanceTimersByTimeAsync(0);
+      expect(submit.disabled).toBe(true);
+      expect(error()).toBe('尝试次数过多，请 2 秒后再试');
+      expect(settled).toBe(false);
+      expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/settings/pin/verify'))).toHaveLength(1);
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(submit.disabled).toBe(true);
+      expect(error()).toBe('尝试次数过多，请 1 秒后再试');
+
+      await vi.advanceTimersByTimeAsync(1000);
+      expect(submit.disabled).toBe(false);
+      expect(error()).toBe('可以再次尝试验证');
+      expect(settled).toBe(false);
+
+      input.value = '1234';
+      document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      await vi.advanceTimersByTimeAsync(0);
+      await expect(pending).resolves.toEqual({ ok: true });
+      expect(settled).toBe(true);
+      expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(true);
+      const businessCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/recipes'));
+      expect(businessCalls).toHaveLength(2);
+      expect(businessCalls[1][1].headers['X-App-Pin-Token']).toBe(storedValues()[0]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('syncPinSession 200 valid:true 写入 token 且不弹窗，401 UNAUTHORIZED 才拉起解锁窗且不自动重放', async () => {
+    document.body.innerHTML = '';
+    const sessionToken = 'session-token-valid';
+    const unlockToken = 'unlock-token-after-401';
+    let sessionResponse: any = jsonOk({ valid: true, required: true, token: sessionToken });
+    const fetchMock = vi.fn(async (url: any) => {
+      if (String(url).endsWith('/settings/pin/session')) return sessionResponse;
+      if (String(url).endsWith('/settings/pin/verify'))
+        return jsonOk({ valid: true, required: true, token: unlockToken });
+      return jsonOk({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    window.eval(adapter);
+    document.body.innerHTML = pinMarkup();
+    fetchMock.mockClear();
+
+    const session = await (window as any).DafanPinAdapter.syncPinSession();
+    expect(session).toEqual({ valid: true, required: true, token: sessionToken });
+    expect(storedValues()).toEqual([sessionToken]);
+    expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    localStorage.clear();
+    sessionResponse = jsonFail(401, 'UNAUTHORIZED', '需要 PIN');
+    fetchMock.mockClear();
+    const pending = (window as any).DafanPinAdapter.syncPinSession();
+    await flush();
+    expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(false);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/pin/session'))).toHaveLength(1);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/pin/verify'))).toHaveLength(0);
+
+    (document.getElementById('google2PinInput') as HTMLInputElement).value = '1234';
+    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await expect(pending).resolves.toBe(unlockToken);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/pin/session'))).toHaveLength(1);
+    expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(true);
+  });
+
+  it('high-risk/authorize 401 与 503 MAINTENANCE 都不解锁也不自动重放', async () => {
+    document.body.innerHTML = '';
+    const fetchMock = vi.fn(async (url: any) => {
+      if (String(url).endsWith('/settings/high-risk/authorize')) return jsonFail(401, 'UNAUTHORIZED', '需要 PIN');
+      return jsonFail(503, 'MAINTENANCE', '维护中');
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    window.eval(adapter);
+    document.body.innerHTML = pinMarkup();
+    fetchMock.mockClear();
+
+    await expect(
+      (window as any).DafanApiClient.post('/settings/high-risk/authorize', { action: 'RESTORE', pin: '1234' })
+    ).rejects.toMatchObject({ status: 401, code: 'UNAUTHORIZED' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(true);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/settings/pin/verify'))).toHaveLength(0);
+
+    fetchMock.mockClear();
+    await expect((window as any).DafanApiClient.get('/dashboard')).rejects.toMatchObject({
+      status: 503,
+      code: 'MAINTENANCE'
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(document.getElementById('modalPinUnlock')?.classList.contains('hidden')).toBe(true);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/settings/pin/verify'))).toHaveLength(0);
+  });
+
+  it('真实 Settings 立即备份：携带 X-App-Pin-Token 且不设 Content-Type，触发 ZIP 下载', async () => {
+    document.body.innerHTML = `${sourceSection('#page-settings')}${pinMarkup()}`;
+    const blob = new Blob(['zip']);
+    const fetchMock = vi.fn(async (url: any) => {
+      if (String(url).endsWith('/backups/export'))
+        return {
+          ok: true,
+          status: 200,
+          headers: new Headers({ 'Content-Disposition': 'attachment; filename="backup.zip"' }),
+          blob: async () => blob
+        };
+      if (String(url).endsWith('/settings/pin/verify'))
+        return jsonOk({ valid: true, required: true, token: '{{SECRET_5o7wqx3l}}' });
+      return jsonOk({});
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const createObjectURL = vi.fn().mockReturnValue('blob:dafan-backup');
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal('URL', { ...URL, createObjectURL, revokeObjectURL });
+    const downloads: { href: string; download: string }[] = [];
+    const anchorClick = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(function (this: HTMLAnchorElement) {
+      downloads.push({ href: this.href, download: this.download });
+    });
+    const toast = vi.fn();
+    (window as any).showToast = toast;
+    try {
+      window.eval(adapter);
+      await flush();
+      const backupButton = settingsButton('数据备份与导出') as HTMLButtonElement;
+      expect(backupButton).not.toBeNull();
+
+      // token 只通过真实解锁流程写入，不依赖硬编码本地存储键
+      const pending = (window as any).DafanPinAdapter.ensurePinUnlock();
+      (document.getElementById('google2PinInput') as HTMLInputElement).value = '1234';
+      document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+      const unlockToken = await pending;
+      expect(storedValues()).toEqual([unlockToken]);
+
+      fetchMock.mockClear();
+      backupButton.click();
+      await waitFor(() => downloads.length === 1);
+      const exportCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/backups/export'));
+      expect(exportCalls).toHaveLength(1);
+      expect(exportCalls[0][1].headers).toMatchObject({ 'X-App-Pin-Token': unlockToken });
+      expect(exportCalls[0][1].headers).not.toHaveProperty('Content-Type');
+      expect(exportCalls[0][1].method).toBeUndefined();
+      expect(exportCalls[0][1].body).toBeUndefined();
+      expect(downloads[0]).toEqual({ href: 'blob:dafan-backup', download: 'dafan-backup.zip' });
+      expect(createObjectURL).toHaveBeenCalledWith(blob);
+      expect(revokeObjectURL).toHaveBeenCalledWith('blob:dafan-backup');
+      expect(toast).toHaveBeenCalledWith(expect.any(String), 'success');
+      expect(backupButton.disabled).toBe(false);
+    } finally {
+      anchorClick.mockRestore();
+    }
+  });
+
+  it('真实 index.html 恢复弹窗：pinEnabled=false 仅勾选确认，challenge+RESTORE_LOCAL_DATA 换 token 后完整上传 FormData 并刷新全部数据', async () => {
+    const mounted = await mountBackupRestore({ pinEnabled: false });
+    expect(document.getElementById('modalBackupRestore')).not.toBeNull();
+    expect(document.getElementById('google2RestoreClose')).not.toBeNull();
+    await openRestoreDialogWith(new File(['backup-bytes'], 'dafan-backup.zip', { type: 'application/zip' }));
+    expect(document.getElementById('modalBackupRestore')?.classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('google2RestoreFileName')?.textContent).toBe('dafan-backup.zip');
+    expect(document.getElementById('google2RestorePinGroup')?.classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('google2RestoreConfirmGroup')?.classList.contains('hidden')).toBe(false);
+    expect((document.getElementById('google2RestoreSubmit') as HTMLButtonElement).disabled).toBe(false);
+
+    mounted.fetchMock.mockClear();
+    const submit = document.getElementById('google2RestoreSubmit') as HTMLButtonElement;
+    submit.click();
+    await waitFor(() => (document.getElementById('google2RestoreState')?.textContent || '') === '请先勾选恢复确认项');
+    expect(document.getElementById('google2RestoreState')?.textContent).toBe('请先勾选恢复确认项');
+    expect(
+      mounted.fetchMock.mock.calls.filter(([url]) => /\/settings\/high-risk\/authorize|\/backups\/restore/.test(String(url)))
+    ).toHaveLength(0);
+
+    (document.getElementById('google2RestoreConfirmation') as HTMLInputElement).checked = true;
+    submit.click();
+    await waitFor(() => mounted.reloadSpies.tools.mock.calls.length === 1);
+    const authorizeCalls = mounted.fetchMock.mock.calls.filter(([url]) =>
+      String(url).endsWith('/settings/high-risk/authorize')
+    );
+    expect(authorizeCalls).toHaveLength(2);
+    expect(JSON.parse(String(authorizeCalls[0][1].body))).toEqual({ action: 'RESTORE' });
+    expect(JSON.parse(String(authorizeCalls[1][1].body))).toEqual({
+      action: 'RESTORE',
+      challenge: mounted.challengeToken,
+      confirmation: 'RESTORE_LOCAL_DATA'
+    });
+    const restoreCalls = mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/backups/restore'));
+    expect(restoreCalls).toHaveLength(1);
+    const restoreInit = restoreCalls[0][1];
+    expect(restoreInit.method).toBe('POST');
+    expect(restoreInit.headers).toEqual({ 'X-High-Risk-Token': mounted.riskToken });
+    expect(restoreInit.body).toBeInstanceOf(FormData);
+    expect((restoreInit.body as FormData).getAll('file')).toHaveLength(1);
+    expect(((restoreInit.body as FormData).get('file') as File).name).toBe('dafan-backup.zip');
+    expect(((restoreInit.body as FormData).get('file') as File).size).toBe('backup-bytes'.length);
+    expect(document.getElementById('modalBackupRestore')?.classList.contains('hidden')).toBe(true);
+    Object.values(mounted.reloadSpies).forEach((spy) => expect(spy).toHaveBeenCalledTimes(1));
+    expect(mounted.dashboard).toHaveBeenCalledTimes(1);
+    expect(storedValues()).toEqual([]);
+    const sessionIndex = mounted.fetchMock.mock.calls.findIndex(([url]) =>
+      String(url).endsWith('/settings/pin/session')
+    );
+    expect(sessionIndex).toBeGreaterThan(
+      mounted.fetchMock.mock.calls.findIndex(([url]) => String(url).endsWith('/backups/restore'))
+    );
+    // 恢复后的设置刷新也必须排在 PIN 会话同步之后
+    const settingsIndexes = mounted.fetchMock.mock.calls
+      .map(([url], index) => (String(url).endsWith('/settings') ? index : -1))
+      .filter((index) => index >= 0);
+    expect(settingsIndexes[settingsIndexes.length - 1]).toBeGreaterThan(sessionIndex);
+    expect(mounted.order).toEqual(['stores', 'recipes', 'pantry', 'shopping', 'plans', 'records', 'tools']);
+  });
+
+  it('真实 index.html 恢复弹窗：pinEnabled=true 仅 PIN，PIN 换 token；恢复后先同步 PIN 会话再刷新数据', async () => {
+    const mounted = await mountBackupRestore({ pinEnabled: true, deferSession: true });
+    await openRestoreDialogWith(new File(['backup-bytes'], 'dafan-backup.zip', { type: 'application/zip' }));
+    expect(document.getElementById('google2RestorePinGroup')?.classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('google2RestoreConfirmGroup')?.classList.contains('hidden')).toBe(true);
+    const pinInput = document.getElementById('google2RestorePin') as HTMLInputElement;
+    const submit = document.getElementById('google2RestoreSubmit') as HTMLButtonElement;
+
+    submit.click();
+    await waitFor(() => (document.getElementById('google2RestoreState')?.textContent || '') === '请输入 4～8 位数字 PIN');
+    expect(document.getElementById('google2RestoreState')?.textContent).toBe('请输入 4～8 位数字 PIN');
+    expect(
+      mounted.fetchMock.mock.calls.filter(([url]) => /high-risk\/authorize|\/backups\/restore/.test(String(url)))
+    ).toHaveLength(0);
+    // 打开弹窗读一次 /settings，提交时恢复流程再读一次用于判定 pinEnabled
+    expect(mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings'))).toHaveLength(2);
+
+    pinInput.value = '4321';
+    mounted.fetchMock.mockClear();
+    submit.click();
+    await waitFor(
+      () => mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/backups/restore')).length === 1
+    );
+    await flush();
+    expect(mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/high-risk/authorize'))).toHaveLength(1);
+    expect(JSON.parse(String(mounted.fetchMock.mock.calls.find(([url]) => String(url).endsWith('/settings/high-risk/authorize'))![1].body))).toEqual({
+      action: 'RESTORE',
+      pin: '4321'
+    });
+    expect(mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings/pin/session'))).toHaveLength(1);
+    expect(Object.values(mounted.reloadSpies).every((spy) => spy.mock.calls.length === 0)).toBe(true);
+    expect(mounted.dashboard).not.toHaveBeenCalled();
+    expect(localStorage.length).toBe(0);
+
+    mounted.resolveSession();
+    await waitFor(() => mounted.reloadSpies.tools.mock.calls.length === 1);
+    Object.values(mounted.reloadSpies).forEach((spy) => expect(spy).toHaveBeenCalledTimes(1));
+    expect(mounted.dashboard).toHaveBeenCalledTimes(1);
+    expect(storedValues()).toEqual([mounted.sessionToken]);
+    const restoreCall = mounted.fetchMock.mock.calls.find(([url]) => String(url).endsWith('/backups/restore'))!;
+    expect((restoreCall[1].body as FormData).get('file')).toBeInstanceOf(File);
+    expect((restoreCall[1].body as FormData).get('file')).toMatchObject({ name: 'dafan-backup.zip' });
+    expect(restoreCall[1].headers).toEqual({ 'X-High-Risk-Token': mounted.riskToken });
+  });
+
+  it('恢复弹窗底部取消与右上关闭都完整清空 PIN/勾选/文件/状态，且不发起恢复请求', async () => {
+    const mounted = await mountBackupRestore({ pinEnabled: false });
+    const cancel = document.getElementById('google2RestoreCancel') as HTMLButtonElement;
+    const close = document.getElementById('google2RestoreClose') as HTMLButtonElement;
+    const confirmation = document.getElementById('google2RestoreConfirmation') as HTMLInputElement;
+    const state = () => document.getElementById('google2RestoreState')?.textContent || '';
+    const fileInput = () => document.getElementById('google2RestoreFile') as HTMLInputElement;
+
+    for (const button of [cancel, close]) {
+      expect(document.getElementById('modalBackupRestore')?.classList.contains('hidden')).toBe(true);
+      await openRestoreDialogWith(new File(['backup-bytes'], 'dafan-backup.zip', { type: 'application/zip' }));
+      expect(document.getElementById('modalBackupRestore')?.classList.contains('hidden')).toBe(false);
+      expect(fileInput().files?.length).toBe(1);
+      (document.getElementById('google2RestorePin') as HTMLInputElement).value = '1234';
+      document.getElementById('google2RestoreSubmit')?.click();
+      await waitFor(() => state() === '请先勾选恢复确认项');
+      confirmation.checked = true;
+      expect(fileInput().files?.length).toBe(1);
+
+      mounted.fetchMock.mockClear();
+      button.click();
+      expect(document.getElementById('modalBackupRestore')?.classList.contains('hidden')).toBe(true);
+      expect((document.getElementById('google2RestorePin') as HTMLInputElement).value).toBe('');
+      expect(confirmation.checked).toBe(false);
+      expect(fileInput().value).toBe('');
+      expect(fileInput().files?.length).toBe(0);
+      expect(state()).toBe('');
+      expect((document.getElementById('google2RestoreSubmit') as HTMLButtonElement).disabled).toBe(false);
+      expect(mounted.fetchMock).not.toHaveBeenCalled();
+    }
+  });
+
+  it('恢复弹窗设置加载失败时禁用提交并显示错误，且不显示 PIN/勾选分组', async () => {
+    const mounted = await mountBackupRestore({ pinEnabled: false, settingsFailure: true });
+    await openRestoreDialogWith(new File(['backup-bytes'], 'dafan-backup.zip', { type: 'application/zip' }));
+    expect(document.getElementById('modalBackupRestore')?.classList.contains('hidden')).toBe(false);
+    expect((document.getElementById('google2RestoreSubmit') as HTMLButtonElement).disabled).toBe(true);
+    expect(document.getElementById('google2RestoreState')?.textContent).toBe('设置读取失败');
+    expect(document.getElementById('google2RestorePinGroup')?.classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('google2RestoreConfirmGroup')?.classList.contains('hidden')).toBe(true);
+    expect(
+      mounted.fetchMock.mock.calls.filter(([url]) => /high-risk\/authorize|\/backups\/restore/.test(String(url)))
+    ).toHaveLength(0);
+    expect(mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings'))).toHaveLength(1);
+
+    document.getElementById('google2RestoreSubmit')?.click();
+    await flush();
+    expect(mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/backups/restore'))).toHaveLength(0);
+  });
+  it('恢复后的新库要求 PIN 时，先清旧 token 并完成解锁，再用新 token 刷新设置及全部模块', async () => {
+    const mounted = await mountBackupRestore({ pinEnabled: true });
+    document.body.insertAdjacentHTML('beforeend', pinMarkup());
+    await (window as any).DafanPinAdapter.syncPinSession();
+    expect(storedValues()).toEqual([mounted.sessionToken]);
+    const originalFetch = mounted.fetchMock.getMockImplementation()!;
+    const newToken = 'new-library-test-session';
+    mounted.fetchMock.mockImplementation(async (url: any, init?: any) => {
+      if (String(url).endsWith('/settings/pin/session')) return jsonFail(401, 'UNAUTHORIZED', '需要新库 PIN');
+      if (String(url).endsWith('/settings/pin/verify'))
+        return jsonOk({ valid: true, required: true, token: newToken });
+      return originalFetch(url, init);
+    });
+    await openRestoreDialogWith(new File(['backup'], 'pin-backup.zip', { type: 'application/zip' }));
+    (document.getElementById('google2RestorePin') as HTMLInputElement).value = '4321';
+    (document.getElementById('google2RestoreConfirmation') as HTMLInputElement).checked = true;
+    mounted.fetchMock.mockClear();
+    document.getElementById('google2RestoreSubmit')?.click();
+    await waitFor(() => document.getElementById('modalPinUnlock')?.classList.contains('hidden') === false);
+
+    expect(document.getElementById('modalBackupRestore')?.classList.contains('hidden')).toBe(true);
+    expect((document.getElementById('google2RestorePin') as HTMLInputElement).value).toBe('');
+    expect((document.getElementById('google2RestoreConfirmation') as HTMLInputElement).checked).toBe(false);
+    expect((document.getElementById('google2RestoreFile') as HTMLInputElement).value).toBe('');
+    expect(document.getElementById('google2RestoreState')?.textContent).toBe('');
+    expect(storedValues()).toEqual([]);
+    expect(mounted.dashboard).not.toHaveBeenCalled();
+    Object.values(mounted.reloadSpies).forEach((spy) => expect(spy).not.toHaveBeenCalled());
+    const sessionCall = mounted.fetchMock.mock.calls.find(([url]) => String(url).endsWith('/settings/pin/session'))!;
+    expect(sessionCall[1]?.headers).not.toHaveProperty('X-App-Pin-Token');
+
+    (document.getElementById('google2PinInput') as HTMLInputElement).value = '9876';
+    document.getElementById('google2PinUnlockForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+    await waitFor(() => mounted.reloadSpies.tools.mock.calls.length === 1);
+    expect(storedValues()).toEqual([newToken]);
+    expect(mounted.dashboard).toHaveBeenCalledTimes(1);
+    Object.values(mounted.reloadSpies).forEach((spy) => expect(spy).toHaveBeenCalledTimes(1));
+    const verifyIndex = mounted.fetchMock.mock.calls.findIndex(([url]) => String(url).endsWith('/settings/pin/verify'));
+    const settingsCalls = mounted.fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/settings'));
+    expect(settingsCalls).toHaveLength(2);
+    expect(settingsCalls[1][1]?.headers).toMatchObject({ 'X-App-Pin-Token': newToken });
+    expect(mounted.fetchMock.mock.calls.indexOf(settingsCalls[1])).toBeGreaterThan(verifyIndex);
+  });
+
+  it('恢复成功但会话同步失败时保持弹窗重置、提示恢复已完成，并暂停后续刷新', async () => {
+    const mounted = await mountBackupRestore({ pinEnabled: false });
+    const originalFetch = mounted.fetchMock.getMockImplementation()!;
+    mounted.fetchMock.mockImplementation(async (url: any, init?: any) =>
+      String(url).endsWith('/settings/pin/session')
+        ? jsonFail(503, 'MAINTENANCE', '会话暂不可用')
+        : originalFetch(url, init)
+    );
+    await openRestoreDialogWith(new File(['backup'], 'backup.zip', { type: 'application/zip' }));
+    (document.getElementById('google2RestoreConfirmation') as HTMLInputElement).checked = true;
+    document.getElementById('google2RestoreSubmit')?.click();
+    const toast = (window as any).showToast;
+    await waitFor(() => toast.mock.calls.some(([, kind]: [string, string]) => kind === 'warning'));
+    expect(toast).toHaveBeenCalledWith('本地备份已恢复，正在重新加载数据', 'success');
+    expect(toast).toHaveBeenCalledWith('备份已恢复，会话尚未同步：会话暂不可用', 'warning');
+    expect(document.getElementById('modalBackupRestore')?.classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('google2RestoreState')?.textContent).toBe('');
+    expect((document.getElementById('google2RestoreFile') as HTMLInputElement).value).toBe('');
+    expect((document.getElementById('google2RestoreConfirmation') as HTMLInputElement).checked).toBe(false);
+    expect(mounted.dashboard).not.toHaveBeenCalled();
+    Object.values(mounted.reloadSpies).forEach((spy) => expect(spy).not.toHaveBeenCalled());
+  });
+
+  it('关闭恢复弹窗后忽略尚未返回的设置响应，保持状态清空', async () => {
+    const mounted = await mountBackupRestore({ pinEnabled: false });
+    const pendingSettings = deferred<ReturnType<typeof jsonOk>>();
+    const originalFetch = mounted.fetchMock.getMockImplementation()!;
+    mounted.fetchMock.mockImplementation(async (url: any, init?: any) =>
+      String(url).endsWith('/settings') ? pendingSettings.promise : originalFetch(url, init)
+    );
+    const input = setRestoreFile(new File(['backup'], 'backup.zip', { type: 'application/zip' }));
+    input.dispatchEvent(new Event('change', { bubbles: true }));
+    expect((document.getElementById('google2RestoreSubmit') as HTMLButtonElement).disabled).toBe(true);
+    document.getElementById('google2RestoreCancel')?.click();
+    pendingSettings.resolve(jsonOk({ pinEnabled: true }));
+    await flush();
+    expect(document.getElementById('modalBackupRestore')?.classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('google2RestoreState')?.textContent).toBe('');
+    expect(document.getElementById('google2RestorePinGroup')?.classList.contains('hidden')).toBe(true);
+    expect(document.getElementById('google2RestoreConfirmGroup')?.classList.contains('hidden')).toBe(true);
+    expect(input.value).toBe('');
   });
 });
 

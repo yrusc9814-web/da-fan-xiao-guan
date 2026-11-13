@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { createReadStream, createWriteStream } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
+import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { dirname, join, parse, posix, resolve, sep } from 'node:path';
 import { Readable, Transform } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
@@ -21,9 +21,6 @@ import {
 } from '../../database/paths.js';
 import { beginMaintenance, endMaintenance } from '../../plugins/maintenance.js';
 import { clearPinSessions } from '../settings/service.js';
-
-const uploadsDirectory = resolveUploadsDirectory();
-const backupsDirectory = resolveBackupsDirectory();
 
 export const backupResourceLimits = {
   zipUploadBytes: 1024 * 1024 * 1024,
@@ -116,8 +113,9 @@ async function deployStagedMigrations(stagedDatabase: string): Promise<void> {
   delete environment.DAFAN_UPLOADS_PATH;
   delete environment.DAFAN_BACKUPS_PATH;
   environment.NODE_ENV = 'production';
-  environment.DATABASE_URL = `file:${stagedDatabase}`;
-  environment.TEST_DATABASE_URL = `file:${stagedDatabase}`;
+  environment.DAFAN_DATABASE_PATH = stagedDatabase;
+  environment.DATABASE_URL = `file:${stagedDatabase.replaceAll('\\', '/')}`;
+  environment.TEST_DATABASE_URL = environment.DATABASE_URL;
   await new Promise<void>((resolveProcess, rejectProcess) => {
     const child = spawn(process.execPath, [cli, 'migrate', 'deploy'], {
       cwd: projectRoot,
@@ -160,25 +158,32 @@ async function auditStagedDatabase(stagedDatabase: string): Promise<void> {
     let migrations = await check!.$queryRawUnsafe<
       Array<{ migration_name: string; finished_at: string | null; rolled_back_at: string | null }>
     >('SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations');
+    const completedMigrationNames = () =>
+      new Set(
+        migrations
+          .filter((migration) => migration.finished_at !== null && migration.rolled_back_at === null)
+          .map((migration) => migration.migration_name)
+      );
     const validateMigrations = () => {
-      if (!migrations.some((migration) => migration.finished_at !== null)) throw restoreValidationError('暂存数据库没有已完成迁移');
+      if (!completedMigrationNames().size) throw restoreValidationError('暂存数据库没有已完成迁移');
       if (migrations.some((migration) => migration.finished_at === null && migration.rolled_back_at === null))
         throw restoreValidationError('暂存数据库包含未完成或失败迁移');
       const unknown = migrations.filter((migration) => !knownMigrations.has(migration.migration_name));
       if (unknown.length) throw restoreValidationError('暂存数据库包含未知未来迁移');
     };
     validateMigrations();
-    const completed = new Set(migrations.filter((migration) => migration.finished_at !== null).map((migration) => migration.migration_name));
+    const completed = completedMigrationNames();
     if (completed.size < knownMigrations.size) {
       await check!.$disconnect();
       check = undefined;
       await deployStagedMigrations(stagedDatabase);
       connect();
-      migrations = await check!.$queryRawUnsafe<Array<{ migration_name: string; finished_at: string | null; rolled_back_at: string | null }>>(
-        'SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations'
-      );
+      migrations = await check!.$queryRawUnsafe<
+        Array<{ migration_name: string; finished_at: string | null; rolled_back_at: string | null }>
+      >('SELECT migration_name, finished_at, rolled_back_at FROM _prisma_migrations');
       validateMigrations();
-      if (new Set(migrations.filter((migration) => migration.finished_at !== null).map((migration) => migration.migration_name)).size < knownMigrations.size)
+      const deployed = completedMigrationNames();
+      if ([...knownMigrations].some((name) => !deployed.has(name)))
         throw restoreValidationError('暂存数据库迁移未达到当前版本');
     }
     const integrity = await check!.$queryRawUnsafe<Array<{ integrity_check: string }>>('PRAGMA integrity_check');
@@ -246,6 +251,7 @@ export async function createBackup(database: PrismaClient) {
         2
       )
     );
+    const uploadsDirectory = resolveUploadsDirectory();
     const sources = [{ path: 'app.db', source: databaseCopy }, ...(await filesUnder(uploadsDirectory, 'uploads'))];
     const files: ManifestFile[] = [];
     for (const item of sources) files.push({ path: item.path, ...(await fileHash(item.source)) });
@@ -273,7 +279,7 @@ export async function createBackup(database: PrismaClient) {
 export async function ensureDailyBackup(database: PrismaClient) {
   const settings = await database.settings.upsert({ where: { id: 1 }, create: { id: 1 }, update: {} });
   if (!settings.autoBackupEnabled) return { created: false };
-  const directory = backupsDirectory;
+  const directory = resolveBackupsDirectory();
   await mkdir(directory, { recursive: true });
   const day = new Date().toLocaleDateString('sv-SE');
   const existing = (await readdir(directory)).find((name) => name.startsWith(`auto-${day}-`) && name.endsWith('.zip'));
@@ -449,6 +455,7 @@ export async function restoreBackup(
     const stage = resolve(dataRoot, `.restore-${randomUUID()}`);
     const rollback = resolve(dataRoot, `.rollback-${randomUUID()}`);
     const currentDatabase = databasePath();
+    const uploadsDirectory = resolveUploadsDirectory();
     assertSameStorageVolume([stage, rollback, currentDatabase]);
     await mkdir(stage, { recursive: true });
     let maintenanceStarted = false;
@@ -488,7 +495,7 @@ export async function restoreBackup(
         await copyFile(stagedDatabase, currentDatabase);
         await rm(uploadsDirectory, { recursive: true, force: true });
         const stagedUploads = resolve(stage, 'uploads');
-        if (await stat(stagedUploads).catch(() => null)) await rename(stagedUploads, uploadsDirectory);
+        if (await stat(stagedUploads).catch(() => null)) await cp(stagedUploads, uploadsDirectory, { recursive: true });
         else await mkdir(uploadsDirectory, { recursive: true });
         await database.$connect();
         await database.$queryRawUnsafe('SELECT 1');
