@@ -2437,6 +2437,220 @@ describe('Google2 legacy entry adapter', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
   }
 
+  /** 用正式 index.html 的真实脚本与标记渲染记录/日记页，再加载正式 adapter。 */
+  async function bootRealRecordsPage() {
+    document.body.innerHTML = realPageMarkup;
+    Object.defineProperty(Element.prototype, 'innerText', {
+      configurable: true,
+      get() {
+        return this.textContent || '';
+      },
+      set(value) {
+        this.textContent = value;
+      }
+    });
+    vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockReturnValue(null);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (url: string) => ({
+        ok: true,
+        status: 200,
+        text: async () =>
+          JSON.stringify({
+            success: true,
+            data: String(url).includes('/dashboard')
+              ? { branding: {}, todayRecords: [], recommendedRecipes: [], inventory: {}, weeklyStats: {}, calendarDays: [] }
+              : String(url).includes('/statistics')
+                ? {}
+                : { items: [], page: 1, pageSize: 100, total: 0, totalPages: 1 }
+          })
+      }))
+    );
+    Object.defineProperty(window, 'matchMedia', {
+      configurable: true,
+      writable: true,
+      value: vi.fn(() => ({
+        matches: false,
+        addListener: () => undefined,
+        removeListener: () => undefined,
+        addEventListener: () => undefined,
+        removeEventListener: () => undefined
+      }))
+    });
+    window.eval(realPageScripts);
+    window.eval('var BentoService = window.BentoService; var BentoModal = window.BentoModal;');
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  it('混合默认 null 草稿与含字面 null 的已确认记录：日记与记录列表按原文保留', async () => {
+    await bootRealRecordsPage();
+    const mapRecord = (window as any).DafanDomainAdapter.mapRecord;
+    // 默认草稿：营养/备注全为真实 null；已确认记录标题/备注含单词 null
+    const draft = mapRecord(
+      recordDto({ id: 'draft-1', status: 'DRAFT', title: '计划午餐', calories: null, satiety: null, notes: null })
+    );
+    const confirmed = mapRecord(
+      recordDto({
+        id: 'confirmed-1',
+        status: 'CONFIRMED',
+        title: '早餐吃 null 味增汤',
+        notes: '这里的 null 是字面文本，不能被清除',
+        calories: 640,
+        satiety: 8
+      })
+    );
+    const records = (window as any).BentoService.records;
+    records.data = [draft, confirmed];
+    records.getAll = () => records.data;
+
+    (window as any).renderRecords();
+    const listText = document.getElementById('recordsListContainer')?.textContent || '';
+    expect(listText).toContain('早餐吃 null 味增汤');
+    expect(listText).toContain('这里的 null 是字面文本，不能被清除');
+    expect(listText).toContain('640 kcal');
+    expect(listText).not.toMatch(/null kcal|undefined/);
+
+    (window as any).BentoModal.setupDailyDiary({ year: 2026, month: 9, day: 28 });
+    const diaryText = document.getElementById('dailyDiaryMealsList')?.textContent || '';
+    expect(diaryText).toContain('早餐吃 null 味增汤');
+    expect(diaryText).toContain('这里的 null 是字面文本，不能被清除');
+    expect(diaryText).toContain('640 kcal');
+    // 草稿的空字段保持空展示，不出现字面 null 或派生假文案
+    expect(diaryText).not.toMatch(/null kcal|饱腹感：null|undefined/);
+    // 适配器不再用 textContent.replaceAll('null') 之类文本改写兜底
+    expect(adapter).not.toContain(".replaceAll('null'");
+    document.body.innerHTML = '';
+  });
+
+  it('records confirm 409 自愈后首页可见即刷新概览，非首页只置脏不发请求', async () => {
+    await bootRealRecordsPage();
+    const records = (window as any).BentoService.records;
+    records.data = [
+      (window as any).DafanDomainAdapter.mapRecord(
+        recordDto({ id: 'rec1', status: 'DRAFT', version: 2, recordDate: '2026-09-28' })
+      )
+    ];
+    records.getAll = () => records.data;
+    const json = (data: unknown, status = 200) => ({
+      ok: status < 400,
+      status,
+      text: async () =>
+        JSON.stringify(status < 400 ? { success: true, data } : { success: false, error: data })
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      const path = String(url);
+      if (path.includes('/records/rec1/confirm'))
+        return json({ code: 'VERSION_CONFLICT', message: '版本冲突' }, 409);
+      if (path.includes('/records/rec1'))
+        return json(recordDto({ id: 'rec1', status: 'CONFIRMED', version: 4, recordDate: '2026-09-28' }));
+      if (path.includes('/dashboard'))
+        return json({
+          weeklyStats: { totalMeals: 1 },
+          todayRecords: [],
+          recommendedRecipes: [],
+          inventory: {},
+          calendarDays: []
+        });
+      return json({ items: [], page: 1, pageSize: 100, total: 0, totalPages: 1 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const dirty = vi.spyOn((window as any).BentoBus, 'emit');
+    const home = document.getElementById('page-home')!;
+
+    // 首页可见：自愈成功后立即刷新概览/活动统计
+    expect(home.classList.contains('active')).toBe(true);
+    await expect(records.confirm('rec1')).rejects.toMatchObject({ status: 409 });
+    for (let i = 0; i < 20 && !fetchMock.mock.calls.some(([url]) => String(url).includes('/dashboard')); i += 1)
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/dashboard'))).toHaveLength(1);
+    expect(dirty.mock.calls.filter(([name]) => name === 'dashboard:dirty')).toHaveLength(1);
+    expect(document.querySelector('[data-binding="weeklyStat-totalMeals"]')?.textContent).toBe('1');
+    expect(records.data[0]).toMatchObject({ id: 'rec1', status: 'CONFIRMED', version: 4 });
+
+    // 非首页：自愈同样只置脏，不发 dashboard 请求
+    home.classList.remove('active');
+    records.data = [
+      (window as any).DafanDomainAdapter.mapRecord(
+        recordDto({ id: 'rec1', status: 'DRAFT', version: 5, recordDate: '2026-09-28' })
+      )
+    ];
+    fetchMock.mockClear();
+    dirty.mockClear();
+    await expect(records.confirm('rec1')).rejects.toMatchObject({ status: 409 });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/dashboard'))).toHaveLength(0);
+    expect(dirty.mock.calls.filter(([name]) => name === 'dashboard:dirty')).toHaveLength(1);
+    expect(records.data[0]).toMatchObject({ id: 'rec1', status: 'CONFIRMED', version: 4 });
+    document.body.innerHTML = '';
+  });
+
+  it('confirm 409 自愈后日记确认按钮只提示一次，原始错误仍可传播', async () => {
+    await bootRealRecordsPage();
+    const records = (window as any).BentoService.records;
+    records.data = [
+      (window as any).DafanDomainAdapter.mapRecord(
+        recordDto({ id: 'rec1', status: 'DRAFT', version: 2, recordDate: '2026-09-11', title: '计划午餐' })
+      )
+    ];
+    records.getAll = () => records.data;
+    const json = (data: unknown, status = 200) => ({
+      ok: status < 400,
+      status,
+      text: async () =>
+        JSON.stringify(status < 400 ? { success: true, data } : { success: false, error: data })
+    });
+    const fetchMock = vi.fn(async (url: string) => {
+      const path = String(url);
+      if (path.includes('/records/rec1/confirm'))
+        return json({ code: 'VERSION_CONFLICT', message: '版本冲突，请读取最新记录' }, 409);
+      if (path.includes('/records/rec1'))
+        return json(recordDto({ id: 'rec1', status: 'CONFIRMED', version: 4, recordDate: '2026-09-11' }));
+      if (path.includes('/dashboard'))
+        return json({
+          weeklyStats: { totalMeals: 1 },
+          todayRecords: [],
+          recommendedRecipes: [],
+          inventory: {},
+          calendarDays: []
+        });
+      return json({ items: [], page: 1, pageSize: 100, total: 0, totalPages: 1 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    const toastSpy = vi.spyOn(window, 'showToast');
+    (window as any).BentoModal.open('dailyDiary', { year: 2026, month: 9, day: 11 });
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    const button = Array.from(document.querySelectorAll<HTMLButtonElement>('#dailyDiaryMealsList button')).find(
+      (node) => node.textContent?.trim() === '确认已用餐'
+    );
+    expect(button).toBeTruthy();
+    toastSpy.mockClear();
+
+    // 按钮路径（confirmMealRecord 的 catch）不得在 service 提示之外再弹一次
+    button!.click();
+    for (let i = 0; i < 40; i += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (fetchMock.mock.calls.some(([url]) => String(url).includes('/records/rec1')) && records.data[0].version === 4)
+        break;
+    }
+    const errorToasts = toastSpy.mock.calls.filter(([, type]) => type === 'error');
+    expect(errorToasts).toHaveLength(1);
+    expect(errorToasts[0][0]).toBe('记录已被修改或已确认，已同步最新状态，请刷新查看');
+    expect(records.data[0]).toMatchObject({ id: 'rec1', status: 'CONFIRMED', version: 4 });
+
+    // 直接调用仍拿到原始 409 错误对象（status/code 不变），并带已提示标记
+    records.data = [
+      (window as any).DafanDomainAdapter.mapRecord(
+        recordDto({ id: 'rec1', status: 'DRAFT', version: 5, recordDate: '2026-09-11' })
+      )
+    ];
+    const error = await records.confirm('rec1').catch((reason: any) => reason);
+    expect(error).toMatchObject({ status: 409, code: 'VERSION_CONFLICT' });
+    expect(error.__dafanRecordConfirmNotified).toBe(true);
+    document.body.innerHTML = '';
+  });
+
   it('mapShoppingItem → 真实 renderShoppingList：分类胶囊按纯文本渲染且无注入面', async () => {
     delete (window as any).__xss;
     await bootRealShoppingPage();
@@ -3502,7 +3716,7 @@ describe('Google2 legacy entry adapter', () => {
     expect(records.data[0]).toMatchObject({ date: '2026-09-28', slot: '午餐', type: '自烹', title: '燕麦粥' });
     expect(changed).toHaveBeenCalledWith('plans:changed');
     expect(changed).toHaveBeenCalledWith('records:changed');
-    expect(toast).toHaveBeenCalledWith('打卡成功！已在日记中生成就餐记录', 'success');
+    expect(toast).toHaveBeenCalledWith('打卡成功！已生成待确认就餐草稿（确认后计入统计）', 'success');
 
     fetchMock.mockResolvedValueOnce(
       arrayJson({
@@ -3515,7 +3729,7 @@ describe('Google2 legacy entry adapter', () => {
     plans.data = [(window as any).DafanDomainAdapter.mapPlan(planDto({ version: 2 }))];
     await plans.checkin('p1');
     expect(records.data.map((x: any) => x.id)).toEqual(['rec-plan']);
-    expect(toast).toHaveBeenLastCalledWith('打卡成功！已在日记中恢复就餐记录', 'success');
+    expect(toast).toHaveBeenLastCalledWith('打卡成功！已恢复待确认就餐草稿（确认后计入统计）', 'success');
     expect(fetchMock).toHaveBeenCalledTimes(2);
 
     fetchMock.mockResolvedValueOnce(
@@ -3539,6 +3753,76 @@ describe('Google2 legacy entry adapter', () => {
     );
     await plans.toggleCheckin('p1');
     expect(fetchMock).toHaveBeenCalledTimes(4);
+  });
+
+  it('plans checkin 幂等返回已确认记录时诚实提示已确认用餐，不宣称新生成', async () => {
+    const changed = vi.fn();
+    (window as any).BentoBus = { emit: changed };
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const toast = vi.fn();
+    (window as any).showToast = toast;
+    const plans: any = { data: [] };
+    const records: any = { data: [] };
+    (window as any).BentoService = { stores: { data: [] }, recipes: { data: [] }, plans, records };
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchMock.mockReset();
+    (window as any).DafanDomainAdapter.replacePlanService(plans);
+    (window as any).DafanDomainAdapter.replaceRecordService(records);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchMock.mockReset();
+    plans.data = [(window as any).DafanDomainAdapter.mapPlan(planDto({ version: 2 }))];
+
+    fetchMock.mockResolvedValueOnce(
+      arrayJson({
+        plan: planDto({ status: 'COMPLETED', version: 3 }),
+        record: recordDto({
+          id: 'rec-plan',
+          status: 'CONFIRMED',
+          confirmedAt: '2026-10-01T04:00:00.000Z',
+          version: 2
+        }),
+        idempotent: true,
+        inventoryDeductionPromptEnabled: false
+      })
+    );
+    await plans.checkin('p1');
+    expect(toast).toHaveBeenLastCalledWith('该计划已确认用餐，无需重复打卡', 'success');
+    expect(records.data[0]).toMatchObject({
+      id: 'rec-plan',
+      status: 'CONFIRMED',
+      isDraft: false,
+      confirmedAt: '2026-10-01T04:00:00.000Z'
+    });
+  });
+
+  it('mapRecord 规范映射 status/sourceMealPlanId/relatedPlanId/confirmedAt，缺失状态按已确认', () => {
+    const mapped = (window as any).DafanDomainAdapter.mapRecord(
+      recordDto({ status: 'DRAFT', sourceMealPlanId: 'p1', relatedPlanId: 'p1', confirmedAt: null })
+    );
+    expect(mapped).toMatchObject({
+      status: 'DRAFT',
+      isDraft: true,
+      sourceMealPlanId: 'p1',
+      relatedPlanId: 'p1',
+      confirmedAt: null
+    });
+    const legacy = (window as any).DafanDomainAdapter.mapRecord({
+      id: 'legacy',
+      recordDate: '2026-10-01',
+      mealType: 'LUNCH',
+      sourceType: 'HOMEMADE',
+      version: 1,
+      items: []
+    });
+    expect(legacy).toMatchObject({
+      status: 'CONFIRMED',
+      isDraft: false,
+      sourceMealPlanId: null,
+      relatedPlanId: null,
+      confirmedAt: null
+    });
   });
 
   it.each([
@@ -3896,6 +4180,199 @@ describe('Google2 legacy entry adapter', () => {
     const call = fetchMock.mock.calls.at(-1);
     expect(call[0]).toBe(caseData.expectedPath);
     expect(call[1].method).toBe(caseData.expectedMethod);
+  });
+
+  it('records confirm 按 id 去重、携带 version、成功后 upsert 缓存并诚实提示', async () => {
+    const changed = vi.fn();
+    (window as any).BentoBus = { emit: changed };
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const toast = vi.fn();
+    (window as any).showToast = toast;
+    const records: any = { data: [] };
+    (window as any).BentoService = { stores: { data: [] }, recipes: { data: [] }, records };
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchMock.mockReset();
+    (window as any).DafanDomainAdapter.replaceRecordService(records);
+    records.data = [
+      (window as any).DafanDomainAdapter.mapRecord(
+        recordDto({ id: 'rec1', status: 'DRAFT', version: 2, sourceMealPlanId: 'p1', relatedPlanId: 'p1' })
+      )
+    ];
+
+    fetchMock.mockResolvedValueOnce(
+      arrayJson(
+        recordDto({
+          id: 'rec1',
+          status: 'CONFIRMED',
+          version: 3,
+          sourceMealPlanId: 'p1',
+          relatedPlanId: 'p1',
+          confirmedAt: '2026-10-01T04:00:00.000Z'
+        })
+      )
+    );
+    const first = records.confirm('rec1');
+    const second = records.confirm('rec1');
+    await Promise.all([first, second]);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const call = fetchMock.mock.calls[0];
+    expect(call[0]).toBe('/api/v1/records/rec1/confirm');
+    expect(call[1].method).toBe('POST');
+    expect(JSON.parse(call[1].body)).toEqual({ version: 2 });
+    expect(records.data).toHaveLength(1);
+    expect(records.data[0]).toMatchObject({
+      id: 'rec1',
+      status: 'CONFIRMED',
+      isDraft: false,
+      version: 3,
+      confirmedAt: '2026-10-01T04:00:00.000Z'
+    });
+    expect(changed).toHaveBeenCalledWith('records:changed');
+    expect(toast).toHaveBeenCalledWith('已确认用餐，已计入日历与统计', 'success');
+  });
+
+  it('records confirm 409 拉取单条有效实体自愈缓存，并保留原始错误', async () => {
+    const changed = vi.fn();
+    (window as any).BentoBus = { emit: changed };
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const toast = vi.fn();
+    (window as any).showToast = toast;
+    const records: any = { data: [] };
+    (window as any).BentoService = { stores: { data: [] }, recipes: { data: [] }, records };
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchMock.mockReset();
+    (window as any).DafanDomainAdapter.replaceRecordService(records);
+    records.data = [
+      (window as any).DafanDomainAdapter.mapRecord(recordDto({ id: 'rec1', status: 'DRAFT', version: 2 }))
+    ];
+
+    toast.mockClear();
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        text: async () =>
+          JSON.stringify({ success: false, error: { code: 'VERSION_CONFLICT', message: '版本冲突' } })
+      })
+      .mockResolvedValueOnce(arrayJson(recordDto({ id: 'rec1', status: 'CONFIRMED', version: 4 })));
+    const error = await records.confirm('rec1').catch((reason: any) => reason);
+    expect(error).toMatchObject({ status: 409, code: 'VERSION_CONFLICT' });
+    // 按钮层按同一字段名跳过重复提示，同时仍拿到原始 409 错误对象
+    expect(error.__dafanRecordConfirmNotified).toBe(true);
+    expect(fetchMock.mock.calls.map(([url]: any[]) => url)).toEqual([
+      '/api/v1/records/rec1/confirm',
+      '/api/v1/records/rec1'
+    ]);
+    expect(records.data[0]).toMatchObject({ id: 'rec1', status: 'CONFIRMED', version: 4 });
+    expect(changed).toHaveBeenCalledWith('records:changed');
+    expect(changed.mock.calls.filter(([name]: any[]) => name === 'dashboard:dirty')).toHaveLength(1);
+    expect(toast).toHaveBeenCalledTimes(1);
+    expect(toast).toHaveBeenCalledWith('记录已被修改或已确认，已同步最新状态，请刷新查看', 'error');
+  });
+
+  it('records confirm 409 兜底响应非有效实体时保留原缓存，不覆盖为 {items:[],total:0}', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const toast = vi.fn();
+    (window as any).showToast = toast;
+    const records: any = { data: [] };
+    (window as any).BentoService = { stores: { data: [] }, recipes: { data: [] }, records };
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchMock.mockReset();
+    (window as any).DafanDomainAdapter.replaceRecordService(records);
+    records.data = [
+      (window as any).DafanDomainAdapter.mapRecord(recordDto({ id: 'rec1', status: 'DRAFT', version: 2 }))
+    ];
+    const cached = records.data[0];
+
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false,
+        status: 409,
+        text: async () =>
+          JSON.stringify({ success: false, error: { code: 'VERSION_CONFLICT', message: '版本冲突' } })
+      })
+      .mockResolvedValueOnce(arrayJson({ items: [], total: 0 }));
+    await expect(records.confirm('rec1')).rejects.toMatchObject({ status: 409 });
+    expect(records.data[0]).toBe(cached);
+    expect(toast).toHaveBeenCalledWith('记录已被修改，未能同步最新状态，请刷新后重试', 'error');
+  });
+
+  it('records confirm 未 await 时的失败仍可见且不产生 unhandled rejection', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const toast = vi.fn();
+    (window as any).showToast = toast;
+    const records: any = { data: [] };
+    (window as any).BentoService = { stores: { data: [] }, recipes: { data: [] }, records };
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    fetchMock.mockReset();
+    (window as any).DafanDomainAdapter.replaceRecordService(records);
+    records.data = [
+      (window as any).DafanDomainAdapter.mapRecord(recordDto({ id: 'rec1', status: 'DRAFT', version: 2 }))
+    ];
+    const unhandled: unknown[] = [];
+    const onUnhandled = (event: PromiseRejectionEvent) => {
+      unhandled.push(event.reason);
+      event.preventDefault();
+    };
+    window.addEventListener('unhandledrejection', onUnhandled);
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      text: async () => JSON.stringify({ success: false, error: { code: 'MAINTENANCE', message: '服务维护中' } })
+    });
+    records.confirm('rec1');
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(toast).toHaveBeenCalledWith('服务维护中', 'error');
+    expect(unhandled).toHaveLength(0);
+    window.removeEventListener('unhandledrejection', onUnhandled);
+  });
+
+  it('plans/records 写方法成功均标记首页脏，非首页时只置脏不发 dashboard 请求', async () => {
+    const events: string[] = [];
+    const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
+      const path = String(url);
+      const method = init?.method || 'GET';
+      if (path.includes('/dashboard')) return arrayJson({});
+      if (path === '/api/v1/plans' && method === 'POST') return arrayJson(planDto({ id: 'p-new', version: 1 }));
+      if (path === '/api/v1/plans/p-new') return arrayJson(planDto({ id: 'p-new', version: 2 }));
+      if (path === '/api/v1/records' && method === 'POST') return arrayJson(recordDto({ id: 'rec-new', version: 1 }));
+      if (path === '/api/v1/records/rec-new' && method === 'PUT')
+        return arrayJson(recordDto({ id: 'rec-new', version: 2 }));
+      if (path === '/api/v1/records/rec-new/confirm')
+        return arrayJson(recordDto({ id: 'rec-new', version: 3, confirmedAt: '2026-10-01T04:00:00.000Z' }));
+      return arrayJson([]);
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    (window as any).showToast = vi.fn();
+    (window as any).BentoBus = { emit: (name: string) => events.push(name), on: vi.fn() };
+    (window as any).BentoService = {
+      stores: { data: [] },
+      recipes: { data: [] },
+      plans: { data: [] },
+      records: { data: [] }
+    };
+    window.eval(adapter);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect((window as any).DafanDashboardAdapter.isHomeVisible()).toBe(false);
+    fetchMock.mockClear();
+    events.length = 0;
+    const service = (window as any).BentoService;
+
+    await service.plans.add({ date: '2026-10-02', slot: '午餐', targetType: 'recipe', targetId: 'r1' });
+    await service.plans.update('p-new', { date: '2026-10-03', slot: '晚餐', targetType: 'recipe', targetId: 'r1' });
+    await service.records.add({ slot: '午餐', type: '自烹', title: '记录' });
+    await service.records.update('rec-new', { title: '改' });
+    await service.records.confirm('rec-new');
+    expect(events.filter((name) => name === 'dashboard:dirty')).toHaveLength(5);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/dashboard'))).toHaveLength(0);
   });
 
   it('legacy record 表单真实 submit：空营养字段送 null 后提交并关闭 Modal', async () => {

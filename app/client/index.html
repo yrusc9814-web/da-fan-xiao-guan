@@ -4307,23 +4307,57 @@
       }
     }
 
+    // 【VAN-138】计划关联就餐记录识别：后端真实字段为 sourceMealPlanId / relatedPlanId；
+    // 兼容旧内存形状 sourcePlanId / source === 'meal-plan'。页面刷新后 plan.linkedRecordId 为空，
+    // 因此绝不能只靠 linkedRecordId 判断归属。
     function isMealPlanRecord(record) {
-      return Boolean(record && (record.source === 'meal-plan' || record.sourcePlanId));
+      return Boolean(
+        record &&
+          (record.source === 'meal-plan' ||
+            record.sourcePlanId ||
+            record.sourceMealPlanId ||
+            record.relatedPlanId)
+      );
     }
 
     function hasValidMealPlanOwnership(record, plan) {
       if (!record || !plan) return false;
-      if (record.sourcePlanId !== plan.id) return false;
-      if (plan.linkedRecordId && record.id !== plan.linkedRecordId) return false;
-      return true;
+      if (record.sourceMealPlanId === plan.id || record.relatedPlanId === plan.id) return true;
+      if (record.sourcePlanId === plan.id) return true;
+      return Boolean(plan.linkedRecordId && record.id === plan.linkedRecordId);
+    }
+
+    // 计划的活跃关联记录：sourceMealPlanId 优先，其次 relatedPlanId，最后回退 linkedRecordId。
+    // 已软删除的记录不参与解析，避免旧草稿抢占活跃记录。
+    function findPlanActiveRecord(plan) {
+      if (!plan) return null;
+      const records = (BentoService && BentoService.records && BentoService.records.data) || [];
+      const alive = records.filter((record) => record && record.deletedAt == null);
+      const bySource = alive.find((record) => record.sourceMealPlanId === plan.id);
+      if (bySource) return bySource;
+      const byRelated = alive.find((record) => record.relatedPlanId === plan.id);
+      if (byRelated) return byRelated;
+      if (plan.linkedRecordId) {
+        const linked = alive.find((record) => record.id === plan.linkedRecordId);
+        if (linked) return linked;
+      }
+      return null;
     }
 
     function isRecordActive(record) {
       if (!record) return false;
+      // 任何来源的记录：自身已软删除即不活跃（日记/记录列表一致过滤）。
+      if (record.deletedAt != null) return false;
       if (!isMealPlanRecord(record)) return true;
-      if (!record.sourcePlanId) return true;
+      // 后端真实关联字段是记录自身的事实：计划未加载、被删除或分页未取到都不能
+      // 把仍然活跃的记录隐藏。后端 uncomplete 会直接把 DRAFT 从 records 缓存移除，
+      // 因此这里不需要再用 plans 缓存反推活跃性。
+      if (record.sourceMealPlanId || record.relatedPlanId) return true;
+      // 兼容旧本地内存形状 sourcePlanId：沿用既有本地所有权规则。
+      const planId = record.sourcePlanId;
+      if (!planId) return true;
       if (typeof BentoService === 'undefined' || !BentoService.plans) return true;
-      const plan = BentoService.plans.getById(record.sourcePlanId);
+      const plan = BentoService.plans.getById(planId);
       if (!plan) return false;
       return plan.isCompleted === true && hasValidMealPlanOwnership(record, plan);
     }
@@ -6380,48 +6414,142 @@
         const dateStr = `${year}-${month < 10 ? '0' + month : month}-${day < 10 ? '0' + day : day}`;
         document.getElementById('dailyDiaryDateTitle').innerText = `${year}年${month}月${day}日 饮食日记全景`;
 
-        const records = BentoService.records.data.filter(r => r.date === dateStr && isRecordActive(r));
+        const dayRecords = BentoService.records.data.filter(r => r && r.date === dateStr && isRecordActive(r));
         const plans = BentoService.plans.data.filter(p => p.date === dateStr);
+        // 统计口径只认 CONFIRMED：DRAFT 草稿单独计数，绝不混入已确认餐数与热量。
+        const confirmedRecords = dayRecords.filter(r => r.status === 'CONFIRMED');
+        const draftRecords = dayRecords.filter(r => r.status === 'DRAFT');
 
-        const totalCal = records.reduce((sum, r) => sum + (r.calories || 0), 0);
-        document.getElementById('dailyDiarySubtitle').innerText = `共摄入约 ${totalCal} kcal · 就餐记录 ${records.length} 餐`;
+        const totalCal = confirmedRecords.reduce((sum, r) => sum + (r.calories || 0), 0);
+        const subtitleParts = [];
+        if (confirmedRecords.length > 0) {
+          subtitleParts.push(`共摄入约 ${totalCal} kcal · 已确认 ${confirmedRecords.length} 餐`);
+        } else {
+          subtitleParts.push('暂无已确认就餐记录');
+        }
+        if (draftRecords.length > 0) subtitleParts.push(`待确认草稿 ${draftRecords.length} 餐`);
+        document.getElementById('dailyDiarySubtitle').innerText = subtitleParts.join(' · ');
 
         const listEl = document.getElementById('dailyDiaryMealsList');
-        if (records.length === 0 && plans.length === 0) {
-          listEl.innerHTML = '<div class="p-6 text-center text-stone-400 bg-white rounded-2xl border border-stone-100">该日还没有任何就餐记录与计划</div>';
+        if (dayRecords.length === 0 && plans.length === 0) {
+          const empty = document.createElement('div');
+          empty.className = 'p-6 text-center text-stone-400 bg-white rounded-2xl border border-stone-100';
+          empty.textContent = '该日还没有任何就餐记录与计划';
+          listEl.replaceChildren(empty);
         } else {
-          let html = '';
-          if (records.length > 0) {
-            html += '<div class="text-[11px] font-black text-stone-500 mb-1">【实际就餐打卡】</div>';
-            html += records.map(r => `
-              <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm space-y-1 mb-2">
-                <div class="flex items-center justify-between">
-                  <div class="flex items-center gap-2">
-                    <span class="text-base">${r.icon}</span>
-                    <span class="font-black text-stone-800 text-xs">${r.slot} · ${r.title}</span>
-                  </div>
-                  <span class="text-[#FF6B57] font-black text-xs">${r.calories == null ? '' : `${r.calories} kcal`}</span>
-                </div>
-                <div class="text-[11px] text-stone-500">${r.notes ?? ''}</div>
-                <div class="text-[10px] text-amber-500 font-bold">饱腹感：${'★'.repeat(r.satiety || 5)}</div>
-              </div>
-            `).join('');
+          const fragment = document.createDocumentFragment();
+          if (dayRecords.length > 0) {
+            const heading = document.createElement('div');
+            heading.className = 'text-[11px] font-black text-stone-500 mb-1';
+            heading.textContent = '【实际就餐打卡】';
+            fragment.append(heading);
+
+            dayRecords.forEach((r) => {
+              const isDraft = r.status === 'DRAFT';
+              const recordId = r.id != null ? String(r.id) : '';
+
+              const card = document.createElement('div');
+              card.className = 'p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm space-y-1 mb-2';
+
+              const header = document.createElement('div');
+              header.className = 'flex items-center justify-between';
+
+              const headingBox = document.createElement('div');
+              headingBox.className = 'flex items-center gap-2';
+
+              const icon = document.createElement('span');
+              icon.className = 'text-base';
+              icon.textContent = r.icon == null ? '' : String(r.icon);
+
+              const title = document.createElement('span');
+              title.className = 'font-black text-stone-800 text-xs';
+              title.textContent = [r.slot == null ? '' : String(r.slot), r.title == null ? '' : String(r.title)]
+                .filter(Boolean)
+                .join(' · ');
+
+              headingBox.append(icon, title);
+
+              const calories = document.createElement('span');
+              calories.className = 'text-[#FF6B57] font-black text-xs';
+              calories.textContent = r.calories == null ? '' : `${r.calories} kcal`;
+
+              header.append(headingBox, calories);
+              card.append(header);
+
+              const notes = document.createElement('div');
+              notes.className = 'text-[11px] text-stone-500';
+              notes.textContent = r.notes == null ? '' : String(r.notes);
+              card.append(notes);
+
+              const satiety = document.createElement('div');
+              satiety.className = 'text-[10px] text-amber-500 font-bold';
+              satiety.textContent = r.satiety == null ? '' : `饱腹感：${'★'.repeat(r.satiety)}`;
+              card.append(satiety);
+
+              if (isDraft) {
+                const draftRow = document.createElement('div');
+                draftRow.className = 'daily-diary-draft-row flex items-center justify-between gap-2 pt-1';
+
+                const draftHint = document.createElement('span');
+                draftHint.className = 'text-[10px] font-bold text-[#D97706]';
+                draftHint.textContent = '待确认草稿 · 确认后计入日历与统计';
+
+                const confirmButton = document.createElement('button');
+                confirmButton.type = 'button';
+                confirmButton.className = 'pill-btn py-1 px-2.5 text-[11px] font-black text-white bg-[#FF6B57] border border-[#FF6B57] hover:bg-[#FF533D] transition-all whitespace-nowrap';
+                confirmButton.textContent = '确认已用餐';
+                confirmButton.addEventListener('click', () => confirmMealRecord(confirmButton, recordId));
+
+                draftRow.append(draftHint, confirmButton);
+                card.append(draftRow);
+              }
+
+              fragment.append(card);
+            });
           }
           if (plans.length > 0) {
-            html += '<div class="text-[11px] font-black text-stone-500 mb-1 mt-2">【预先排餐计划】</div>';
-            html += plans.map(p => `
-              <div class="p-2.5 bg-[#FAF7F2] border border-[#F0E8DC] rounded-xl flex items-center justify-between text-xs mb-1.5">
-                <div class="flex items-center gap-2">
-                  <span>${p.icon}</span>
-                  <span class="font-bold text-stone-700">${p.slot} · ${p.title}</span>
-                </div>
-                <span class="text-[10px] font-bold px-2 py-0.5 rounded-full ${p.isCompleted ? 'bg-emerald-100 text-emerald-700' : 'bg-orange-100 text-[#FF6B57]'}">
-                  ${p.isCompleted ? '已打卡' : '待就餐'}
-                </span>
-              </div>
-            `).join('');
+            const heading = document.createElement('div');
+            heading.className = 'text-[11px] font-black text-stone-500 mb-1 mt-2';
+            heading.textContent = '【预先排餐计划】';
+            fragment.append(heading);
+
+            plans.forEach((p) => {
+              const row = document.createElement('div');
+              row.className = 'p-2.5 bg-[#FAF7F2] border border-[#F0E8DC] rounded-xl flex items-center justify-between text-xs mb-1.5';
+
+              const left = document.createElement('div');
+              left.className = 'flex items-center gap-2';
+
+              const planIcon = document.createElement('span');
+              planIcon.textContent = p.icon == null ? '' : String(p.icon);
+
+              const planTitle = document.createElement('span');
+              planTitle.className = 'font-bold text-stone-700';
+              planTitle.textContent = [p.slot == null ? '' : String(p.slot), p.title == null ? '' : String(p.title)]
+                .filter(Boolean)
+                .join(' · ');
+
+              left.append(planIcon, planTitle);
+
+              const badge = document.createElement('span');
+              const linked = p.isCompleted ? findPlanActiveRecord(p) : null;
+              const planDraft = Boolean(linked && linked.status === 'DRAFT');
+              if (!p.isCompleted) {
+                badge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full bg-orange-100 text-[#FF6B57]';
+                badge.textContent = '待就餐';
+              } else if (planDraft) {
+                badge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full bg-[#FFF5E8] text-[#D97706] border border-[#FEE8B8]';
+                badge.textContent = '待确认草稿';
+              } else {
+                badge.className = 'text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700';
+                badge.textContent = linked && linked.status === 'CONFIRMED' ? '已确认用餐' : '已打卡';
+              }
+
+              row.append(left, badge);
+              fragment.append(row);
+            });
           }
-          listEl.innerHTML = html;
+          listEl.replaceChildren(fragment);
         }
 
         document.getElementById('modalDailyDiary').classList.remove('hidden');
@@ -7306,6 +7434,149 @@
       renderInventory();
     }
 
+    // -------------------------------------------------------------------------
+    // 【VAN-138】计划草稿/确认状态的安全 DOM 工具：
+    // 计划 id / 记录 id / 标题 / 副标题 / 图标一律走 textContent 或 dataset，
+    // 绝不拼进 innerHTML 或内联事件属性（防特殊字符断裂与存储型 XSS）。
+    // -------------------------------------------------------------------------
+    function safeImageSource(src) {
+      const value = src == null ? '' : String(src).trim();
+      if (!value) return '';
+      try {
+        const url = new URL(value, window.location.href);
+        if (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'blob:') return url.href;
+        if (url.protocol === 'data:' && /^data:image\/(png|jpe?g|webp|gif);/i.test(value)) return value;
+        return '';
+      } catch (error) {
+        return '';
+      }
+    }
+
+    // 旧内联入口（编辑/删除/打卡）统一走这里：异常只提示，不产生未处理的 promise 拒绝。
+    function runSilentAction(action) {
+      try {
+        const result = action();
+        if (result && typeof result.catch === 'function') {
+          result.catch((error) => {
+            showToast(error && error.message ? error.message : '操作失败，请稍后重试', 'error');
+          });
+        }
+      } catch (error) {
+        showToast(error && error.message ? error.message : '操作失败，请稍后重试', 'error');
+      }
+    }
+
+    // 「确认已用餐」统一入口：请求在途期间禁用按钮防抖（失败后可重试），
+    // 失败只提示，不抛未处理拒绝；真正的并发去重由 records.confirm 的 in-flight Map 负责。
+    function confirmMealRecord(button, recordId) {
+      const id = recordId == null ? '' : String(recordId);
+      if (!id) return;
+      if (button) {
+        if (button.disabled) return;
+        button.disabled = true;
+      }
+      const service = typeof BentoService !== 'undefined' ? BentoService.records : null;
+      const restore = () => {
+        if (!button) return;
+        try { button.disabled = false; } catch (error) { /* 节点可能已被重绘替换 */ }
+      };
+      if (!service || typeof service.confirm !== 'function') {
+        showToast('确认功能暂不可用，请刷新页面后重试', 'error');
+        restore();
+        return;
+      }
+      let pending;
+      try {
+        pending = service.confirm(id);
+      } catch (error) {
+        if (!error || error.__dafanRecordConfirmNotified !== true)
+          showToast(error && error.message ? error.message : '确认失败，请稍后重试', 'error');
+        restore();
+        return;
+      }
+      Promise.resolve(pending)
+        .catch((error) => {
+          // 适配器在已向用户提示过的错误上做标记（409 自愈等），这里只补未提示的失败。
+          if (error && error.__dafanRecordConfirmNotified === true) return;
+          showToast(error && error.message ? error.message : '确认失败，请稍后重试', 'error');
+        })
+        .finally(restore);
+    }
+
+    function isValidDiaryPayload(payload) {
+      if (!payload || typeof payload !== 'object') return false;
+      const { year, month, day } = payload;
+      if (!Number.isInteger(year) || !Number.isInteger(month) || !Number.isInteger(day)) return false;
+      if (year < 1900 || year > 2999 || month < 1 || month > 12 || day < 1 || day > 31) return false;
+      // 必须是真实存在的日历日期（拒绝 2 月 30 日这类越界组合）。
+      const probe = new Date(Date.UTC(year, month - 1, day));
+      return probe.getUTCFullYear() === year && probe.getUTCMonth() === month - 1 && probe.getUTCDate() === day;
+    }
+
+    // 打开中的日记条目：优先从弹窗栈中精确定位 dailyDiary 自己的 payload。
+    // recordForm 等上层弹窗打开时会覆盖 currentPayload，绝不能用它重绘日记，
+    // 否则会把日记日期回落到 setupDailyDiary 的默认值（2026-09-11）或 undefined。
+    function findOpenDailyDiaryEntry() {
+      const modal = typeof BentoModal !== 'undefined' ? BentoModal : null;
+      if (!modal) return null;
+      const stack = Array.isArray(modal.modalStack) ? modal.modalStack : [];
+      for (let i = stack.length - 1; i >= 0; i -= 1) {
+        const entry = stack[i];
+        if (entry && entry.name === 'dailyDiary') return entry;
+      }
+      // 无栈 fixture 的兼容路径：只有栈顶就是日记、或显式标记 currentModal 时才接受 currentPayload，
+      // 且必须校验出合法业务日期，绝不开错日期的日记。
+      let topName = null;
+      try { topName = modal.currentOpen; } catch (error) { topName = null; }
+      if ((topName === 'dailyDiary' || modal.currentModal === 'dailyDiary') && isValidDiaryPayload(modal.currentPayload)) {
+        return { name: 'dailyDiary', payload: modal.currentPayload };
+      }
+      return null;
+    }
+
+    function isDailyDiaryOpen() {
+      return Boolean(findOpenDailyDiaryEntry());
+    }
+
+    function refreshOpenDailyDiary() {
+      const entry = findOpenDailyDiaryEntry();
+      if (!entry) return;
+      const modal = typeof BentoModal !== 'undefined' ? BentoModal : null;
+      if (!modal || typeof modal.setupDailyDiary !== 'function') return;
+      const payload = entry.payload;
+      // 日期只来自该日记条目自身；payload 缺失或非法时宁可不重绘，也不能开错日期。
+      if (!isValidDiaryPayload(payload)) return;
+      try {
+        modal.setupDailyDiary({ year: payload.year, month: payload.month, day: payload.day });
+      } catch (error) { /* 日记局部刷新失败不阻断列表更新 */ }
+    }
+
+    // 仅当目标页签已激活时才重绘，避免启动/后台期无条件多发月历或统计请求。
+    function refreshActivePageView(pageId, viewName) {
+      const panel = document.getElementById('page-' + pageId);
+      if (!panel || !panel.classList.contains('active')) return;
+      const view = window[viewName];
+      if (typeof view !== 'function') return;
+      try {
+        const result = view();
+        if (result && typeof result.catch === 'function') result.catch(() => undefined);
+      } catch (error) { /* 视图刷新失败不阻断主流程 */ }
+    }
+
+    function onRecordsChanged() {
+      renderRecords();
+      // 计划卡片上的「待确认草稿 / 已确认用餐」需随记录状态同步
+      renderPlans();
+      refreshOpenDailyDiary();
+      refreshActivePageView('calendar', 'renderCalendar');
+      refreshActivePageView('statistics', 'renderStatistics');
+    }
+
+    function onPlansChanged() {
+      renderPlans();
+      refreshOpenDailyDiary();
+    }
+
     function renderPlans() {
       const container = document.getElementById('plansListContainer');
       if (!container) return;
@@ -7316,78 +7587,176 @@
       const plans = BentoService.plans.getAll();
 
       if (plans.length === 0) {
-        container.innerHTML = '<div class="p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100">暂无排餐计划，点击右上角安排今天的第一顿饭吧！</div>';
+        const empty = document.createElement('div');
+        empty.className = 'p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100';
+        empty.textContent = '暂无排餐计划，点击右上角安排今天的第一顿饭吧！';
+        container.replaceChildren(empty);
         return;
       }
 
       const now = Date.now();
+      const fragment = document.createDocumentFragment();
 
-      container.innerHTML = plans.map(plan => {
+      plans.forEach((plan) => {
         const ts = getScheduledTimestamp(plan);
         const isOverdue = !plan.isCompleted && Number.isFinite(ts) && (ts < now);
-        const dateLabel = getDynamicDateLabel(plan) || plan.date;
+        const dateLabel = getDynamicDateLabel(plan) || plan.date || '';
+        const planId = plan && plan.id != null ? String(plan.id) : '';
+        // 已完成计划的关联活跃记录：sourceMealPlanId 优先，兜底 relatedPlanId / linkedRecordId
+        const linkedRecord = plan.isCompleted ? findPlanActiveRecord(plan) : null;
+        const isDraft = Boolean(linkedRecord && linkedRecord.status === 'DRAFT');
+        const isConfirmed = Boolean(linkedRecord && linkedRecord.status === 'CONFIRMED');
 
-        const cardClass = isOverdue
+        const card = document.createElement('div');
+        card.className = isOverdue
           ? 'neo-card bento-plan-card--overdue p-3 sm:p-3.5 m-0 flex items-center justify-between gap-2.5 sm:gap-3 transition-all'
           : 'neo-card p-3 sm:p-3.5 m-0 flex items-center justify-between gap-2.5 sm:gap-3 shadow-[var(--shadow-bento-sm)] hover:border-[#FEDBC5] transition-all';
+        card.dataset.planId = planId;
 
-        const iconClass = isOverdue
+        const left = document.createElement('div');
+        left.className = 'flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1';
+
+        const icon = document.createElement('div');
+        icon.className = isOverdue
           ? 'w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-stone-200 border border-stone-300 flex items-center justify-center text-xl sm:text-2xl flex-shrink-0 plan-card-icon-wrap'
           : 'w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center text-xl sm:text-2xl flex-shrink-0';
+        icon.textContent = plan.icon == null ? '' : String(plan.icon);
 
-        const tagBadge = isOverdue
-          ? `<span class="plan-date-badge px-2 py-0.5 rounded-full text-[9px] font-black bg-stone-200 text-stone-600 whitespace-nowrap flex-shrink-0">${dateLabel} · ${plan.slot} ${plan.time || ''}</span>
-             <span class="plan-overdue-badge px-1.5 py-0.2 rounded bg-stone-200 text-stone-600 font-extrabold text-[9px] whitespace-nowrap">⚠️ 已逾期</span>`
-          : `<span class="plan-date-badge px-2 py-0.5 rounded-full text-[9px] font-black bg-stone-100 text-stone-600 whitespace-nowrap flex-shrink-0">${dateLabel} · ${plan.slot} ${plan.time || ''}</span>`;
+        const info = document.createElement('div');
+        info.className = 'min-w-0 flex-1 flex flex-col justify-center gap-1';
 
-        let actionButtonHtml = '';
-        if (plan.isCompleted) {
-          actionButtonHtml = `
-            <button type="button" class="pill-btn py-1 px-2.5 sm:px-3 text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 transition-all whitespace-nowrap" onclick="BentoService.plans.uncheckin('${plan.id}')" title="点击取消打卡">
-              <span>✓ 已打卡</span>
-            </button>
-          `;
-        } else if (isOverdue) {
-          actionButtonHtml = `
-            <button type="button" class="neo-btn-primary text-xs py-1 px-2.5 sm:px-3 shadow-sm bg-stone-600 border-stone-700 hover:bg-stone-700 text-white whitespace-nowrap" onclick="BentoService.plans.checkin('${plan.id}')">
-              补打卡
-            </button>
-          `;
-        } else {
-          actionButtonHtml = `
-            <button type="button" class="neo-btn-primary text-xs py-1 px-2.5 sm:px-3 shadow-[var(--shadow-primary)] whitespace-nowrap" onclick="BentoService.plans.checkin('${plan.id}')">
-              打卡
-            </button>
-          `;
+        // 状态与标签区域 (独立一行，保证与操作区域彻底解耦，防止移动端标签与编辑按钮重叠)
+        const tagsRow = document.createElement('div');
+        tagsRow.className = 'plan-tags-row flex items-center gap-1.5 flex-wrap min-w-0';
+
+        const dateBadge = document.createElement('span');
+        dateBadge.className = isOverdue
+          ? 'plan-date-badge px-2 py-0.5 rounded-full text-[9px] font-black bg-stone-200 text-stone-600 whitespace-nowrap flex-shrink-0'
+          : 'plan-date-badge px-2 py-0.5 rounded-full text-[9px] font-black bg-stone-100 text-stone-600 whitespace-nowrap flex-shrink-0';
+        dateBadge.textContent = [dateLabel, plan.slot || '', plan.time || ''].filter(Boolean).join(' · ');
+        tagsRow.append(dateBadge);
+
+        if (isOverdue) {
+          const overdueBadge = document.createElement('span');
+          overdueBadge.className = 'plan-overdue-badge px-1.5 py-0.2 rounded bg-stone-200 text-stone-600 font-extrabold text-[9px] whitespace-nowrap';
+          overdueBadge.textContent = '⚠️ 已逾期';
+          tagsRow.append(overdueBadge);
+        }
+        if (isDraft) {
+          const draftBadge = document.createElement('span');
+          draftBadge.className = 'plan-draft-badge px-1.5 py-0.5 rounded bg-[#FFF5E8] text-[#D97706] border border-[#FEE8B8] font-extrabold text-[9px] whitespace-nowrap';
+          draftBadge.textContent = '待确认草稿';
+          tagsRow.append(draftBadge);
+        } else if (isConfirmed) {
+          const confirmedBadge = document.createElement('span');
+          confirmedBadge.className = 'plan-confirmed-badge px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 font-extrabold text-[9px] whitespace-nowrap';
+          confirmedBadge.textContent = '已确认用餐';
+          tagsRow.append(confirmedBadge);
         }
 
-        return `
-          <div class="${cardClass}" data-plan-id="${plan.id}">
-            <div class="flex items-center gap-2.5 sm:gap-3 min-w-0 flex-1">
-              <div class="${iconClass}">
-                ${plan.icon}
-              </div>
-              <div class="min-w-0 flex-1 flex flex-col justify-center gap-1">
-                <!-- 状态与标签区域 (独立一行，保证与操作区域彻底解耦，防止移动端标签与编辑按钮重叠) -->
-                <div class="plan-tags-row flex items-center gap-1.5 flex-wrap min-w-0">
-                  ${tagBadge}
-                </div>
-                <!-- 标题与内嵌操作区域 (分离独立，桌面与移动端均平稳展示，编辑按钮永远不被标签遮挡) -->
-                <div class="flex items-center justify-between gap-1.5 min-w-0">
-                  <span class="text-xs font-black truncate">${plan.title}</span>
-                  <button type="button" class="plan-inline-edit-btn text-xs font-bold text-[#FF6B57] hover:underline px-1.5 py-0.5 rounded min-h-[22px] items-center justify-center flex-shrink-0 transition-colors" title="编辑计划" onclick="event.stopPropagation(); openEditPlan('${plan.id}')">编辑</button>
-                </div>
-                <div class="plan-card-subtext text-[10.5px] sm:text-[11px] text-stone-400 truncate">${plan.subtext}</div>
-              </div>
-            </div>
-            <div class="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
-              ${actionButtonHtml}
-              <button type="button" class="plan-col-edit-btn p-1 text-stone-400 hover:text-[#FF6B57] hover:bg-[#FFF0ED] rounded-lg transition-all text-xs" title="编辑计划" onclick="event.stopPropagation(); openEditPlan('${plan.id}')">✏️</button>
-              <button type="button" class="p-1 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all text-xs flex-shrink-0" title="删除计划" onclick="event.stopPropagation(); confirmDeletePlan('${plan.id}')">🗑️</button>
-            </div>
-          </div>
-        `;
-      }).join('');
+        // 标题与内嵌操作区域 (分离独立，桌面与移动端均平稳展示，编辑按钮永远不被标签遮挡)
+        const titleRow = document.createElement('div');
+        titleRow.className = 'flex items-center justify-between gap-1.5 min-w-0';
+
+        const title = document.createElement('span');
+        title.className = 'text-xs font-black truncate';
+        title.textContent = plan.title == null ? '' : String(plan.title);
+
+        const inlineEdit = document.createElement('button');
+        inlineEdit.type = 'button';
+        inlineEdit.className = 'plan-inline-edit-btn text-xs font-bold text-[#FF6B57] hover:underline px-1.5 py-0.5 rounded min-h-[22px] items-center justify-center flex-shrink-0 transition-colors';
+        inlineEdit.title = '编辑计划';
+        inlineEdit.textContent = '编辑';
+        inlineEdit.addEventListener('click', (event) => {
+          event.stopPropagation();
+          runSilentAction(() => openEditPlan(planId));
+        });
+
+        titleRow.append(title, inlineEdit);
+
+        const subtext = document.createElement('div');
+        subtext.className = 'plan-card-subtext text-[10.5px] sm:text-[11px] text-stone-400 truncate';
+        subtext.textContent = plan.subtext == null ? '' : String(plan.subtext);
+
+        info.append(tagsRow, titleRow, subtext);
+
+        if (isDraft) {
+          const draftHint = document.createElement('div');
+          draftHint.className = 'plan-draft-hint text-[10px] font-bold text-[#D97706] truncate';
+          draftHint.textContent = '确认后计入日历与统计';
+          info.append(draftHint);
+        }
+
+        left.append(icon, info);
+
+        const actions = document.createElement('div');
+        actions.className = 'flex items-center gap-1.5 sm:gap-2 flex-shrink-0';
+
+        if (plan.isCompleted) {
+          if (isDraft && linkedRecord) {
+            const confirmButton = document.createElement('button');
+            confirmButton.type = 'button';
+            confirmButton.className = 'pill-btn py-1 px-2.5 sm:px-3 text-xs font-black text-white bg-[#FF6B57] border border-[#FF6B57] hover:bg-[#FF533D] transition-all whitespace-nowrap';
+            confirmButton.textContent = '确认已用餐';
+            const recordId = linkedRecord.id;
+            confirmButton.addEventListener('click', () => confirmMealRecord(confirmButton, recordId));
+            actions.append(confirmButton);
+          }
+          const uncheckinButton = document.createElement('button');
+          uncheckinButton.type = 'button';
+          uncheckinButton.className = 'pill-btn py-1 px-2.5 sm:px-3 text-xs font-black text-emerald-700 bg-emerald-50 border border-emerald-300 hover:bg-emerald-100 transition-all whitespace-nowrap';
+          uncheckinButton.title = '点击取消打卡';
+          uncheckinButton.textContent = '✓ 已打卡';
+          uncheckinButton.addEventListener('click', () => {
+            runSilentAction(() => BentoService.plans.uncheckin(planId));
+          });
+          actions.append(uncheckinButton);
+        } else if (isOverdue) {
+          const checkinButton = document.createElement('button');
+          checkinButton.type = 'button';
+          checkinButton.className = 'neo-btn-primary text-xs py-1 px-2.5 sm:px-3 shadow-sm bg-stone-600 border-stone-700 hover:bg-stone-700 text-white whitespace-nowrap';
+          checkinButton.textContent = '补打卡';
+          checkinButton.addEventListener('click', () => {
+            runSilentAction(() => BentoService.plans.checkin(planId));
+          });
+          actions.append(checkinButton);
+        } else {
+          const checkinButton = document.createElement('button');
+          checkinButton.type = 'button';
+          checkinButton.className = 'neo-btn-primary text-xs py-1 px-2.5 sm:px-3 shadow-[var(--shadow-primary)] whitespace-nowrap';
+          checkinButton.textContent = '打卡';
+          checkinButton.addEventListener('click', () => {
+            runSilentAction(() => BentoService.plans.checkin(planId));
+          });
+          actions.append(checkinButton);
+        }
+
+        const columnEdit = document.createElement('button');
+        columnEdit.type = 'button';
+        columnEdit.className = 'plan-col-edit-btn p-1 text-stone-400 hover:text-[#FF6B57] hover:bg-[#FFF0ED] rounded-lg transition-all text-xs';
+        columnEdit.title = '编辑计划';
+        columnEdit.textContent = '✏️';
+        columnEdit.addEventListener('click', (event) => {
+          event.stopPropagation();
+          runSilentAction(() => openEditPlan(planId));
+        });
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'p-1 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all text-xs flex-shrink-0';
+        deleteButton.title = '删除计划';
+        deleteButton.textContent = '🗑️';
+        deleteButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          runSilentAction(() => confirmDeletePlan(planId));
+        });
+
+        actions.append(columnEdit, deleteButton);
+        card.append(left, actions);
+        fragment.append(card);
+      });
+
+      container.replaceChildren(fragment);
 
       if (scrollParent === window) {
         window.scrollTo({ top: prevScrollY, behavior: 'instant' });
@@ -7399,10 +7768,13 @@
     function renderRecords() {
       const container = document.getElementById('recordsListContainer');
       if (!container) return;
-      const records = BentoService.records.getAll();
+      const records = BentoService.records.getAll().filter((rec) => isRecordActive(rec));
 
       if (records.length === 0) {
-        container.innerHTML = '<div class="p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100">暂无饮食日记，去记录刚刚吃过的治愈食光吧！</div>';
+        const empty = document.createElement('div');
+        empty.className = 'p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100';
+        empty.textContent = '暂无饮食日记，去记录刚刚吃过的治愈食光吧！';
+        container.replaceChildren(empty);
         return;
       }
 
@@ -7414,50 +7786,148 @@
         3: '🍙 三分饱 · 意犹未尽'
       };
 
-      container.innerHTML = records.map(rec => {
+      const fragment = document.createDocumentFragment();
+
+      records.forEach((rec) => {
+        if (!rec) return;
         const hasCost = rec.cost && rec.cost > 0;
-        const photos = rec.photos || [];
+        const photos = Array.isArray(rec.photos) ? rec.photos : [];
+        const isDraft = rec.status === 'DRAFT';
+        const recordId = rec.id != null ? String(rec.id) : '';
 
-        return `
-          <div class="neo-card p-4 m-0 shadow-[var(--shadow-bento-sm)] hover:border-[#FEDBC5] transition-all space-y-2">
-            <div class="record-card-header flex items-center justify-between border-b border-stone-100 pb-2">
-              <div class="record-card-heading flex items-center gap-2">
-                <span class="text-xl">${rec.icon}</span>
-                <span class="record-card-title text-xs font-black text-stone-800">${rec.title}</span>
-              </div>
-              <div class="record-card-actions flex items-center gap-1.5">
-                ${hasCost ? `<span class="px-2 py-0.5 rounded-full text-[9.5px] font-black bg-[#FFF5E8] text-[#D97706] border border-[#FEE8B8]">¥ ${rec.cost}</span>` : ''}
-                <span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-[#FFF0ED] text-[#FF6B57]">${rec.type}</span>
-                <button type="button" class="p-1 text-stone-400 hover:text-[#FF6B57] hover:bg-[#FFF0ED] rounded-lg transition-all text-xs ml-1" title="编辑就餐记录" onclick="openEditRecord('${rec.id}')">✏️</button>
-                <button type="button" class="p-1 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all text-xs" title="删除此记录" onclick="confirmDeleteRecord('${rec.id}')">🗑️</button>
-              </div>
-            </div>
-            <div class="flex items-center justify-between text-xs">
-              <span class="text-stone-400 text-[11px]">${rec.date} · ${rec.slot}</span>
-              <span class="font-extrabold text-[#FF6B57]">${rec.calories} kcal</span>
-            </div>
-            <div class="text-[11.5px] text-stone-600 bg-[#FAF7F2] p-2.5 rounded-xl border border-[#F0E8DC]">
-              ${rec.notes}
-            </div>
-            
-            ${photos.length > 0 ? `
-              <div class="flex items-center gap-2 pt-1 overflow-x-auto">
-                ${photos.map((src, pIdx) => `
-                  <div class="relative w-16 h-16 rounded-xl overflow-hidden border border-[#FEDBC5] flex-shrink-0 cursor-pointer hover:opacity-90 transition-all" onclick="openImageLightbox('${src}')">
-                    <img src="${src}" class="w-full h-full object-cover" />
-                    <span class="absolute bottom-0.5 right-0.5 px-1 bg-black/60 text-white text-[8px] rounded font-bold">图${pIdx+1}</span>
-                  </div>
-                `).join('')}
-              </div>
-            ` : ''}
+        const card = document.createElement('div');
+        card.className = 'neo-card p-4 m-0 shadow-[var(--shadow-bento-sm)] hover:border-[#FEDBC5] transition-all space-y-2';
 
-            <div class="flex items-center justify-between text-[10.5px] font-bold text-stone-500 pt-1 border-t border-stone-100">
-              <span class="text-stone-600">${satietyLabels[rec.satiety] || `饱腹：${rec.satiety || 8}分饱`}</span>
-              <span class="text-amber-500 font-black">美味：${'★'.repeat(rec.rating || 4)}</span>
-            </div>
-          </div>
-        `;
-      }).join('');
+        const header = document.createElement('div');
+        header.className = 'record-card-header flex items-center justify-between border-b border-stone-100 pb-2';
+
+        const heading = document.createElement('div');
+        heading.className = 'record-card-heading flex items-center gap-2';
+
+        const icon = document.createElement('span');
+        icon.className = 'text-xl';
+        icon.textContent = rec.icon == null ? '' : String(rec.icon);
+
+        const title = document.createElement('span');
+        title.className = 'record-card-title text-xs font-black text-stone-800';
+        title.textContent = rec.title == null ? '' : String(rec.title);
+
+        heading.append(icon, title);
+
+        const actions = document.createElement('div');
+        actions.className = 'record-card-actions flex items-center gap-1.5';
+
+        if (hasCost) {
+          const costBadge = document.createElement('span');
+          costBadge.className = 'px-2 py-0.5 rounded-full text-[9.5px] font-black bg-[#FFF5E8] text-[#D97706] border border-[#FEE8B8]';
+          costBadge.textContent = `¥ ${rec.cost}`;
+          actions.append(costBadge);
+        }
+
+        const typeBadge = document.createElement('span');
+        typeBadge.className = 'px-2 py-0.5 rounded-full text-[9px] font-black bg-[#FFF0ED] text-[#FF6B57]';
+        typeBadge.textContent = rec.type == null ? '' : String(rec.type);
+        actions.append(typeBadge);
+
+        if (isDraft) {
+          const draftBadge = document.createElement('span');
+          draftBadge.className = 'record-draft-badge px-2 py-0.5 rounded-full text-[9px] font-black bg-[#FFF5E8] text-[#D97706] border border-[#FEE8B8] whitespace-nowrap';
+          draftBadge.textContent = '待确认草稿';
+          actions.append(draftBadge);
+        }
+
+        const editButton = document.createElement('button');
+        editButton.type = 'button';
+        editButton.className = 'p-1 text-stone-400 hover:text-[#FF6B57] hover:bg-[#FFF0ED] rounded-lg transition-all text-xs ml-1';
+        editButton.title = '编辑就餐记录';
+        editButton.textContent = '✏️';
+        editButton.addEventListener('click', () => runSilentAction(() => openEditRecord(recordId)));
+
+        const deleteButton = document.createElement('button');
+        deleteButton.type = 'button';
+        deleteButton.className = 'p-1 text-stone-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-all text-xs';
+        deleteButton.title = '删除此记录';
+        deleteButton.textContent = '🗑️';
+        deleteButton.addEventListener('click', () => runSilentAction(() => confirmDeleteRecord(recordId)));
+
+        actions.append(editButton, deleteButton);
+        header.append(heading, actions);
+
+        const meta = document.createElement('div');
+        meta.className = 'flex items-center justify-between text-xs';
+
+        const dateLine = document.createElement('span');
+        dateLine.className = 'text-stone-400 text-[11px]';
+        dateLine.textContent = [rec.date == null ? '' : String(rec.date), rec.slot == null ? '' : String(rec.slot)]
+          .filter(Boolean)
+          .join(' · ');
+
+        const calories = document.createElement('span');
+        calories.className = 'font-extrabold text-[#FF6B57]';
+        calories.textContent = rec.calories == null ? '' : `${rec.calories} kcal`;
+
+        meta.append(dateLine, calories);
+
+        const notes = document.createElement('div');
+        notes.className = 'text-[11.5px] text-stone-600 bg-[#FAF7F2] p-2.5 rounded-xl border border-[#F0E8DC]';
+        notes.textContent = rec.notes == null ? '' : String(rec.notes);
+
+        card.append(header, meta, notes);
+
+        if (photos.length > 0) {
+          const photoRow = document.createElement('div');
+          photoRow.className = 'flex items-center gap-2 pt-1 overflow-x-auto';
+          photos.forEach((src, pIdx) => {
+            const safeSrc = safeImageSource(src);
+            if (!safeSrc) return;
+            const tile = document.createElement('div');
+            tile.className = 'relative w-16 h-16 rounded-xl overflow-hidden border border-[#FEDBC5] flex-shrink-0 cursor-pointer hover:opacity-90 transition-all';
+            const image = document.createElement('img');
+            image.className = 'w-full h-full object-cover';
+            image.src = safeSrc;
+            const indexBadge = document.createElement('span');
+            indexBadge.className = 'absolute bottom-0.5 right-0.5 px-1 bg-black/60 text-white text-[8px] rounded font-bold';
+            indexBadge.textContent = `图${pIdx + 1}`;
+            tile.append(image, indexBadge);
+            tile.addEventListener('click', () => runSilentAction(() => openImageLightbox(safeSrc)));
+            photoRow.append(tile);
+          });
+          if (photoRow.childElementCount > 0) card.append(photoRow);
+        }
+
+        if (isDraft) {
+          const draftRow = document.createElement('div');
+          draftRow.className = 'record-draft-row flex items-center justify-between gap-2 pt-1';
+          const draftHint = document.createElement('span');
+          draftHint.className = 'text-[10px] font-bold text-[#D97706]';
+          draftHint.textContent = '计划打卡生成的待确认草稿，确认后计入日历与统计';
+          const confirmButton = document.createElement('button');
+          confirmButton.type = 'button';
+          confirmButton.className = 'pill-btn py-1 px-2.5 text-[11px] font-black text-white bg-[#FF6B57] border border-[#FF6B57] hover:bg-[#FF533D] transition-all whitespace-nowrap';
+          confirmButton.textContent = '确认已用餐';
+          confirmButton.addEventListener('click', () => confirmMealRecord(confirmButton, recordId));
+          draftRow.append(draftHint, confirmButton);
+          card.append(draftRow);
+        }
+
+        const footer = document.createElement('div');
+        footer.className = 'flex items-center justify-between text-[10.5px] font-bold text-stone-500 pt-1 border-t border-stone-100';
+
+        const satiety = document.createElement('span');
+        satiety.className = 'text-stone-600';
+        satiety.textContent = rec.satiety == null ? '' : (satietyLabels[rec.satiety] || `饱腹：${rec.satiety}分饱`);
+
+        const rating = document.createElement('span');
+        rating.className = 'text-amber-500 font-black';
+        rating.textContent = rec.rating == null || rec.rating === 0 ? '' : `美味：${'★'.repeat(rec.rating)}`;
+
+        footer.append(satiety, rating);
+        card.append(footer);
+
+        fragment.append(card);
+      });
+
+      container.replaceChildren(fragment);
     }
 
     // 【VAN-140】购物清单渲染：100% 安全 DOM（createElement + textContent + addEventListener）。
@@ -7971,8 +8441,8 @@
     BentoBus.on('stores:changed', () => renderStores());
     BentoBus.on('recipes:changed', () => renderRecipes());
     BentoBus.on('pantry:changed', () => renderInventory());
-    BentoBus.on('plans:changed', () => renderPlans());
-    BentoBus.on('records:changed', () => renderRecords());
+    BentoBus.on('plans:changed', () => onPlansChanged());
+    BentoBus.on('records:changed', () => onRecordsChanged());
     BentoBus.on('shopping:changed', () => renderShoppingList());
     BentoBus.on('favorites:changed', () => renderFavorites());
     // 工具服务保存/删除后即时重渲染（原静态版在同一函数内直接 renderTools，被 adapter 替换后需经总线补回）
@@ -8060,8 +8530,15 @@
       if (pageId === 'recipes') renderRecipes();
       if (pageId === 'records') renderRecords();
       if (pageId === 'tools') renderTools();
-      if (pageId === 'statistics') renderStatistics();
-      if (pageId === 'calendar') renderCalendar();
+      // 月历/统计在适配器层会替换为真实后端视图：优先调用 window 上的真实实现，回退内置渲染
+      if (pageId === 'statistics') {
+        if (typeof window.renderStatistics === 'function') window.renderStatistics();
+        else renderStatistics();
+      }
+      if (pageId === 'calendar') {
+        if (typeof window.renderCalendar === 'function') window.renderCalendar();
+        else renderCalendar();
+      }
       if (pageId === 'wheel') updateWheelCandidates();
     }
 

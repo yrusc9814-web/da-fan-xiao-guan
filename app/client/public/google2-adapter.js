@@ -613,6 +613,14 @@
       icon: SOURCE_TYPE_ICONS[r.sourceType] || '🍱',
       title: r.title != null ? r.title : item?.customName || item?.recipe?.name || item?.store?.name || '',
       recipeId: r.recipeId ?? item?.recipeId ?? item?.recipe?.id ?? null,
+      // 记录状态只归一为后端既定两态：仅显式 DRAFT 视为草稿，其余按后端默认 CONFIRMED 处理。
+      // isDraft 供视图层直接判断，不再自行猜测 status 大小写或缺失。
+      status: r.status === 'DRAFT' ? 'DRAFT' : 'CONFIRMED',
+      isDraft: r.status === 'DRAFT',
+      // 计划关联关系：sourceMealPlanId（唯一来源）与 relatedPlanId（兼容旧关联）都保留，刷新后仍可追溯
+      sourceMealPlanId: r.sourceMealPlanId ?? null,
+      relatedPlanId: r.relatedPlanId ?? null,
+      confirmedAt: r.confirmedAt ?? null,
       // 后端 nullable 营养字段原样保留 null：不伪造成 ''/undefined，也不补 500/8/0 默认值
       calories: r.calories ?? null,
       satiety: r.satiety ?? null,
@@ -1695,6 +1703,18 @@
       toast('计划已安全移除', 'success');
     };
     service.remove = service.delete;
+    // 打卡结果提示必须与实际记录状态一致：DRAFT 是待确认草稿（不计入统计），
+    // CONFIRMED 才是已确认用餐（幂等重复打卡不得再宣称“已生成”）。
+    const checkinToast = (result) => {
+      const status = result?.record?.status === 'DRAFT' ? 'DRAFT' : result?.record ? 'CONFIRMED' : null;
+      if (status === 'DRAFT')
+        return result.idempotent
+          ? '打卡成功！已恢复待确认就餐草稿（确认后计入统计）'
+          : '打卡成功！已生成待确认就餐草稿（确认后计入统计）';
+      if (status === 'CONFIRMED')
+        return result.idempotent ? '该计划已确认用餐，无需重复打卡' : '打卡成功！就餐记录已确认用餐';
+      return '打卡成功！';
+    };
     service.checkin = async (id) => {
       const item = service.getById(id);
       if (!item || item.isCompleted) return;
@@ -1710,7 +1730,7 @@
         emit('records:changed');
       }
       emit('plans:changed');
-      toast(result.idempotent ? '打卡成功！已在日记中恢复就餐记录' : '打卡成功！已在日记中生成就餐记录', 'success');
+      toast(checkinToast(result), 'success');
       return mapped;
     };
     const uncheckinPromises = new Map();
@@ -1981,6 +2001,93 @@
       toast('该餐记录已删除，月度看板已重算', 'success');
     };
     service.remove = service.delete;
+    // 单条记录响应必须是「对象 + id 与所请求 id 一致」的实体，才能写回缓存。
+    // 兜底响应（如 { items: [], total: 0 }、数组、缺 id）一律不覆盖既有缓存。
+    const isValidRecordDto = (dto, id) =>
+      !!dto &&
+      typeof dto === 'object' &&
+      !Array.isArray(dto) &&
+      typeof dto.id === 'string' &&
+      dto.id.length > 0 &&
+      dto.id === id;
+    const upsertById = (mapped) => {
+      service.data = service.data.some((x) => x.id === mapped.id)
+        ? service.data.map((x) => (x.id === mapped.id ? mapped : x))
+        : [mapped, ...service.data];
+    };
+    const confirmPromises = new Map();
+    // 标记「该错误已由 records.confirm 自身向用户提示」，让按钮层 catch 跳过重复 toast；
+    // 仍抛回原始 error 对象，调用方语义与 status/code 不变。
+    const markConfirmNotified = (error) => {
+      if (error && typeof error === 'object') {
+        try {
+          error.__dafanRecordConfirmNotified = true;
+        } catch {
+          // 冻结/不可扩展的错误对象不影响原始错误传播
+        }
+      }
+      return error;
+    };
+    service.confirm = (id) => {
+      // 并发/重复点击同一记录只发一次 confirm 请求，其余调用复用同一 Promise。
+      if (confirmPromises.has(id)) return confirmPromises.get(id);
+      const existing = service.getById(id);
+      if (!existing) return toast('就餐记录不在当前列表，请刷新后重试', 'error');
+      const path = `/records/${encodeURIComponent(id)}`;
+      let conflictSurfaced = false;
+      const promise = (async () => {
+        try {
+          const dto = await ApiClient.post(`${path}/confirm`, { version: existing.version });
+          if (!isValidRecordDto(dto, id))
+            throw new ApiError(502, 'RECORD_CONFIRM_INVALID_RESPONSE', '确认结果无效，请刷新后查看');
+          const mapped = mapRecord(dto);
+          upsertById(mapped);
+          emit('records:changed');
+          toast(
+            mapped.status === 'CONFIRMED' ? '已确认用餐，已计入日历与统计' : '已同步该记录的最新状态',
+            'success'
+          );
+          return mapped;
+        } catch (error) {
+          if (error?.status === 409) {
+            // 冲突时只做自愈读取：拿到有效实体才更新缓存，失败则保留原缓存并保留原始错误。
+            let healed = null;
+            try {
+              const latest = await ApiClient.get(path);
+              if (isValidRecordDto(latest, id)) {
+                healed = mapRecord(latest);
+                upsertById(healed);
+                emit('records:changed');
+                // 自愈也是真实写入后的可见状态变化：首页可见时刷新概览/统计，非首页只置脏（P1-7）
+                markDashboardDirty();
+              }
+            } catch {
+              // Keep the original conflict visible when refresh also fails.
+            }
+            conflictSurfaced = true;
+            toast(
+              healed
+                ? healed.status === 'CONFIRMED'
+                  ? '记录已被修改或已确认，已同步最新状态，请刷新查看'
+                  : '记录已被其他操作修改，已同步最新版本，请确认后重试'
+                : '记录已被修改，未能同步最新状态，请刷新后重试',
+              'error'
+            );
+          }
+          // 提示已在上方完成（409 分支或按钮层 fail），标记后仍抛回原始 error 对象
+          throw markConfirmNotified(error);
+        }
+      })();
+      confirmPromises.set(id, promise);
+      // Inline onclick handlers do not await this promise: keep a user-visible
+      // failure path here while preserving rejection for awaiting callers.
+      promise.catch((error) => {
+        if (!conflictSurfaced) fail(error);
+        markConfirmNotified(error);
+      });
+      promise.finally(() => confirmPromises.delete(id)).catch(() => undefined);
+      return promise;
+    };
     service.buildFromPlan = () => toast();
     return reload;
   }
@@ -2236,8 +2343,8 @@
     recipes: ['save', 'delete', 'toggleFavorite', 'addMissingIngredientsToShopping'],
     pantry: ['save', 'delete', 'consume'],
     shopping: ['add', 'toggle', 'delete', 'clearCompleted', 'updateItem', 'replenishRecipe'],
-    plans: ['save', 'delete', 'remove', 'checkin', 'uncheckin'],
-    records: ['save', 'delete', 'remove'],
+    plans: ['save', 'add', 'update', 'delete', 'remove', 'checkin', 'uncheckin'],
+    records: ['save', 'add', 'update', 'delete', 'remove', 'confirm'],
     tools: ['save', 'delete']
   };
   function markDashboardDirty() {
@@ -2939,34 +3046,12 @@
     const originalSetupDailyDiary =
       typeof modal.setupDailyDiary === 'function' ? modal.setupDailyDiary.bind(modal) : null;
     if (originalSetupDailyDiary) {
+      // index.html 的日记视图已按字段渲染 null（空串），这里只跟踪合法业务日期供录入入口使用，
+      // 不再按卡片索引补清理 DOM：按索引取记录会因标题/分组节点错位，replaceAll('null') 会篡改真实文本。
       modal.setupDailyDiary = (payload) => {
-        currentDiaryDate =
-          payload && parseBusinessDate(businessDateParts(payload.year, payload.month, payload.day))
-            ? businessDateParts(payload.year, payload.month, payload.day)
-            : null;
-        const result = originalSetupDailyDiary(payload);
-        const date = currentDiaryDate;
-        const records =
-          window.BentoService?.records?.data?.filter(
-            (record) => record.date === date && window.isRecordActive?.(record) !== false
-          ) || [];
-        document.querySelectorAll('#dailyDiaryMealsList > div').forEach((card, index) => {
-          const record = records[index];
-          if (!record) return;
-          const lines = card.querySelectorAll('span, div');
-          const calories = Array.from(lines).find((node) => /kcal$/.test(node.textContent.trim()));
-          if (calories && record.calories == null) calories.textContent = '';
-          const satiety = Array.from(lines).find((node) => node.textContent.includes('饱腹感：'));
-          if (satiety && record.satiety == null) satiety.textContent = '';
-          const notes = Array.from(lines).find((node) => node.classList.contains('text-stone-500'));
-          if (notes && record.notes == null) notes.textContent = '';
-        });
-        if (records.some((record) => record.calories == null || record.satiety == null || record.notes == null))
-          document.querySelectorAll('#dailyDiaryMealsList *').forEach((node) => {
-            if (node.children.length === 0 && node.textContent?.includes('null'))
-              node.textContent = node.textContent.replaceAll('null', '');
-          });
-        return result;
+        const parts = payload ? businessDateParts(payload.year, payload.month, payload.day) : null;
+        currentDiaryDate = payload && parseBusinessDate(parts) ? parts : null;
+        return originalSetupDailyDiary(payload);
       };
     }
     modal.open = async (name, payload = null, opener = null) => {
@@ -3388,6 +3473,9 @@
               : [mapped, ...records.data];
             emit('records:changed');
             emit('recipes:changed');
+            // cook-checkin 也是真实写成功：与 records 域其它写入一致标记首页脏，
+            // 首页可见时刷新、不可见时只留待切回首页再刷新（P1-7）。
+            markDashboardDirty();
             window.BentoModal?.close(true);
             toast('已记录，未扣库存', 'success');
             return mapped;
@@ -3421,37 +3509,6 @@
       window.handleToolFormSubmit = wiredToolFormSubmit;
     }
     modal.__google2Wired = true;
-    const originalRenderRecords = window.renderRecords;
-    if (typeof originalRenderRecords === 'function' && !originalRenderRecords.__google2Wired) {
-      const renderRecords = function (...args) {
-        const result = originalRenderRecords.apply(this, args);
-        const records = window.BentoService?.records?.getAll?.() || [];
-        document.querySelectorAll('#recordsListContainer > .neo-card').forEach((card, index) => {
-          const record = records[index];
-          if (!record) return;
-          const calories = card.querySelector('.flex.items-center.justify-between.text-xs span.font-extrabold');
-          if (calories && record.calories == null) calories.textContent = '';
-          const footer = card.querySelector('.border-t.border-stone-100');
-          if (footer) {
-            const [satiety, rating] = footer.querySelectorAll('span');
-            if (satiety && record.satiety == null) satiety.textContent = '';
-            if (rating && (record.rating == null || record.rating === 0)) rating.textContent = '';
-          }
-          const notes = card.querySelector('.text-stone-600.bg-\\[\\#FAF7F2\\]');
-          if (notes && record.notes == null) notes.textContent = '';
-          // inline 模板先把 nullable 值插入成字面 null；清理真实 null，不补任何展示默认值。
-          if (record.calories == null || record.notes == null || record.satiety == null) {
-            card.querySelectorAll('*').forEach((node) => {
-              if (node.children.length === 0 && node.textContent?.includes('null'))
-                node.textContent = node.textContent.replaceAll('null', '');
-            });
-          }
-        });
-        return result;
-      };
-      renderRecords.__google2Wired = true;
-      window.renderRecords = renderRecords;
-    }
     installLegacyDataViews();
   }
   function modalRecipeService() {
