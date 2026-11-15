@@ -1,7 +1,25 @@
 (() => {
   'use strict';
   const API_BASE = '/api/v1';
-  const PIN_KEY = 'dafan-pin-token';
+  const LEGACY_PIN_KEY = 'dafan-pin-token';
+  const PIN_KEY = 'dafan_google2_pin_token';
+  function readPinToken() {
+    const token = localStorage.getItem(PIN_KEY);
+    const legacyToken = localStorage.getItem(LEGACY_PIN_KEY);
+    if (legacyToken !== null) {
+      if (!token && legacyToken) localStorage.setItem(PIN_KEY, legacyToken);
+      localStorage.removeItem(LEGACY_PIN_KEY);
+    }
+    return token || legacyToken;
+  }
+  function storePinToken(token) {
+    localStorage.setItem(PIN_KEY, token);
+    localStorage.removeItem(LEGACY_PIN_KEY);
+  }
+  function clearPinToken() {
+    localStorage.removeItem(PIN_KEY);
+    localStorage.removeItem(LEGACY_PIN_KEY);
+  }
   const BLOCKED_MESSAGE = '该功能尚未接通真实后端';
   class ApiError extends Error {
     constructor(status, code, message, details, retryAfter) {
@@ -14,6 +32,7 @@
     }
   }
   const PIN_RETRY_EXCLUDED = [
+    '/settings/pin',
     '/settings/pin/verify',
     '/settings/pin/session',
     '/settings/high-risk/authorize',
@@ -22,7 +41,16 @@
   let pinUnlockPromise = null;
   let pinUnlockResolve = null;
   let pinUnlockReject = null;
-  let pinUnlockCooldownTimer = null;
+  let pinUnlockVerifying = false;
+  // 每次创建/取消解锁会话都递增代次：在途 verify 只对自己发起时的代次生效，
+  // 过期响应不得写 token、关闭新弹窗、改新弹窗错误或重置新请求的在途锁
+  let pinUnlockGeneration = 0;
+  // 冷却截止时间在模块级共享：取消/关闭弹窗都不能绕过 429 冷却
+  let pinCooldownUntil = 0;
+  let pinCooldownTimer = null;
+  let pinSettingsMode = null;
+  let pinSettingsRequestToken = 0;
+  let pinSettingsPending = false;
   function normalizedPath(path) {
     return String(path).split('?')[0];
   }
@@ -51,39 +79,104 @@
     const node = pinDialog().error;
     if (node) node.textContent = message;
   }
+  function pinCooldownSeconds() {
+    const remaining = pinCooldownUntil - Date.now();
+    return remaining > 0 ? Math.ceil(remaining / 1000) : 0;
+  }
+  function stopPinCooldownTimer() {
+    if (pinCooldownTimer) {
+      clearInterval(pinCooldownTimer);
+      pinCooldownTimer = null;
+    }
+  }
+  /** 冷却状态只由服务端 429 决定，取消/关闭弹窗都不清零，重开窗口会继续倒计时。 */
+  function renderPinCooldown() {
+    const remaining = pinCooldownSeconds();
+    if (remaining <= 0) {
+      pinCooldownUntil = 0;
+      stopPinCooldownTimer();
+      return 0;
+    }
+    const dialog = pinDialog();
+    if (dialog.submit) dialog.submit.disabled = true;
+    if (dialog.root && !dialog.root.classList.contains('hidden'))
+      setPinDialogError(`尝试次数过多，请 ${remaining} 秒后再试`);
+    const settings = pinSettingsDialog();
+    if (settings.submit) settings.submit.disabled = true;
+    if (settings.root && !settings.root.classList.contains('hidden'))
+      setPinSettingsError(`尝试次数过多，请 ${remaining} 秒后再试`);
+    if (!pinCooldownTimer) {
+      pinCooldownTimer = setInterval(() => {
+        if (pinCooldownSeconds() > 0) {
+          renderPinCooldown();
+          return;
+        }
+        pinCooldownUntil = 0;
+        stopPinCooldownTimer();
+        const unlock = pinDialog();
+        if (unlock.submit && !pinUnlockVerifying) unlock.submit.disabled = false;
+        if (unlock.root && !unlock.root.classList.contains('hidden')) setPinDialogError('可以再次尝试验证');
+        const modal = pinSettingsDialog();
+        if (modal.submit && !pinSettingsPending) modal.submit.disabled = false;
+        if (modal.root && !modal.root.classList.contains('hidden')) setPinSettingsError('可以再次尝试验证');
+      }, 1000);
+    }
+    return remaining;
+  }
+  function startPinCooldown(error) {
+    const fromDetails = Number(error?.details?.retryAfter);
+    const fromHeader = Number(error?.retryAfter);
+    const seconds =
+      Math.max(
+        Number.isFinite(fromDetails) && fromDetails > 0 ? fromDetails : 0,
+        Number.isFinite(fromHeader) && fromHeader > 0 ? fromHeader : 0
+      ) || 30;
+    pinCooldownUntil = Date.now() + seconds * 1000;
+    renderPinCooldown();
+  }
   function closePinUnlockDialog() {
     const { root, input } = pinDialog();
     root?.classList.add('hidden');
     if (input) input.value = '';
-    setPinDialogError('');
-    if (pinUnlockCooldownTimer) {
-      clearInterval(pinUnlockCooldownTimer);
-      pinUnlockCooldownTimer = null;
-    }
+    // 不在这里停冷却计时器：settings 弹窗可能同时展示同一冷却；计时器到期会自行清理
+    const remaining = pinCooldownSeconds();
+    setPinDialogError(remaining > 0 ? `尝试次数过多，请 ${remaining} 秒后再试` : '');
   }
-  function finishPinUnlock(token) {
-    if (!token || !pinUnlockResolve) return;
-    localStorage.setItem(PIN_KEY, token);
+  function pinUnlockStale(generation) {
+    return generation !== pinUnlockGeneration;
+  }
+  function finishPinUnlock(token, generation) {
+    if (!token || !pinUnlockResolve || pinUnlockStale(generation)) return;
+    storePinToken(token);
     const resolve = pinUnlockResolve;
     pinUnlockPromise = pinUnlockResolve = pinUnlockReject = null;
+    pinUnlockVerifying = false;
     closePinUnlockDialog();
     resolve(token);
   }
   function cancelPinUnlock() {
     if (!pinUnlockReject) return;
     const reject = pinUnlockReject;
+    // 取消即换代：取消时仍在途的 verify 响应属于旧会话，不得落到之后重开的弹窗
+    pinUnlockGeneration += 1;
     pinUnlockPromise = pinUnlockResolve = pinUnlockReject = null;
+    pinUnlockVerifying = false;
     closePinUnlockDialog();
     reject(pinUnlockError());
   }
   async function verifyPinFromDialog() {
+    if (pinUnlockVerifying) return;
     const { input, submit } = pinDialog();
     const pin = input?.value || '';
+    if (renderPinCooldown()) return;
     if (!/^\d{4,8}$/.test(pin)) {
       setPinDialogError('请输入 4～8 位数字 PIN');
       input?.focus();
       return;
     }
+    // 本次提交只属于自己的解锁会话：取消/重开会让代次前进，过期响应一律丢弃
+    const generation = pinUnlockGeneration;
+    pinUnlockVerifying = true;
     if (submit) submit.disabled = true;
     setPinDialogError('正在验证…');
     try {
@@ -92,36 +185,39 @@
         body: JSON.stringify({ pin }),
         _pinRetried: true
       });
+      // 弹窗可能在请求期间被取消/重开：此时丢弃结果，不写 token、不关新弹窗
+      if (pinUnlockStale(generation) || !pinUnlockResolve) return;
       if (result?.valid !== true || typeof result.token !== 'string' || !result.token) {
         setPinDialogError(result?.required === true ? 'PIN 不正确，请重试' : '当前未启用 PIN，请刷新后重试');
         if (input) input.value = '';
         return;
       }
-      finishPinUnlock(result.token);
+      finishPinUnlock(result.token, generation);
     } catch (error) {
-      if (error?.status === 429 && error?.code === 'PIN_ATTEMPTS_EXCEEDED') {
-        let remaining = Math.max(1, Number(error.retryAfter) || 30);
-        setPinDialogError(`尝试次数过多，请 ${remaining} 秒后再试`);
-        if (pinUnlockCooldownTimer) clearInterval(pinUnlockCooldownTimer);
-        pinUnlockCooldownTimer = setInterval(() => {
-          remaining -= 1;
-          if (remaining <= 0) {
-            clearInterval(pinUnlockCooldownTimer);
-            pinUnlockCooldownTimer = null;
-            setPinDialogError('可以再次尝试验证');
-            if (submit) submit.disabled = false;
-          } else setPinDialogError(`尝试次数过多，请 ${remaining} 秒后再试`);
-        }, 1000);
-      } else setPinDialogError('PIN 验证失败，请稍后重试');
+      // 429 是服务端按 IP 的真实冷却：即使响应已过期也要落到共享 deadline，避免提前重试；
+      // 但过期响应不得改新弹窗的错误提示与在途锁
+      if (error?.status === 429 && error?.code === 'PIN_ATTEMPTS_EXCEEDED') startPinCooldown(error);
+      if (pinUnlockStale(generation)) return;
+      if (!(error?.status === 429 && error?.code === 'PIN_ATTEMPTS_EXCEEDED'))
+        setPinDialogError('PIN 验证失败，请稍后重试');
     } finally {
-      if (submit && !pinUnlockCooldownTimer) submit.disabled = false;
+      // 过期请求不得重置新会话的 verifying，否则会放开按钮造成并发提交
+      if (!pinUnlockStale(generation)) {
+        pinUnlockVerifying = false;
+        const dialog = pinDialog();
+        if (dialog.submit && !dialog.root?.classList.contains('hidden') && pinCooldownSeconds() <= 0)
+          dialog.submit.disabled = false;
+      }
     }
   }
   function ensurePinUnlock() {
     if (pinUnlockPromise) return pinUnlockPromise;
+    // 新会话换代：此前任何在途 verify 都变为过期响应
+    pinUnlockGeneration += 1;
     pinUnlockPromise = new Promise((resolve, reject) => {
       pinUnlockResolve = resolve;
       pinUnlockReject = reject;
+      pinUnlockVerifying = false;
       const { root, form, input, cancel, submit } = pinDialog();
       if (!root || !form || !input) {
         pinUnlockPromise = pinUnlockResolve = pinUnlockReject = null;
@@ -131,12 +227,20 @@
       root.classList.remove('hidden');
       input.value = '';
       setPinDialogError('');
-      if (submit) submit.disabled = false;
-      form.onsubmit = (event) => {
-        event.preventDefault();
-        void verifyPinFromDialog();
-      };
-      cancel.onclick = cancelPinUnlock;
+      // 已生效的 429 冷却不会被取消/重开绕过
+      const coolingDown = renderPinCooldown() > 0;
+      if (submit && !coolingDown) submit.disabled = false;
+      if (!form.dataset.pinUnlockBound) {
+        form.dataset.pinUnlockBound = 'true';
+        form.addEventListener('submit', (event) => {
+          event.preventDefault();
+          void verifyPinFromDialog();
+        });
+      }
+      if (cancel && !cancel.dataset.pinUnlockBound) {
+        cancel.dataset.pinUnlockBound = 'true';
+        cancel.addEventListener('click', cancelPinUnlock);
+      }
       queueMicrotask(() => input.focus());
     });
     return pinUnlockPromise;
@@ -161,7 +265,7 @@
       !Object.keys(headers).some((key) => key.toLowerCase() === 'content-type')
     )
       headers['Content-Type'] = 'application/json';
-    const token = localStorage.getItem(PIN_KEY);
+    const token = readPinToken();
     if (token) headers['X-App-Pin-Token'] = token;
     const response = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
     const payload = await parseApiResponse(response);
@@ -189,7 +293,7 @@
   async function requestBlob(path, options = {}) {
     const { _pinRetried = false, _skipPinRetry = false, ...fetchOptions } = options || {};
     const headers = { ...(fetchOptions.headers || {}) };
-    const token = localStorage.getItem(PIN_KEY);
+    const token = readPinToken();
     if (token) headers['X-App-Pin-Token'] = token;
     const response = await fetch(`${API_BASE}${path}`, { ...fetchOptions, headers });
     if (!response.ok) {
@@ -679,6 +783,7 @@
       if (!values) return service.data;
       service.data = values.map(mapStore);
       emit('stores:changed');
+      emit('favorites:changed');
       return service.data;
     };
     service.getAll = () => service.data;
@@ -773,6 +878,7 @@
       if (!values) return service.data;
       service.data = values.map(mapRecipe);
       emit('recipes:changed');
+      emit('favorites:changed');
       return service.data;
     };
     service.getAll = () => service.data;
@@ -881,12 +987,12 @@
     service.toggleFavorite = async (id) => {
       const item = service.getById(id);
       if (!item) return;
-      const mapped = mapRecipe(
-        await ApiClient.post(`/recipes/${encodeURIComponent(id)}/favorite`, {
-          favorite: !item.favorite,
-          version: item.version
-        })
-      );
+      // 收藏端点仅返回基础字段；保留已加载的配料/步骤等关系，响应中显式返回的值仍优先。
+      const dto = await ApiClient.post(`/recipes/${encodeURIComponent(id)}/favorite`, {
+        favorite: !item.favorite,
+        version: item.version
+      });
+      const mapped = mapRecipe({ ...item, ...dto });
       service.data = service.data.map((x) => (x.id === id ? mapped : x));
       emit('recipes:changed');
       emit('favorites:changed');
@@ -2430,7 +2536,9 @@
     }
   }
   async function loadSettings() {
-    return ApiClient.get('/settings');
+    const settings = await ApiClient.get('/settings');
+    applyPinSettingsState(settings);
+    return settings;
   }
   async function exportBackup(button) {
     button.disabled = true;
@@ -2537,7 +2645,7 @@
         _skipPinRetry: true
       });
       restored = true;
-      localStorage.removeItem(PIN_KEY);
+      clearPinToken();
       closeRestoreDialog();
       toast('本地备份已恢复，正在重新加载数据', 'success');
       await syncPinSession();
@@ -2557,6 +2665,258 @@
       else setRestoreState(error?.message || '恢复失败，请检查备份文件');
     } finally {
       if (button) button.disabled = false;
+    }
+  }
+  const PIN_SETTINGS_MODES = {
+    enable: {
+      title: '启用本地 PIN 保护',
+      description: '设置后，访问本机数据需要输入 PIN。',
+      submit: '启用 PIN',
+      current: false,
+      next: true
+    },
+    change: {
+      title: '修改本地 PIN',
+      description: '需要先验证当前 PIN，再设置新的 PIN。',
+      submit: '保存新 PIN',
+      current: true,
+      next: true
+    },
+    disable: {
+      title: '关闭本地 PIN 保护',
+      description: '需要验证当前 PIN 才能关闭本机保护。',
+      submit: '确认关闭',
+      current: true,
+      next: false
+    }
+  };
+  const PIN_SAFE_ERRORS = {
+    invalidFormat: '请输入 4～8 位数字 PIN',
+    mismatch: '两次输入的新 PIN 不一致',
+    wrongCurrent: '当前 PIN 不正确',
+    conflict: '设置已被其他页面修改，已刷新最新状态，请重新提交',
+    verifyFailed: 'PIN 验证失败，请稍后重试',
+    updateFailed: 'PIN 设置更新失败，请稍后重试',
+    renewFailed: 'PIN 已更新，但当前页面会话续期失败，请重新解锁',
+    unavailable: 'PIN 设置界面不可用'
+  };
+  let pinSettingsEnabled = false;
+  function pinSettingsDialog() {
+    return {
+      root: document.getElementById('modalPinSettings'),
+      form: document.getElementById('google2PinSettingsForm'),
+      title: document.getElementById('google2PinSettingsTitle'),
+      description: document.getElementById('google2PinSettingsDescription'),
+      currentGroup: document.getElementById('google2PinCurrentGroup'),
+      current: document.getElementById('google2PinCurrent'),
+      nextGroup: document.getElementById('google2PinNewGroup'),
+      next: document.getElementById('google2PinNew'),
+      confirmGroup: document.getElementById('google2PinConfirmGroup'),
+      confirm: document.getElementById('google2PinConfirm'),
+      error: document.getElementById('google2PinSettingsError'),
+      submit: document.getElementById('google2PinSettingsSubmit'),
+      cancel: document.getElementById('google2PinSettingsCancel'),
+      close: document.getElementById('google2PinSettingsClose')
+    };
+  }
+  function setPinSettingsError(message = '') {
+    const node = pinSettingsDialog().error;
+    if (node) node.textContent = message;
+  }
+  function applyPinSettingsState(settings) {
+    const enabled = settings?.pinEnabled === true;
+    pinSettingsEnabled = enabled;
+    const status = document.getElementById('google2PinStatus');
+    if (status) {
+      status.textContent = enabled ? '已启用' : '未启用';
+      status.setAttribute(
+        'class',
+        enabled
+          ? 'text-xs font-black bg-[#FFF0ED] text-[#FF6B57] px-3 py-1 rounded-full border border-[#FEDBC5]'
+          : 'text-xs font-black bg-stone-100 text-stone-500 px-3 py-1 rounded-full border border-stone-200'
+      );
+    }
+    const enableButton = document.getElementById('google2PinEnable');
+    const changeButton = document.getElementById('google2PinChange');
+    const disableButton = document.getElementById('google2PinDisable');
+    if (enableButton) enableButton.classList.toggle('hidden', enabled);
+    if (changeButton) changeButton.classList.toggle('hidden', !enabled);
+    if (disableButton) disableButton.classList.toggle('hidden', !enabled);
+    return enabled;
+  }
+  function openPinSettings(mode = 'enable') {
+    const key = Object.prototype.hasOwnProperty.call(PIN_SETTINGS_MODES, mode) ? mode : 'enable';
+    const dialog = pinSettingsDialog();
+    if (!dialog.root || !dialog.form) return false;
+    // 已启用时不允许走 enable 路径绕过当前 PIN 校验；状态未知/失败时以提交前的最新 GET 为准
+    if (key === 'enable' && pinSettingsEnabled) {
+      toast('本地 PIN 已启用，请使用修改或关闭', 'info');
+      return false;
+    }
+    if (key !== 'enable' && !pinSettingsEnabled) {
+      toast('本地 PIN 未启用', 'info');
+      return false;
+    }
+    pinSettingsMode = key;
+    pinSettingsRequestToken += 1;
+    const copy = PIN_SETTINGS_MODES[key];
+    if (dialog.title) dialog.title.textContent = copy.title;
+    if (dialog.description) dialog.description.textContent = copy.description;
+    if (dialog.currentGroup) dialog.currentGroup.classList.toggle('hidden', !copy.current);
+    if (dialog.nextGroup) dialog.nextGroup.classList.toggle('hidden', !copy.next);
+    if (dialog.confirmGroup) dialog.confirmGroup.classList.toggle('hidden', !copy.next);
+    [dialog.current, dialog.next, dialog.confirm].forEach((input) => {
+      if (input) input.value = '';
+    });
+    if (dialog.submit) {
+      dialog.submit.textContent = copy.submit;
+      dialog.submit.disabled = pinSettingsPending;
+    }
+    dialog.root.classList.remove('hidden');
+    setPinSettingsError('');
+    if (renderPinCooldown() > 0) setPinSettingsError(`尝试次数过多，请 ${pinCooldownSeconds()} 秒后再试`);
+    queueMicrotask(() => (copy.current ? dialog.current : dialog.next)?.focus());
+    return true;
+  }
+  function closePinSettings() {
+    pinSettingsMode = null;
+    pinSettingsRequestToken += 1;
+    const dialog = pinSettingsDialog();
+    dialog.root?.classList.add('hidden');
+    [dialog.current, dialog.next, dialog.confirm].forEach((input) => {
+      if (input) input.value = '';
+    });
+    setPinSettingsError('');
+    if (dialog.submit) {
+      dialog.submit.disabled = false;
+      dialog.submit.textContent = PIN_SETTINGS_MODES.enable.submit;
+    }
+  }
+  async function verifyPinForSettings(pin) {
+    try {
+      const result = await ApiClient.post('/settings/pin/verify', { pin });
+      if (result?.valid === true && typeof result.token === 'string' && result.token)
+        return { ok: true, token: result.token };
+      return { ok: false };
+    } catch (error) {
+      if (error?.status === 429 && error?.code === 'PIN_ATTEMPTS_EXCEEDED') {
+        startPinCooldown(error);
+        return { ok: false, cooldown: true };
+      }
+      throw error;
+    }
+  }
+  async function refreshPinSettingsState() {
+    const settings = await loadSettings();
+    applyPinSettingsState(settings);
+    return settings;
+  }
+  async function renewPinSession(pin) {
+    // put 成功后服务端已清空全部旧会话与 /uploads Cookie：先丢弃本地旧 token，再用新 PIN 换新会话
+    clearPinToken();
+    let verified;
+    try {
+      verified = await verifyPinForSettings(pin);
+    } catch {
+      // PUT 已成功；错误只由持有当前 requestToken 的提交方展示，避免写到重开的弹窗。
+      return false;
+    }
+    if (!verified.ok) return false;
+    storePinToken(verified.token);
+    return true;
+  }
+  async function submitPinSettings() {
+    if (pinSettingsPending) return false;
+    const mode = pinSettingsMode;
+    if (!mode) return false;
+    if (renderPinCooldown() > 0) return false;
+    const dialog = pinSettingsDialog();
+    const copy = PIN_SETTINGS_MODES[mode];
+    const currentPin = dialog.current?.value || '';
+    const nextPin = dialog.next?.value || '';
+    const confirmPin = dialog.confirm?.value || '';
+    if (copy.current && !/^\d{4,8}$/.test(currentPin)) {
+      setPinSettingsError(PIN_SAFE_ERRORS.invalidFormat);
+      dialog.current?.focus();
+      return false;
+    }
+    if (copy.next && !/^\d{4,8}$/.test(nextPin)) {
+      setPinSettingsError(PIN_SAFE_ERRORS.invalidFormat);
+      dialog.next?.focus();
+      return false;
+    }
+    if (copy.next && nextPin !== confirmPin) {
+      setPinSettingsError(PIN_SAFE_ERRORS.mismatch);
+      dialog.confirm?.focus();
+      return false;
+    }
+    const requestToken = ++pinSettingsRequestToken;
+    pinSettingsPending = true;
+    if (dialog.submit) dialog.submit.disabled = true;
+    setPinSettingsError('');
+    try {
+      if (copy.current) {
+        const verified = await verifyPinForSettings(currentPin);
+        if (requestToken !== pinSettingsRequestToken) return false; // 已取消：不再推进写入
+        if (!verified.ok) {
+          if (!verified.cooldown) setPinSettingsError(PIN_SAFE_ERRORS.wrongCurrent);
+          if (dialog.current) dialog.current.value = '';
+          return false;
+        }
+        // 先落地 header token：PUT /settings/pin 受 PIN 守卫保护（cookie 不能替代 header）
+        storePinToken(verified.token);
+      }
+      const settings = await loadSettings();
+      if (requestToken !== pinSettingsRequestToken) return false; // 已取消：绝不发 PUT
+      const version = settings?.version;
+      if (!Number.isInteger(version)) {
+        setPinSettingsError(PIN_SAFE_ERRORS.updateFailed);
+        return false;
+      }
+      // 最新状态与入口模式不一致（例如其它标签页刚启用 PIN）：不盲写，提示刷新后重选操作
+      if (mode === 'enable' && settings?.pinEnabled === true) {
+        setPinSettingsError(PIN_SAFE_ERRORS.conflict);
+        return false;
+      }
+      if (mode !== 'enable' && settings?.pinEnabled !== true) {
+        setPinSettingsError(PIN_SAFE_ERRORS.conflict);
+        return false;
+      }
+      const body = { version, enabled: mode !== 'disable', pin: mode === 'disable' ? null : nextPin };
+      await ApiClient.put('/settings/pin', body);
+      if (mode === 'disable') {
+        clearPinToken();
+        await refreshPinSettingsState().catch(() => undefined);
+        if (requestToken === pinSettingsRequestToken) {
+          closePinSettings();
+          toast('本地 PIN 已关闭', 'success');
+        }
+        return true;
+      }
+      const renewed = await renewPinSession(nextPin);
+      await refreshPinSettingsState().catch(() => undefined);
+      if (requestToken === pinSettingsRequestToken) {
+        if (renewed) {
+          closePinSettings();
+          toast(mode === 'enable' ? '本地 PIN 已启用' : '本地 PIN 已更新', 'success');
+        } else setPinSettingsError(PIN_SAFE_ERRORS.renewFailed);
+      }
+      return renewed;
+    } catch (error) {
+      if (error?.status === 409 && error?.code === 'VERSION_CONFLICT') {
+        await refreshPinSettingsState().catch(() => undefined);
+        if (requestToken === pinSettingsRequestToken) setPinSettingsError(PIN_SAFE_ERRORS.conflict);
+        return false;
+      }
+      if (requestToken === pinSettingsRequestToken) {
+        if (error?.status === 429 && error?.code === 'PIN_ATTEMPTS_EXCEEDED') startPinCooldown(error);
+        else setPinSettingsError(PIN_SAFE_ERRORS.updateFailed);
+      }
+      return false;
+    } finally {
+      pinSettingsPending = false;
+      const current = pinSettingsDialog();
+      if (current.submit) current.submit.disabled = pinCooldownSeconds() > 0;
     }
   }
   const SETTINGS_ROW_TITLES = { backup: '数据备份与导出', taboo: '食用者忌口偏好' };
@@ -2607,6 +2967,36 @@
       // 无正式忌口编辑能力：保留点击交互形态，但诚实提示未接通，不发任何写请求、不宣称已修改
       tabooButton.addEventListener('click', () => toast(TABOO_BLOCKED_MESSAGE, 'warning'));
     }
+    wirePinSettingsDialog();
+  }
+  function wirePinSettingsDialog() {
+    const entries = [
+      ['google2PinEnable', 'enable'],
+      ['google2PinChange', 'change'],
+      ['google2PinDisable', 'disable']
+    ];
+    entries.forEach(([id, mode]) => {
+      const button = document.getElementById(id);
+      if (button && !button.dataset.pinSettingsBound) {
+        button.dataset.pinSettingsBound = 'true';
+        button.addEventListener('click', () => openPinSettings(mode));
+      }
+    });
+    const dialog = pinSettingsDialog();
+    if (dialog.form && !dialog.form.dataset.pinSettingsBound) {
+      dialog.form.dataset.pinSettingsBound = 'true';
+      dialog.form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        void submitPinSettings();
+      });
+    }
+    [dialog.cancel, dialog.close].forEach((button) => {
+      if (button && !button.dataset.pinSettingsBound) {
+        button.dataset.pinSettingsBound = 'true';
+        button.addEventListener('click', closePinSettings);
+      }
+    });
+    renderPinCooldown();
   }
   function blockUnconnectedWrites() {
     const service = window.BentoService;
@@ -2729,7 +3119,12 @@
     };
     const renderRealCalendar = async () => {
       const seq = ++calendarRequest;
-      const { year, month } = calendarState;
+      // 年份/月份只接受有限整数并夹在合理区间，内联 onclick 参数因此恒为纯数字
+      const clamp = (value, min, max) => Math.min(max, Math.max(min, Math.trunc(value)));
+      const rawYear = Number(calendarState.year);
+      const rawMonth = Number(calendarState.month);
+      const year = clamp(Number.isFinite(rawYear) ? rawYear : 2026, 1900, 2200);
+      const month = clamp(Number.isFinite(rawMonth) ? rawMonth : 1, 1, 12);
       const label = document.getElementById('calendarCurrentMonthLabel');
       const grid = document.getElementById('calendarDaysGrid');
       if (label) label.textContent = `${year}年 ${month}月`;
@@ -2741,27 +3136,73 @@
         const dates = new Set(records.map((record) => record.date).filter(Boolean));
         const today = localDateParts();
         const offset = new Date(year, month - 1, 1).getDay();
-        let html = Array.from(
-          { length: offset },
-          () =>
-            '<div class="aspect-square h-auto rounded-xl sm:rounded-2xl bg-transparent border-0 pointer-events-none"></div>'
-        ).join('');
+        const nodes = [];
+        for (let index = 0; index < offset; index += 1) {
+          const spacer = document.createElement('div');
+          spacer.className =
+            'aspect-square h-auto rounded-xl sm:rounded-2xl bg-transparent border-0 pointer-events-none';
+          nodes.push(spacer);
+        }
         for (let day = 1; day <= daysInBusinessMonth(year, month); day += 1) {
           const date = businessDateParts(year, month, day);
           const isToday = year === today.year && month === today.month && day === today.day;
           const hasRecord = dates.has(date);
-          html += `<div class="relative aspect-square h-auto rounded-xl sm:rounded-2xl border p-1 sm:p-1.5 flex items-center justify-center text-center cursor-pointer transition-all ${isToday ? 'bg-[#FFF0ED] border-[#FF6B57] shadow-sm font-black' : hasRecord ? 'bg-white border-[#F0E8DC]' : 'bg-[#FAF7F2] border-transparent text-stone-400'}" onclick="BentoModal.open('dailyDiary', { year: ${year}, month: ${month}, day: ${day} })"><div class="calendar-day-content w-full flex flex-col items-center justify-center text-center leading-none gap-0.5"><span class="${isToday ? 'text-[#FF6B57] font-black' : ''} text-[10px] sm:text-[11px] font-bold leading-none">${day}</span>${hasRecord ? '<div class="text-[8px] sm:text-[9px] font-black text-amber-600 truncate leading-tight mt-0.5">🍱 已打卡</div>' : ''}</div></div>`;
+          const cell = document.createElement('div');
+          cell.className = `relative aspect-square h-auto rounded-xl sm:rounded-2xl border p-1 sm:p-1.5 flex items-center justify-center text-center cursor-pointer transition-all ${
+            isToday
+              ? 'bg-[#FFF0ED] border-[#FF6B57] shadow-sm font-black'
+              : hasRecord
+                ? 'bg-white border-[#F0E8DC]'
+                : 'bg-[#FAF7F2] border-transparent text-stone-400'
+          }`;
+          // 年月日是严格整数，内联调用参数只含数字，不含任何业务文本
+          cell.setAttribute(
+            'onclick',
+            `BentoModal.open('dailyDiary', { year: ${year}, month: ${month}, day: ${day} })`
+          );
+          const content = document.createElement('div');
+          content.className =
+            'calendar-day-content w-full flex flex-col items-center justify-center text-center leading-none gap-0.5';
+          const dayLabel = document.createElement('span');
+          dayLabel.className = `${isToday ? 'text-[#FF6B57] font-black' : ''} text-[10px] sm:text-[11px] font-bold leading-none`;
+          dayLabel.textContent = String(day);
+          content.appendChild(dayLabel);
+          if (hasRecord) {
+            const badge = document.createElement('div');
+            badge.className =
+              'text-[8px] sm:text-[9px] font-black text-amber-600 truncate leading-tight mt-0.5';
+            badge.textContent = '🍱 已打卡';
+            content.appendChild(badge);
+          }
+          cell.appendChild(content);
+          nodes.push(cell);
         }
-        grid.innerHTML = html;
+        grid.replaceChildren(...nodes);
       } catch (error) {
         if (seq === calendarRequest) {
-          grid.innerHTML = '<div class="col-span-7 p-6 text-center text-red-500">日历加载失败，请稍后重试</div>';
+          const failureNode = document.createElement('div');
+          failureNode.className = 'col-span-7 p-6 text-center text-red-500';
+          failureNode.textContent = '日历加载失败，请稍后重试';
+          grid.replaceChildren(failureNode);
           fail(error);
         }
       } finally {
         if (seq === calendarRequest) grid.removeAttribute('aria-busy');
       }
     };
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const createEmptyChartMessage = (message) => {
+      const node = document.createElement('div');
+      node.className = 'p-4 text-center text-stone-400';
+      node.textContent = message;
+      return node;
+    };
+    const svgElement = (name, attributes = {}) => {
+      const node = document.createElementNS(SVG_NS, name);
+      Object.entries(attributes).forEach(([key, value]) => node.setAttribute(key, String(value)));
+      return node;
+    };
+    const svgText = (value) => document.createTextNode(String(value));
     // Keep the original SVG geometry and palette, with the requested period's real aggregates.
     const renderCalorieChart = (trend, message = '暂无热量数据') => {
       const wrap = document.getElementById('chartCalorieTrendWrap');
@@ -2780,7 +3221,7 @@
       )
         throw new Error('统计热量数据无效');
       if (!valid.length) {
-        wrap.innerHTML = `<div class="p-4 text-center text-stone-400">${message}</div>`;
+        wrap.replaceChildren(createEmptyChartMessage(String(message)));
         return;
       }
       const w = 480;
@@ -2803,10 +3244,44 @@
       addLabel(0);
       addLabel(points.length - 1);
       points.forEach((_, index) => addLabel(index));
-      let svg = `<svg viewBox="0 0 ${w} ${h}" class="w-full h-full text-stone-500" role="img" aria-label="每日卡路里摄入柱状图"><title>按日期显示已记录热量；未记录日期不绘制柱形；虚线为 ${CALORIE_REFERENCE_KCAL} kcal 通用参考基准</title>`;
+      const svg = svgElement('svg', {
+        viewBox: `0 0 ${w} ${h}`,
+        class: 'w-full h-full text-stone-500',
+        role: 'img',
+        'aria-label': '每日卡路里摄入柱状图'
+      });
+      const title = svgElement('title');
+      title.appendChild(
+        svgText(
+          `按日期显示已记录热量；未记录日期不绘制柱形；虚线为 ${CALORIE_REFERENCE_KCAL} kcal 通用参考基准`
+        )
+      );
+      svg.appendChild(title);
       // 原版固定 2000 kcal 参考线：与柱形共用同一 maxCal 比例尺，明确标为参考基准而非个人目标。
       const referenceY = h - (CALORIE_REFERENCE_KCAL / maxCal) * (h - 45) - 22;
-      svg += `<line data-reference-kcal="${CALORIE_REFERENCE_KCAL}" x1="10" y1="${referenceY}" x2="${w - 10}" y2="${referenceY}" stroke="#FF6B57" stroke-dasharray="4,4" stroke-opacity="0.4" stroke-width="1.5" /><text x="${w - 12}" y="12" fill="#FF6B57" font-size="9" font-weight="900" text-anchor="end">${CALORIE_REFERENCE_KCAL} kcal 参考线</text>`;
+      svg.appendChild(
+        svgElement('line', {
+          'data-reference-kcal': CALORIE_REFERENCE_KCAL,
+          x1: 10,
+          y1: referenceY,
+          x2: w - 10,
+          y2: referenceY,
+          stroke: '#FF6B57',
+          'stroke-dasharray': '4,4',
+          'stroke-opacity': '0.4',
+          'stroke-width': '1.5'
+        })
+      );
+      const referenceLabel = svgElement('text', {
+        x: w - 12,
+        y: 12,
+        fill: '#FF6B57',
+        'font-size': '9',
+        'font-weight': '900',
+        'text-anchor': 'end'
+      });
+      referenceLabel.appendChild(svgText(`${CALORIE_REFERENCE_KCAL} kcal 参考线`));
+      svg.appendChild(referenceLabel);
       points.forEach((point, index) => {
         const x = 10 + index * step + step / 2;
         const textX = Math.max(24, Math.min(w - 24, x));
@@ -2815,14 +3290,48 @@
           const y = h - barH - 22;
           // 原版比较表现：高于参考基准的柱形改用对比色
           const fill = point.calories > CALORIE_REFERENCE_KCAL ? '#FF8575' : '#6ABF69';
-          svg += `<rect data-date="${point.date}" data-calories="${point.calories}" x="${x - barWidth / 2}" y="${y}" width="${barWidth}" height="${barH}" rx="${Math.min(6, barWidth / 2)}" fill="${fill}" opacity="0.85"><title>${point.date}: ${point.calories} kcal</title></rect>`;
-          if (labels.includes(index))
-            svg += `<text x="${textX}" y="${y - 4}" fill="currentColor" font-size="10" font-weight="bold" text-anchor="middle">${point.calories}</text>`;
+          const rect = svgElement('rect', {
+            'data-date': point.date,
+            'data-calories': point.calories,
+            x: x - barWidth / 2,
+            y,
+            width: barWidth,
+            height: barH,
+            rx: Math.min(6, barWidth / 2),
+            fill,
+            opacity: '0.85'
+          });
+          const barTitle = svgElement('title');
+          barTitle.appendChild(svgText(`${point.date}: ${point.calories} kcal`));
+          rect.appendChild(barTitle);
+          svg.appendChild(rect);
+          if (labels.includes(index)) {
+            const valueLabel = svgElement('text', {
+              x: textX,
+              y: y - 4,
+              fill: 'currentColor',
+              'font-size': '10',
+              'font-weight': 'bold',
+              'text-anchor': 'middle'
+            });
+            valueLabel.appendChild(svgText(point.calories));
+            svg.appendChild(valueLabel);
+          }
         }
-        if (labels.includes(index))
-          svg += `<text x="${textX}" y="${h - 6}" fill="currentColor" font-size="10" font-weight="bold" text-anchor="middle">${point.date.slice(5)}</text>`;
+        if (labels.includes(index)) {
+          const dateLabel = svgElement('text', {
+            x: textX,
+            y: h - 6,
+            fill: 'currentColor',
+            'font-size': '10',
+            'font-weight': 'bold',
+            'text-anchor': 'middle'
+          });
+          dateLabel.appendChild(svgText(point.date.slice(5)));
+          svg.appendChild(dateLabel);
+        }
       });
-      wrap.innerHTML = svg + '</svg>';
+      wrap.replaceChildren(svg);
     };
     const renderSourceChart = (breakdown, message = '暂无就餐渠道数据') => {
       const wrap = document.getElementById('chartChannelDonutWrap');
@@ -2844,31 +3353,81 @@
         throw new Error('统计来源数据无效');
       const rows = categories.map((category) => ({ ...category, count: values[category.key] ?? 0 }));
       const total = rows.reduce((sum, row) => sum + row.count, 0);
-      legend.innerHTML = rows
+      const legendNodes = rows
         .filter((row) => row.key !== 'CUSTOM' || row.count > 0)
         .map((row) => {
-          const pct = total ? `${Math.round((row.count / total) * 1000) / 10}%` : '—';
-          return `<span style="color:${row.textColor}">● ${row.label} <span id="${row.id}">${pct}</span></span>`;
-        })
-        .join('');
+          const item = document.createElement('span');
+          item.style.color = row.textColor;
+          item.appendChild(document.createTextNode(`● ${row.label} `));
+          const value = document.createElement('span');
+          value.id = row.id;
+          value.textContent = total ? `${Math.round((row.count / total) * 1000) / 10}%` : '—';
+          item.appendChild(value);
+          return item;
+        });
+      legend.replaceChildren(...legendNodes);
       if (!total) {
-        wrap.innerHTML = `<div class="p-4 text-center text-stone-400">${message}</div>`;
+        wrap.replaceChildren(createEmptyChartMessage(String(message)));
         return;
       }
       const r = 50;
       const c = 2 * Math.PI * r;
       let offset = 0;
-      let svg = `<svg viewBox="0 0 140 140" class="w-32 h-32 text-stone-700" role="img" aria-label="就餐渠道构成环形图"><circle cx="70" cy="70" r="${r}" fill="none" stroke="#F5EFE6" stroke-width="16" />`;
+      const svg = svgElement('svg', {
+        viewBox: '0 0 140 140',
+        class: 'w-32 h-32 text-stone-700',
+        role: 'img',
+        'aria-label': '就餐渠道构成环形图'
+      });
+      svg.appendChild(
+        svgElement('circle', { cx: 70, cy: 70, r, fill: 'none', stroke: '#F5EFE6', 'stroke-width': 16 })
+      );
       rows.forEach((row) => {
         if (!row.count) return;
         const length = (row.count / total) * c;
         const pct = Math.round((row.count / total) * 1000) / 10;
-        svg += `<circle data-source="${row.key}" data-count="${row.count}" cx="70" cy="70" r="${r}" fill="none" stroke="${row.color}" stroke-width="16" stroke-dasharray="${length} ${c - length}" stroke-dashoffset="${-offset}" transform="rotate(-90 70 70)" stroke-linecap="round"><title>${row.label}: ${row.count} 次 (${pct}%)</title></circle>`;
+        const arc = svgElement('circle', {
+          'data-source': row.key,
+          'data-count': row.count,
+          cx: 70,
+          cy: 70,
+          r,
+          fill: 'none',
+          stroke: row.color,
+          'stroke-width': 16,
+          'stroke-dasharray': `${length} ${c - length}`,
+          'stroke-dashoffset': -offset,
+          transform: 'rotate(-90 70 70)',
+          'stroke-linecap': 'round'
+        });
+        const arcTitle = svgElement('title');
+        arcTitle.appendChild(svgText(`${row.label}: ${row.count} 次 (${pct}%)`));
+        arc.appendChild(arcTitle);
+        svg.appendChild(arc);
         offset += length;
       });
       const cookPct = Math.round((rows[0].count / total) * 1000) / 10;
-      svg += `<text x="70" y="66" text-anchor="middle" font-size="11" font-weight="900" fill="currentColor">下厨率</text><text x="70" y="82" text-anchor="middle" font-size="14" font-weight="900" fill="#6ABF69">${cookPct}%</text></svg>`;
-      wrap.innerHTML = svg;
+      const cookLabel = svgElement('text', {
+        x: 70,
+        y: 66,
+        'text-anchor': 'middle',
+        'font-size': '11',
+        'font-weight': '900',
+        fill: 'currentColor'
+      });
+      cookLabel.appendChild(svgText('下厨率'));
+      const cookValue = svgElement('text', {
+        x: 70,
+        y: 82,
+        'text-anchor': 'middle',
+        'font-size': '14',
+        'font-weight': '900',
+        fill: '#6ABF69'
+      });
+      cookValue.appendChild(svgText(`${cookPct}%`));
+      svg.appendChild(cookLabel);
+      svg.appendChild(cookValue);
+      wrap.replaceChildren(svg);
     };
     // 饱腹条统一口径：颜色、图例、百分比全部来自后端 satietySummary 的 category/percent，
     // 分母固定为同一周期的 recordedCount；空记录时不画任何比例段。
@@ -2888,39 +3447,61 @@
       const legend = bar?.nextElementSibling;
       const recorded = Number(satiety?.recordedCount) || 0;
       if (!bar) return;
-      if (!recorded) {
-        bar.innerHTML = '<div class="w-full text-center text-xs text-stone-400">暂无饱腹数据</div>';
+      if (!Number.isFinite(recorded) || recorded <= 0) {
+        const empty = document.createElement('div');
+        empty.className = 'w-full text-center text-xs text-stone-400';
+        empty.textContent = '暂无饱腹数据';
+        bar.replaceChildren(empty);
         if (legend) legend.textContent = '';
         setStat('statSatietyScore', null);
         return;
       }
+      // 后端 percent/count 只作为数据源：非有限数值一律按本地分母重算，绝不拼进 HTML
+      const safeCount = (value) => (Number.isFinite(Number(value)) ? Math.max(0, Number(value)) : 0);
+      const percentText = (value, fallbackCount) => {
+        const numeric = Number(value);
+        return Number.isFinite(numeric) ? `${Math.round(numeric * 10) / 10}%` : `${fallbackCount}%`;
+      };
       const segments = SATIETY_SEGMENTS.map((segment) => ({
         ...segment,
-        count: (satiety.distribution || [])
-          .filter((bucket) => bucket.category === segment.category)
-          .reduce((sum, bucket) => sum + bucket.count, 0)
+        count: (Array.isArray(satiety.distribution) ? satiety.distribution : [])
+          .filter((bucket) => bucket && bucket.category === segment.category)
+          .reduce((sum, bucket) => sum + safeCount(bucket.count), 0)
       }));
-      bar.innerHTML = segments
+      const bars = segments
         .filter((segment) => segment.count > 0)
-        .map(
-          (segment) =>
-            `<div data-satiety-category="${segment.category}" data-satiety-count="${segment.count}" title="${segment.label} ${segment.count}次" style="width:${(segment.count / recorded) * 100}%;background:${segment.color}" class="h-full"></div>`
-        )
-        .join('');
+        .map((segment) => {
+          const node = document.createElement('div');
+          node.dataset.satietyCategory = segment.category;
+          node.dataset.satietyCount = String(segment.count);
+          node.title = `${segment.label} ${segment.count}次`;
+          node.setAttribute(
+            'style',
+            `width:${(segment.count / recorded) * 100}%;background:${segment.color}`
+          );
+          node.className = 'h-full';
+          return node;
+        });
+      bar.replaceChildren(...bars);
       if (legend) {
-        legend.innerHTML = segments
-          .map((segment) => {
-            const percent = satiety[segment.percentKey];
-            const text = percent == null ? `${Math.round((segment.count / recorded) * 1000) / 10}%` : `${percent}%`;
-            return `<span data-satiety-legend="${segment.category}" style="color:${segment.textColor}">● ${segment.label} (${text})</span>`;
-          })
-          .join('');
+        const legendNodes = segments.map((segment) => {
+          const item = document.createElement('span');
+          item.dataset.satietyLegend = segment.category;
+          item.style.color = segment.textColor;
+          const localPct = `${Math.round((segment.count / recorded) * 1000) / 10}%`;
+          item.textContent = `● ${segment.label} (${percentText(satiety[segment.percentKey], localPct)})`;
+          return item;
+        });
+        legend.replaceChildren(...legendNodes);
       }
-      const comfortablePercent = satiety.comfortablePercent;
-      setStat(
-        'statSatietyScore',
-        comfortablePercent == null ? `已记录 ${recorded} 次` : `舒适达标 ${comfortablePercent}% · 已记录 ${recorded} 次`
-      );
+      const comfortablePercent = Number(satiety.comfortablePercent);
+      if (Number.isFinite(comfortablePercent)) {
+        const display = Math.round(comfortablePercent * 10) / 10;
+        setStat('statSatietyScore', `舒适达标 ${display}% · 已记录 ${recorded} 次`);
+      } else {
+        const localComfortable = Math.round((segments[0].count / recorded) * 1000) / 10;
+        setStat('statSatietyScore', `已记录 ${recorded} 次（舒适达标 ${localComfortable}%）`);
+      }
     };
     const renderRealStatistics = async () => {
       const seq = ++statisticsRequest;
@@ -3010,12 +3591,12 @@
       'statSatietyScore'
     ].forEach((id) => setStat(id, null));
     const satietyDisplay = document.getElementById('satietyBarContainer');
-    if (satietyDisplay) satietyDisplay.innerHTML = '';
+    if (satietyDisplay) satietyDisplay.replaceChildren();
     if (satietyDisplay?.nextElementSibling) satietyDisplay.nextElementSibling.textContent = '';
     const calorieDisplay = document.getElementById('chartCalorieTrendWrap');
-    if (calorieDisplay) calorieDisplay.innerHTML = '';
+    if (calorieDisplay) calorieDisplay.replaceChildren();
     const donutDisplay = document.getElementById('chartChannelDonutWrap');
-    if (donutDisplay) donutDisplay.innerHTML = '';
+    if (donutDisplay) donutDisplay.replaceChildren();
     originalCalendar?.();
   }
   function wireLegacyEntryPoints() {
@@ -3577,7 +4158,7 @@
   async function syncPinSession() {
     try {
       const session = await request('/settings/pin/session', { _skipPinRetry: true });
-      if (session?.valid === true && session.token) localStorage.setItem(PIN_KEY, session.token);
+      if (session?.valid === true && session.token) storePinToken(session.token);
       return session;
     } catch (error) {
       if (error?.status === 401 && error?.code === 'UNAUTHORIZED') return ensurePinUnlock();
@@ -3685,7 +4266,7 @@
   }
   sanitizeStaticBusinessState();
   window.DafanApiClient = ApiClient;
-  window.DafanPinAdapter = { ensurePinUnlock, cancelPinUnlock, syncPinSession };
+  window.DafanPinAdapter = { ensurePinUnlock, cancelPinUnlock, syncPinSession, pinCooldownSeconds };
   window.DafanDashboardAdapter = {
     mapDashboard,
     loadDashboard,
@@ -3693,7 +4274,7 @@
     isHomeVisible,
     installDashboardRefresh
   };
-  window.DafanSettingsAdapter = { loadSettings, wireSettings };
+  window.DafanSettingsAdapter = { loadSettings, wireSettings, openPinSettings, closePinSettings, submitPinSettings };
   window.DafanWheelAdapter = {
     resolveTargetIndex: resolveWheelTargetIndex,
     recommendationBody: wheelRecommendationBody

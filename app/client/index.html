@@ -3066,6 +3066,18 @@
             </div>
             <button class="text-xs font-bold text-[#FF6B57] hover:underline" >修改 →</button>
           </div>
+          <div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 pb-3 border-b border-stone-100">
+            <div class="min-w-0">
+              <h4 class="text-xs font-black m-0">🔒 本地 PIN 保护</h4>
+              <p class="text-[11px] text-stone-400 m-0" id="google2PinDescription">启用后访问本站与图片需输入本地 PIN</p>
+            </div>
+            <div class="flex flex-wrap max-w-full items-center gap-2 shrink-0">
+              <span id="google2PinStatus" class="text-xs font-black bg-stone-100 text-stone-500 px-3 py-1 rounded-full border border-stone-200">未启用</span>
+              <button id="google2PinEnable" type="button" class="text-xs font-bold text-[#FF6B57] hover:underline">启用 PIN</button>
+              <button id="google2PinChange" type="button" class="hidden text-xs font-bold text-stone-600 hover:text-[#FF6B57] hover:underline">修改 PIN</button>
+              <button id="google2PinDisable" type="button" class="hidden text-xs font-bold text-stone-400 hover:text-red-500 hover:underline">关闭 PIN</button>
+            </div>
+          </div>
           <div class="flex items-center justify-between gap-3">
             <div>
               <h4 class="text-xs font-black m-0">数据备份与导出</h4>
@@ -3280,7 +3292,8 @@
           </div>
           <button class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
         </div>
-        <form onsubmit="handleToolFormSubmit(event)" class="overflow-y-auto pr-1 text-xs space-y-3">
+        <form onsubmit="handleToolFormSubmit(event)" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div class="overflow-y-auto flex-1 min-h-0 pr-1 space-y-3">
           <div>
             <label class="block text-stone-600 font-black mb-1">设备名称</label>
             <input type="text" id="formToolName" required placeholder="如：多功能电压力锅 / 华夫饼机" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
@@ -3321,7 +3334,8 @@
             <label class="block text-stone-600 font-black mb-1">设备心得 / 养护备注</label>
             <textarea id="formToolNotes" rows="2" placeholder="如：适合做红烧肉与炖汤，用后擦油防锈..." class="w-full p-2 rounded-xl border border-[#F0E8DC] bg-white text-xs text-stone-800 focus:outline-none focus:border-[#FF6B57]"></textarea>
           </div>
-          <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#F0E8DC] flex-shrink-0">
+          </div>
+          <div class="flex items-center justify-end gap-2 flex-shrink-0 pt-3 mt-2 border-t border-[#F0E8DC] bg-[#FCFAF7]">
             <button type="button" class="neo-btn-secondary text-xs py-2 px-3" onclick="BentoModal.close()">取消</button>
             <button type="submit" class="neo-btn-primary text-xs py-2 px-5 shadow-[var(--shadow-primary)]">🍳 录入设备库</button>
           </div>
@@ -3720,7 +3734,8 @@
           </div>
           <button class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
         </div>
-        <form onsubmit="BentoModal.handleRecipeFormSubmit(event)" class="overflow-y-auto pr-1 text-xs space-y-3.5">
+        <form onsubmit="BentoModal.handleRecipeFormSubmit(event)" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div class="overflow-y-auto flex-1 min-h-0 pr-1 space-y-3.5">
           <input type="hidden" id="formRecipeId" value="" />
           <input type="hidden" id="formRecipeIcon" value="🍳" />
           <input type="hidden" id="formRecipeDifficulty" value="简单" />
@@ -3795,9 +3810,10 @@
             <button type="button" onclick="addRecipeStepRow()" class="w-full py-1.5 border-2 border-dashed border-[#FEDBC5] rounded-xl text-[#FF6B57] hover:bg-[#FFF5F2] font-black text-xs transition-all flex items-center justify-center gap-1">
               <span>+</span> 添加下一步骤
             </button>
+            </div>
           </div>
 
-          <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#F0E8DC] flex-shrink-0">
+          <div class="flex items-center justify-end gap-2 flex-shrink-0 pt-3 mt-2 border-t border-[#F0E8DC] bg-[#FCFAF7]">
             <button type="button" class="neo-btn-secondary text-xs py-2 px-4" onclick="BentoModal.close()">取消</button>
             <button type="submit" class="neo-btn-primary text-xs py-2 px-5 shadow-[var(--shadow-primary)]">💾 保存菜谱</button>
           </div>
@@ -3814,7 +3830,8 @@
           </div>
           <button class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
         </div>
-        <form onsubmit="window.BentoModal.handleStoreFormSubmit(event)" class="overflow-y-auto pr-1 text-xs space-y-3">
+        <form onsubmit="window.BentoModal.handleStoreFormSubmit(event)" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div class="overflow-y-auto flex-1 min-h-0 pr-1 space-y-3">
           <input type="hidden" id="formStoreId" value="" />
           <div>
             <label class="block text-stone-600 font-black mb-1">店铺名称</label>
@@ -3877,7 +3894,8 @@
             <label class="block text-stone-600 font-black mb-1">探店笔记 / 推荐心得</label>
             <textarea id="formStoreNotes" rows="2" placeholder="午市点单建议提前 15 分钟；米饭软糯超治愈..." class="w-full p-2 rounded-xl border border-[#F0E8DC] bg-white text-xs text-stone-800 focus:outline-none focus:border-[#FF6B57]"></textarea>
           </div>
-          <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#F0E8DC] flex-shrink-0">
+          </div>
+          <div class="flex items-center justify-end gap-2 flex-shrink-0 pt-3 mt-2 border-t border-[#F0E8DC] bg-[#FCFAF7]">
             <button type="button" class="neo-btn-secondary text-xs py-2 px-4" onclick="BentoModal.close()">取消</button>
             <button type="submit" class="neo-btn-primary text-xs py-2 px-5 shadow-[var(--shadow-primary)]">💾 保存店铺</button>
           </div>
@@ -3956,7 +3974,8 @@
           </div>
           <button class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
         </div>
-        <form onsubmit="BentoModal.handleRecordFormSubmit(event)" class="overflow-y-auto pr-1 text-xs space-y-3">
+        <form onsubmit="BentoModal.handleRecordFormSubmit(event)" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div class="overflow-y-auto flex-1 min-h-0 pr-1 space-y-3">
           <input type="hidden" id="formRecordId" value="" />
           <div class="grid grid-cols-2 gap-2">
             <div>
@@ -4059,7 +4078,8 @@
             <label class="block text-stone-600 font-black mb-1">就餐心得随记</label>
             <textarea id="formRecordNotes" rows="2" placeholder="记录这餐的口味体验、火候技巧与美好心情..." class="w-full p-2 rounded-xl border border-[#F0E8DC] bg-white text-xs text-stone-800 focus:outline-none focus:border-[#FF6B57]"></textarea>
           </div>
-          <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#F0E8DC] flex-shrink-0">
+          </div>
+          <div class="flex items-center justify-end gap-2 flex-shrink-0 pt-3 mt-2 border-t border-[#F0E8DC] bg-[#FCFAF7]">
             <button type="button" class="neo-btn-secondary text-xs py-2 px-3" onclick="BentoModal.close()">取消</button>
             <button type="submit" class="neo-btn-primary text-xs py-2 px-5 shadow-[var(--shadow-primary)]">🍱 打卡记入日记</button>
           </div>
@@ -4137,6 +4157,43 @@
           <button type="button" id="mobileConfirmCancelBtn" class="flex-1 neo-btn-secondary text-xs py-2.5 rounded-xl font-bold">取消</button>
           <button type="button" id="mobileConfirmOkBtn" class="flex-1 text-xs py-2.5 rounded-xl font-black bg-[#DC2626] hover:bg-[#B91C1C] text-white shadow-[0_4px_12px_rgba(220,38,38,0.25)] transition-all">确认删除</button>
         </div>
+      </div>
+    </div>
+
+    <!-- 【本地 PIN 保护设置弹窗】启用 / 修改 / 关闭三态共用一张表单，由 adapter 控制显隐 -->
+    <div id="modalPinSettings" class="hidden fixed inset-0 z-[255] flex items-center justify-center p-4 bg-[#2D2621]/45 backdrop-blur-sm">
+      <div class="w-full max-w-sm bg-[#FCFAF7] border-2 border-[#FEDBC5] rounded-3xl shadow-2xl p-5 max-h-[90vh] flex flex-col overflow-hidden">
+        <div class="flex items-start justify-between gap-3 mb-4 flex-shrink-0">
+          <div class="flex items-center gap-3 min-w-0">
+            <span class="w-11 h-11 rounded-2xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0">🔒</span>
+            <div class="min-w-0">
+              <h3 id="google2PinSettingsTitle" class="text-base font-black text-[#2D2621] m-0">启用本地 PIN</h3>
+              <p id="google2PinSettingsDescription" class="text-[11px] text-stone-500 m-0 mt-1">设置 4–8 位纯数字 PIN</p>
+            </div>
+          </div>
+          <button id="google2PinSettingsClose" type="button" class="w-7 h-7 rounded-full border border-[#F0E8DC] bg-white text-stone-400 flex-shrink-0" aria-label="关闭">✕</button>
+        </div>
+        <form id="google2PinSettingsForm" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs" novalidate>
+          <div class="overflow-y-auto flex-1 min-h-0 pr-1 space-y-3">
+            <div id="google2PinCurrentGroup" class="hidden">
+              <label class="block text-xs font-black text-stone-700 mb-1" for="google2PinCurrent">当前 PIN</label>
+              <input id="google2PinCurrent" type="password" inputmode="numeric" autocomplete="off" minlength="4" maxlength="8" pattern="[0-9]{4,8}" class="w-full px-3 py-2.5 rounded-xl border border-[#F0E8DC] bg-white text-sm font-black tracking-[0.3em] text-center focus:outline-none focus:border-[#FF6B57]" />
+            </div>
+            <div id="google2PinNewGroup">
+              <label class="block text-xs font-black text-stone-700 mb-1" for="google2PinNew">新 PIN</label>
+              <input id="google2PinNew" type="password" inputmode="numeric" autocomplete="off" minlength="4" maxlength="8" pattern="[0-9]{4,8}" class="w-full px-3 py-2.5 rounded-xl border border-[#F0E8DC] bg-white text-sm font-black tracking-[0.3em] text-center focus:outline-none focus:border-[#FF6B57]" />
+            </div>
+            <div id="google2PinConfirmGroup">
+              <label class="block text-xs font-black text-stone-700 mb-1" for="google2PinConfirm">确认新 PIN</label>
+              <input id="google2PinConfirm" type="password" inputmode="numeric" autocomplete="off" minlength="4" maxlength="8" pattern="[0-9]{4,8}" class="w-full px-3 py-2.5 rounded-xl border border-[#F0E8DC] bg-white text-sm font-black tracking-[0.3em] text-center focus:outline-none focus:border-[#FF6B57]" />
+            </div>
+          </div>
+          <p id="google2PinSettingsError" class="min-h-4 text-[11px] text-red-500 font-bold m-0 mt-2 flex-shrink-0" aria-live="polite"></p>
+          <div class="flex items-center justify-end gap-2 flex-shrink-0 pt-3 mt-2 border-t border-[#F0E8DC] bg-[#FCFAF7]">
+            <button id="google2PinSettingsCancel" type="button" class="neo-btn-secondary text-xs py-2 px-4">取消</button>
+            <button id="google2PinSettingsSubmit" type="submit" class="neo-btn-primary text-xs py-2 px-5">保存</button>
+          </div>
+        </form>
       </div>
     </div>
 
@@ -5310,7 +5367,8 @@
           imageLightbox: 'modalImageLightbox',
           expiredPlanAlert: 'modalExpiredPlanAlert',
           channelConfirm: 'sheetChannelConfirm',
-          formGuardConfirm: 'modalFormGuardConfirm'
+          formGuardConfirm: 'modalFormGuardConfirm',
+          pinSettings: 'modalPinSettings'
         };
         return map[name] || `modal${name.charAt(0).toUpperCase() + name.slice(1)}`;
       },
@@ -5614,7 +5672,7 @@
           'modalPlanPicker', 'modalDailyDiary', 'modalRecipeForm',
           'modalStoreForm', 'modalIngredientForm', 'modalRecordForm', 'modalShoppingForm',
           'modalPantryRecommend', 'modalToolForm', 'modalWheelWinner', 'modalImageLightbox',
-          'modalExpiredPlanAlert', 'sheetChannelConfirm', 'modalFormGuardConfirm'
+          'modalExpiredPlanAlert', 'sheetChannelConfirm', 'modalFormGuardConfirm', 'modalPinSettings'
         ];
         modals.forEach(id => {
           const el = document.getElementById(id);
@@ -5654,10 +5712,13 @@
         document.getElementById('storeDetailDeliveryNote').innerText = deliveryNote;
 
         const badgesContainer = document.getElementById('storeDetailBadges');
-        badgesContainer.innerHTML = `
-          ${store.supportsDineIn ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200">🍽️ 支持堂食</span>' : ''}
-          ${store.supportsTakeout ? '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-50 text-orange-600 border border-orange-200">🛵 品质外卖</span>' : ''}
-        `;
+        badgesContainer.replaceChildren();
+        if (store.supportsDineIn) {
+          badgesContainer.append(createDomElement('span', 'px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200', '🍽️ 支持堂食'));
+        }
+        if (store.supportsTakeout) {
+          badgesContainer.append(createDomElement('span', 'px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-50 text-orange-600 border border-orange-200', '🛵 品质外卖'));
+        }
 
         // 渲染招牌菜单
         const menuContainer = document.getElementById('storeDetailMenuList');
@@ -5665,28 +5726,38 @@
         document.getElementById('storeDetailMenuCount').innerText = menuItems.length;
 
         if (menuItems.length === 0) {
-          menuContainer.innerHTML = '<div class="p-3 text-center text-stone-400 bg-white rounded-2xl border border-stone-100">暂未录入该店招牌菜单</div>';
+          menuContainer.replaceChildren(createDomElement('div', 'p-3 text-center text-stone-400 bg-white rounded-2xl border border-stone-100', '暂未录入该店招牌菜单'));
         } else {
-          menuContainer.innerHTML = menuItems.map(item => `
-            <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm flex items-center justify-between gap-3 hover:border-[#FEDBC5] transition-all">
-              <div class="flex items-center gap-2.5 min-w-0 flex-1">
-                <span class="text-xl w-9 h-9 rounded-xl bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0">${item.icon ?? ''}</span>
-                <div class="min-w-0">
-                  <div class="flex items-center gap-2">
-                    <span class="font-black text-stone-800 text-xs truncate">${item.name}</span>
-                    ${item.isSignature ? '<span class="px-1.5 py-0.2 rounded bg-red-100 text-red-600 font-extrabold text-[9px]">招牌</span>' : ''}
-                  </div>
-                  <div class="text-[11px] text-stone-400 truncate mt-0.5">${item.desc ?? ''}</div>
-                </div>
-              </div>
-              <div class="flex items-center gap-2 flex-shrink-0">
-                ${item.price == null ? '' : `<span class="text-xs font-black text-[#FF6B57]">¥${item.price}</span>`}
-                <button class="pill-btn py-1 px-2.5 text-[11px] bg-[#FFF0ED] border-[#FEDBC5] text-[#FF6B57] hover:bg-[#FF6B57] hover:text-white" onclick="BentoModal.open('planPicker', { targetType: 'store', targetId: '${store.id}', targetName: '${item.name}' })">
-                  🍱 排入便当
-                </button>
-              </div>
-            </div>
-          `).join('');
+          const menuFragment = document.createDocumentFragment();
+          menuItems.forEach((item) => {
+            const card = createDomElement('div', 'p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm flex items-center justify-between gap-3 hover:border-[#FEDBC5] transition-all');
+            const left = createDomElement('div', 'flex items-center gap-2.5 min-w-0 flex-1');
+            const menuIcon = createDomElement('span', 'text-xl w-9 h-9 rounded-xl bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0');
+            // 图标可为 null：只写空串，不把 null 字面量渲染成图标
+            menuIcon.textContent = `${item.icon ?? ''}`;
+            left.append(menuIcon);
+
+            const info = createDomElement('div', 'min-w-0');
+            const nameRow = createDomElement('div', 'flex items-center gap-2');
+            nameRow.append(createDomElement('span', 'font-black text-stone-800 text-xs truncate', item.name ?? ''));
+            if (item.isSignature) nameRow.append(createDomElement('span', 'px-1.5 py-0.2 rounded bg-red-100 text-red-600 font-extrabold text-[9px]', '招牌'));
+            info.append(nameRow, createDomElement('div', 'text-[11px] text-stone-400 truncate mt-0.5', item.desc ?? ''));
+            left.append(info);
+
+            const right = createDomElement('div', 'flex items-center gap-2 flex-shrink-0');
+            if (!(item.price == null)) right.append(createDomElement('span', 'text-xs font-black text-[#FF6B57]', `¥${item.price}`));
+
+            const planButton = createDomElement('button', 'pill-btn py-1 px-2.5 text-[11px] bg-[#FFF0ED] border-[#FEDBC5] text-[#FF6B57] hover:bg-[#FF6B57] hover:text-white', '🍱 排入便当');
+            planButton.type = 'button';
+            planButton.addEventListener('click', () => {
+              BentoModal.open('planPicker', { targetType: 'store', targetId: String(store.id ?? ''), targetName: item.name ?? '' });
+            });
+            right.append(planButton);
+
+            card.append(left, right);
+            menuFragment.append(card);
+          });
+          menuContainer.replaceChildren(menuFragment);
         }
 
         // 渲染历史就餐
@@ -5695,19 +5766,22 @@
         document.getElementById('storeDetailHistoryCount').innerText = historyItems.length;
 
         if (historyItems.length === 0) {
-          historyContainer.innerHTML = '<div class="p-2.5 text-center text-stone-400 bg-white rounded-xl border border-stone-100">暂无就餐打卡记录，去尝鲜吧！</div>';
+          historyContainer.replaceChildren(createDomElement('div', 'p-2.5 text-center text-stone-400 bg-white rounded-xl border border-stone-100', '暂无就餐打卡记录，去尝鲜吧！'));
         } else {
           // D1：后端 relatedRecords 只返回 id/recordDate/recordTime/mealType/sourceType/rating/notes，
           // 不返回 items；未填写的 note/rating 也是 null。这里一律留空，绝不把 undefined/null 直接写进文案。
-          historyContainer.innerHTML = historyItems.map(h => `
-            <div class="p-2.5 bg-white border border-[#F0E8DC] rounded-xl flex items-center justify-between text-[11px]">
-              <div class="space-y-0.5">
-                <div class="font-bold text-stone-700">【${h.date ?? ''} ${h.slot ?? ''}】点过：${h.title || h.items || '一餐'}</div>
-                <div class="text-stone-400 text-[10.5px]">${h.note ?? ''}</div>
-              </div>
-              <span class="text-amber-500 font-black">${h.rating == null ? '' : `★ ${h.rating}分`}</span>
-            </div>
-          `).join('');
+          const historyFragment = document.createDocumentFragment();
+          historyItems.forEach((h) => {
+            const row = createDomElement('div', 'p-2.5 bg-white border border-[#F0E8DC] rounded-xl flex items-center justify-between text-[11px]');
+            const textBox = createDomElement('div', 'space-y-0.5');
+            textBox.append(
+              createDomElement('div', 'font-bold text-stone-700', `【${h.date ?? ''} ${h.slot ?? ''}】点过：${h.title || h.items || '一餐'}`),
+              createDomElement('div', 'text-stone-400 text-[10.5px]', h.notes ?? h.note ?? '')
+            );
+            row.append(textBox, createDomElement('span', 'text-amber-500 font-black', h.rating == null ? '' : `★ ${h.rating}分`));
+            historyFragment.append(row);
+          });
+          historyContainer.replaceChildren(historyFragment);
         }
 
         // 收藏状态
@@ -5737,66 +5811,84 @@
         const ingredients = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
         const steps = Array.isArray(recipe.steps) ? recipe.steps : [];
         // 保存的用户文本在详情重开时同样只作为文字；不得让标签/引号成为 HTML 或事件代码。
-        const recipeText = value => String(value ?? '').replace(/[&<>"']/g, char => ({
-          '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
-        })[char]);
-        ingContainer.innerHTML = ingredients.map(ing => {
+        const ingFragment = document.createDocumentFragment();
+        ingredients.forEach((ing) => {
           // 库存比对只认明确关联：解绑行（ingredientId=null）不参加名称模糊匹配，
           // 否则改名后的食材会被同名/包含关系的库存误报为「充足」。已关联行保持原版徽标逻辑。
           const pantryRows = Array.isArray(BentoService.pantry.data) ? BentoService.pantry.data : [];
           const matched = ing.ingredientId
             ? pantryRows.find(p => p.id === ing.ingredientId)
             : null;
-          let badgeHtml = '';
+          let badgeClass = '';
+          let badgeText = '';
           if (!ing.ingredientId) {
-            badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-stone-100 text-stone-500 border border-stone-200">⚪ 未关联库存</span>';
+            badgeClass = 'px-2 py-0.5 rounded-full text-[10px] font-black bg-stone-100 text-stone-500 border border-stone-200';
+            badgeText = '⚪ 未关联库存';
           } else if (!matched) {
-            badgeHtml = '<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-50 text-red-600 border border-red-200">❌ 缺少库存</span>';
+            badgeClass = 'px-2 py-0.5 rounded-full text-[10px] font-black bg-red-50 text-red-600 border border-red-200';
+            badgeText = '❌ 缺少库存';
           } else if (!(Number(matched.stock) > 0)) {
             // 同名库存行存在但数量为 0（如土豆 0g）仍是缺料，必须走补货入口，不得报「充足」
-            badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-red-50 text-red-600 border border-red-200">❌ 已用尽(${matched.stock}${matched.unit})</span>`;
+            badgeClass = 'px-2 py-0.5 rounded-full text-[10px] font-black bg-red-50 text-red-600 border border-red-200';
+            badgeText = `❌ 已用尽(${matched.stock}${matched.unit})`;
           } else if (matched.expireDaysLeft <= 2) {
-            badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-200">⚠️ 临期(余${matched.expireDaysLeft}天)</span>`;
+            badgeClass = 'px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-600 border border-amber-200';
+            badgeText = `⚠️ 临期(余${matched.expireDaysLeft}天)`;
           } else {
-            badgeHtml = `<span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200">✅ 充足(${matched.stock}${matched.unit})</span>`;
+            badgeClass = 'px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200';
+            badgeText = `✅ 充足(${matched.stock}${matched.unit})`;
           }
-          return `
-            <div class="p-2.5 bg-white border border-[#F0E8DC] rounded-xl flex items-center justify-between text-xs">
-              <div class="flex items-center gap-2">
-                <span class="font-bold text-stone-800">${recipeText(ing.name)}</span>
-                ${String(ing.amount ?? '').trim() ? `<span class="text-stone-400 font-medium">(${recipeText(ing.amount)})</span>` : ''}
-              </div>
-              <div>${badgeHtml}</div>
-            </div>
-          `;
-        }).join('');
+
+          const row = createDomElement('div', 'p-2.5 bg-white border border-[#F0E8DC] rounded-xl flex items-center justify-between text-xs');
+          const left = createDomElement('div', 'flex items-center gap-2');
+          left.append(createDomElement('span', 'font-bold text-stone-800', ing.name ?? ''));
+          if (String(ing.amount ?? '').trim()) {
+            left.append(createDomElement('span', 'text-stone-400 font-medium', `(${ing.amount})`));
+          }
+          const badgeBox = createDomElement('div', '', null);
+          if (badgeText) badgeBox.append(createDomElement('span', badgeClass, badgeText));
+          row.append(left, badgeBox);
+          ingFragment.append(row);
+        });
+        ingContainer.replaceChildren(ingFragment);
 
         // 步骤与计时器
         const stepsContainer = document.getElementById('recipeDetailStepsList');
-        stepsContainer.innerHTML = steps.map((step, idx) => `
-          <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm space-y-1.5">
-            <div class="flex items-center justify-between">
-              <div class="font-black text-stone-800 text-xs flex items-center gap-2">
-                <span class="w-5 h-5 rounded-full bg-[#FAF7F2] text-[#FF6B57] border border-[#FEDBC5] flex items-center justify-center text-[10px] font-black">${step.stepIndex}</span>
-                <span>${recipeText(step.title)}</span>
-              </div>
-              ${step.timerMinutes ? `
-                <button class="pill-btn py-1 px-2.5 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF9F6] hover:bg-[#FF6B57] hover:text-white transition-all" id="stepTimerBtn-${idx}" data-recipe-step-index="${idx}">
-                  ⏱️ 计时 ${step.timerMinutes}分钟
-                </button>
-              ` : ''}
-            </div>
-            <p class="text-stone-600 text-[11.5px] leading-relaxed m-0">${recipeText(step.desc)}</p>
-            <div id="stepTimerBarWrap-${idx}" class="hidden w-full h-1.5 bg-stone-100 rounded-full overflow-hidden mt-1">
-              <div id="stepTimerBar-${idx}" class="h-full bg-gradient-to-r from-[#FF6B57] to-[#FF8575] transition-all" style="width: 100%;"></div>
-            </div>
-          </div>
-        `).join('');
-        stepsContainer.querySelectorAll('[data-recipe-step-index]').forEach(button => {
-          const idx = Number(button.dataset.recipeStepIndex);
-          const step = steps[idx];
-          button.onclick = () => this.toggleStepTimer(recipe.id, idx, step.timerMinutes, step.title ?? '', recipe.name ?? '');
+        const stepFragment = document.createDocumentFragment();
+        steps.forEach((step, idx) => {
+          const card = createDomElement('div', 'p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm space-y-1.5');
+          const head = createDomElement('div', 'flex items-center justify-between');
+          const titleBox = createDomElement('div', 'font-black text-stone-800 text-xs flex items-center gap-2');
+          titleBox.append(
+            createDomElement('span', 'w-5 h-5 rounded-full bg-[#FAF7F2] text-[#FF6B57] border border-[#FEDBC5] flex items-center justify-center text-[10px] font-black', step.stepIndex ?? ''),
+            createDomElement('span', '', step.title ?? '')
+          );
+          head.append(titleBox);
+
+          if (step.timerMinutes) {
+            const timerButton = createDomElement('button', 'pill-btn py-1 px-2.5 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF9F6] hover:bg-[#FF6B57] hover:text-white transition-all', `⏱️ 计时 ${step.timerMinutes}分钟`);
+            timerButton.type = 'button';
+            timerButton.id = `stepTimerBtn-${idx}`;
+            timerButton.dataset.recipeStepIndex = String(idx);
+            timerButton.addEventListener('click', () => {
+              this.toggleStepTimer(recipe.id, idx, step.timerMinutes, step.title ?? '', recipe.name ?? '');
+            });
+            head.append(timerButton);
+          }
+
+          card.append(head, createDomElement('p', 'text-stone-600 text-[11.5px] leading-relaxed m-0', step.desc ?? ''));
+
+          const barWrap = createDomElement('div', 'hidden w-full h-1.5 bg-stone-100 rounded-full overflow-hidden mt-1');
+          barWrap.id = `stepTimerBarWrap-${idx}`;
+          const bar = createDomElement('div', 'h-full bg-gradient-to-r from-[#FF6B57] to-[#FF8575] transition-all');
+          bar.id = `stepTimerBar-${idx}`;
+          bar.style.width = '100%';
+          barWrap.append(bar);
+          card.append(barWrap);
+
+          stepFragment.append(card);
         });
+        stepsContainer.replaceChildren(stepFragment);
 
         // 收藏状态
         const favIcon = document.getElementById('recipeDetailFavIcon');
@@ -5854,20 +5946,26 @@
         const matchedRecipes = BentoService.recipes.data.filter(r => r.ingredients.some(ing => ing.name.includes(item.name) || item.name.includes(ing.pantryKeyword)));
 
         if (matchedRecipes.length === 0) {
-          recipesContainer.innerHTML = '<div class="p-2.5 text-center text-stone-400 bg-white rounded-xl border border-stone-100">该食材暂未关联现成菜谱</div>';
+          recipesContainer.replaceChildren(createDomElement('div', 'p-2.5 text-center text-stone-400 bg-white rounded-xl border border-stone-100', '该食材暂未关联现成菜谱'));
         } else {
-          recipesContainer.innerHTML = matchedRecipes.map(r => `
-            <div class="p-2.5 bg-white border border-[#F0E8DC] rounded-xl flex items-center justify-between hover:border-[#FEDBC5] cursor-pointer transition-all" onclick="BentoModal.open('recipeDetail', '${r.id}')">
-              <div class="flex items-center gap-2">
-                <span class="text-lg">${r.icon}</span>
-                <div>
-                  <span class="font-black text-stone-800 text-xs">${r.name}</span>
-                  <span class="text-[10.5px] text-stone-400 ml-1">${r.cookTimeMinutes == null ? '' : `⏱ ${r.cookTimeMinutes}分钟`}</span>
-                </div>
-              </div>
-              <span class="text-xs font-bold text-[#FF6B57]">查看做法 →</span>
-            </div>
-          `).join('');
+          const recipeFragment = document.createDocumentFragment();
+          matchedRecipes.forEach((r) => {
+            const recipeId = r && r.id != null ? String(r.id) : '';
+            const row = createDomElement('div', 'p-2.5 bg-white border border-[#F0E8DC] rounded-xl flex items-center justify-between hover:border-[#FEDBC5] cursor-pointer transition-all');
+            row.addEventListener('click', () => BentoModal.open('recipeDetail', recipeId));
+
+            const left = createDomElement('div', 'flex items-center gap-2');
+            left.append(createDomElement('span', 'text-lg', r.icon ?? ''));
+            const info = createDomElement('div', '');
+            const nameLine = createDomElement('span', 'font-black text-stone-800 text-xs', r.name ?? '');
+            const timeLine = createDomElement('span', 'text-[10.5px] text-stone-400 ml-1', r.cookTimeMinutes == null ? '' : `⏱ ${r.cookTimeMinutes}分钟`);
+            info.append(nameLine, timeLine);
+            left.append(info);
+
+            row.append(left, createDomElement('span', 'text-xs font-bold text-[#FF6B57]', '查看做法 →'));
+            recipeFragment.append(row);
+          });
+          recipesContainer.replaceChildren(recipeFragment);
         }
 
         document.getElementById('modalIngredientDetail').classList.remove('hidden');
@@ -5975,39 +6073,45 @@
         if (!listEl) return;
 
         if (this.comboboxFiltered.length === 0) {
-          listEl.innerHTML = '<div class="p-3 text-center text-stone-400 bg-white rounded-xl">无匹配的菜谱或外卖店铺</div>';
+          listEl.replaceChildren(createDomElement('div', 'p-3 text-center text-stone-400 bg-white rounded-xl', '无匹配的菜谱或外卖店铺'));
           return;
         }
 
         const currentVal = document.getElementById('planPickerSelectTarget')?.value;
+        const fragment = document.createDocumentFragment();
 
-        function highlight(text, kw) {
-          if (!kw) return text;
-          const escaped = kw.replace(/[-\/\^$*+?.()|[\]{}]/g, '\\$&');
-          return text.replace(new RegExp(`(${escaped})`, 'gi'), '<mark>$1</mark>');
-        }
-
-        listEl.innerHTML = this.comboboxFiltered.map((item, idx) => {
+        this.comboboxFiltered.forEach((item, idx) => {
           const isSelected = item.value === currentVal;
           const isHighlighted = idx === BentoModal.comboboxSelectedIndex;
-          return `
-            <div class="bento-combobox-item p-2 rounded-xl border border-[#F0E8DC] bg-white flex items-center justify-between cursor-pointer transition-all ${isSelected ? 'border-[#FEDBC5] bg-[#FFF9F6]' : ''} ${isHighlighted ? 'is-highlighted ring-1 ring-[#FF6B57]' : ''}"
-                 data-idx="${idx}"
-                 onclick="BentoModal.selectComboboxOption('${item.value}', '${item.name.replace(/'/g, "\'")}', '${item.icon}')">
-              <div class="flex items-center gap-2 min-w-0">
-                <span class="text-base w-7 h-7 rounded-lg bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0">${item.icon}</span>
-                <div class="min-w-0">
-                  <div class="flex items-center gap-1.5">
-                    <span class="px-1.5 py-0.2 rounded text-[9px] font-black ${item.type === 'cook' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}">${item.group}</span>
-                    <span class="font-bold text-stone-800 text-xs truncate">${highlight(item.name, keyword)}</span>
-                  </div>
-                  <div class="text-[10px] text-stone-400 truncate">${highlight(item.sub, keyword)}</div>
-                </div>
-              </div>
-              ${isSelected ? '<span class="text-xs text-[#FF6B57] font-black mr-1">✓</span>' : ''}
-            </div>
-          `;
-        }).join('');
+          const row = createDomElement(
+            'div',
+            `bento-combobox-item p-2 rounded-xl border border-[#F0E8DC] bg-white flex items-center justify-between cursor-pointer transition-all ${isSelected ? 'border-[#FEDBC5] bg-[#FFF9F6]' : ''} ${isHighlighted ? 'is-highlighted ring-1 ring-[#FF6B57]' : ''}`
+          );
+          row.dataset.idx = String(idx);
+          // 选项的 value/name/icon 只进闭包，不拼进任何内联事件属性
+          row.addEventListener('click', () => {
+            BentoModal.selectComboboxOption(item.value, item.name, item.icon);
+          });
+
+          const left = createDomElement('div', 'flex items-center gap-2 min-w-0');
+          left.append(createDomElement('span', 'text-base w-7 h-7 rounded-lg bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0', item.icon ?? ''));
+
+          const textBox = createDomElement('div', 'min-w-0');
+          const titleRow = createDomElement('div', 'flex items-center gap-1.5');
+          titleRow.append(
+            createDomElement('span', `px-1.5 py-0.2 rounded text-[9px] font-black ${item.type === 'cook' ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700'}`, item.group ?? ''),
+            appendHighlightedText(createDomElement('span', 'font-bold text-stone-800 text-xs truncate'), item.name, keyword)
+          );
+          const subRow = appendHighlightedText(createDomElement('div', 'text-[10px] text-stone-400 truncate'), item.sub, keyword);
+          textBox.append(titleRow, subRow);
+          left.append(textBox);
+
+          row.append(left);
+          if (isSelected) row.append(createDomElement('span', 'text-xs text-[#FF6B57] font-black mr-1', '✓'));
+          fragment.append(row);
+        });
+
+        listEl.replaceChildren(fragment);
       },
 
       selectComboboxOption(val, name, icon) {
@@ -6020,7 +6124,10 @@
         const triggerText = document.getElementById('comboboxTriggerText');
         if (targetInput) targetInput.value = val;
         if (triggerText) {
-          triggerText.innerHTML = `${icon || '🍱'} <span class="font-bold text-stone-800">${name}</span>`;
+          triggerText.replaceChildren(
+            document.createTextNode(`${icon || '🍱'} `),
+            createDomElement('span', 'font-bold text-stone-800', name ?? '')
+          );
         }
         this.updatePlanPickerChannelState(val);
       },
@@ -6348,15 +6455,27 @@
 
         this.channelConfirmSelected = options.length > 0 ? options[0].channel : null;
 
-        optionsEl.innerHTML = options.map((opt, idx) => `
-          <div class="channel-option-card p-3 rounded-2xl border ${idx === 0 ? 'border-[#FF6B57] bg-[#FFF8F5]' : 'border-[#F0E8DC] bg-white'} cursor-pointer flex items-center justify-between text-left transition-all" onclick="BentoModal.selectChannelConfirmOption(this, '${opt.channel}')">
-            <div>
-              <div class="font-bold text-xs text-stone-800">${opt.label}</div>
-              <div class="text-[10px] text-stone-400">${opt.desc}</div>
-            </div>
-            <span class="channel-opt-check text-xs font-black text-[#FF6B57] ${idx === 0 ? '' : 'hidden'}">✓</span>
-          </div>
-        `).join('');
+        const fragment = document.createDocumentFragment();
+        options.forEach((opt, idx) => {
+          const card = createDomElement(
+            'div',
+            `channel-option-card p-3 rounded-2xl border ${idx === 0 ? 'border-[#FF6B57] bg-[#FFF8F5]' : 'border-[#F0E8DC] bg-white'} cursor-pointer flex items-center justify-between text-left transition-all`
+          );
+          card.addEventListener('click', () => {
+            BentoModal.selectChannelConfirmOption(card, opt.channel);
+          });
+
+          const textBox = document.createElement('div');
+          textBox.append(
+            createDomElement('div', 'font-bold text-xs text-stone-800', opt.label),
+            createDomElement('div', 'text-[10px] text-stone-400', opt.desc)
+          );
+
+          const check = createDomElement('span', `channel-opt-check text-xs font-black text-[#FF6B57] ${idx === 0 ? '' : 'hidden'}`, '✓');
+          card.append(textBox, check);
+          fragment.append(card);
+        });
+        optionsEl.replaceChildren(fragment);
 
         this.open('channelConfirm');
       },
@@ -6595,7 +6714,7 @@
 
           const ingContainer = document.getElementById('formRecipeIngList');
           if (ingContainer) {
-            ingContainer.innerHTML = '';
+            ingContainer.replaceChildren();
             const ings = recipe.ingredients || [];
             if (ings.length > 0) {
               ings.forEach(ing => addRecipeIngRow(ing.name, ing.amount, ing));
@@ -6607,7 +6726,7 @@
 
           const stepContainer = document.getElementById('formRecipeStepList');
           if (stepContainer) {
-            stepContainer.innerHTML = '';
+            stepContainer.replaceChildren();
             const steps = recipe.steps || [];
             if (steps.length > 0) {
               steps.forEach(s => addRecipeStepRow(s.title, s.desc, s.timerMinutes ?? '', s));
@@ -6638,14 +6757,14 @@
 
           const ingContainer = document.getElementById('formRecipeIngList');
           if (ingContainer) {
-            ingContainer.innerHTML = '';
+            ingContainer.replaceChildren();
             // 新建菜谱：一行空白录入行（保留现 row DOM 交互），不再预填「鸡腿肉 300g / 日式照烧汁」演示食材
             addRecipeIngRow();
           }
 
           const stepContainer = document.getElementById('formRecipeStepList');
           if (stepContainer) {
-            stepContainer.innerHTML = '';
+            stepContainer.replaceChildren();
             // 新建菜谱：一行空白步骤行，不预填演示步骤文案
             addRecipeStepRow();
           }
@@ -6661,13 +6780,16 @@
         const pantry = BentoService.pantry.getAll();
 
         if (pantry.length === 0) {
-          container.innerHTML = `
-            <div class="p-6 text-center text-stone-400 bg-white rounded-2xl border border-[#F0E8DC]">
-              <span class="text-3xl block mb-2">🥬</span>
-              <p class="font-bold text-xs">冰箱还没有录入生鲜食材哦</p>
-              <button class="neo-btn-primary text-xs py-1.5 px-4 mt-2" onclick="BentoModal.open('ingredientForm')">+ 录入第一批食材</button>
-            </div>
-          `;
+          const empty = createDomElement('div', 'p-6 text-center text-stone-400 bg-white rounded-2xl border border-[#F0E8DC]');
+          empty.append(
+            createDomElement('span', 'text-3xl block mb-2', '🥬'),
+            createDomElement('p', 'font-bold text-xs', '冰箱还没有录入生鲜食材哦')
+          );
+          const entryButton = createDomElement('button', 'neo-btn-primary text-xs py-1.5 px-4 mt-2', '+ 录入第一批食材');
+          entryButton.type = 'button';
+          entryButton.addEventListener('click', () => BentoModal.open('ingredientForm'));
+          empty.append(entryButton);
+          container.replaceChildren(empty);
           return;
         }
 
@@ -6689,72 +6811,101 @@
         const fullMatches = scored.filter(s => s.pct === 100);
         const partialMatches = scored.filter(s => s.pct > 0 && s.pct < 100);
 
-        let html = '';
+        const buildActionButton = (className, label, onClick) => {
+          const button = createDomElement('button', className, label);
+          button.type = 'button';
+          button.addEventListener('click', onClick);
+          return button;
+        };
+
+        const buildSection = (headingClass, headingText, matches, buildCard) => {
+          const section = createDomElement('div', matches === partialMatches && fullMatches.length > 0 ? 'mt-3.5' : '');
+          section.append(createDomElement('div', `flex items-center gap-1.5 mb-2 font-black text-xs ${headingClass}`, headingText));
+          const list = createDomElement('div', 'space-y-2');
+          matches.forEach((m) => list.append(buildCard(m)));
+          section.append(list);
+          return section;
+        };
+
+        const buildFullCard = (m) => {
+          const recipeId = m.recipe && m.recipe.id != null ? String(m.recipe.id) : '';
+          const card = createDomElement('div', 'p-3 bg-white border-2 border-[#D8EEDB] rounded-2xl flex items-center justify-between shadow-sm hover:border-[#6ABF69] transition-all');
+          const left = createDomElement('div', 'flex items-center gap-2.5');
+          left.append(createDomElement('span', 'text-2xl', m.recipe.icon ?? ''));
+          const info = document.createElement('div');
+          const nameRow = createDomElement('div', 'flex items-center gap-2');
+          nameRow.append(
+            createDomElement('h4', 'font-black text-xs text-stone-800 m-0', m.recipe.name ?? ''),
+            createDomElement('span', 'px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700', '可做')
+          );
+          const subText = [
+            m.recipe.cookTimeMinutes == null ? null : `耗时 ${m.recipe.cookTimeMinutes}分钟`,
+            m.recipe.difficulty == null ? null : `${m.recipe.difficulty}难度`,
+            m.matched.map(i => i.name).join('、')
+          ].filter(Boolean).join(' · ');
+          info.append(nameRow, createDomElement('p', 'text-[10px] text-stone-400 m-0 mt-0.5', subText));
+          left.append(info);
+
+          const actions = createDomElement('div', 'flex items-center gap-1.5');
+          actions.append(
+            buildActionButton('pill-btn py-1.5 px-2 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF0ED] hover:bg-[#FF6B57] hover:text-white', '🍱 排入便当', () => {
+              BentoModal.open('planPicker', { targetType: 'recipe', targetId: recipeId });
+            }),
+            buildActionButton('neo-btn-primary text-xs py-1.5 px-3 shadow-sm', '🍳 立即开火', () => {
+              BentoModal.open('recipeDetail', recipeId);
+            })
+          );
+          card.append(left, actions);
+          return card;
+        };
+
+        const buildPartialCard = (m) => {
+          const recipeId = m.recipe && m.recipe.id != null ? String(m.recipe.id) : '';
+          const card = createDomElement('div', 'p-3 bg-white border border-[#FEDBC5] rounded-2xl flex items-center justify-between shadow-sm');
+          const left = createDomElement('div', 'flex items-center gap-2.5');
+          left.append(createDomElement('span', 'text-2xl', m.recipe.icon ?? ''));
+          const info = document.createElement('div');
+          const nameRow = createDomElement('div', 'flex items-center gap-2');
+          nameRow.append(
+            createDomElement('h4', 'font-black text-xs text-stone-800 m-0', m.recipe.name ?? ''),
+            createDomElement('span', 'px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-700', `原料匹配 ${m.pct}%`)
+          );
+          const subLine = createDomElement('p', 'text-[10px] text-stone-400 m-0 mt-0.5');
+          subLine.append(
+            document.createTextNode(`现有：${m.matched.map(i => i.name).join('、') || '无'} · `),
+            createDomElement('span', 'text-red-500 font-bold', `缺：${m.missing.map(i => i.name).join('、')}`)
+          );
+          info.append(nameRow, subLine);
+          left.append(info);
+
+          const actions = createDomElement('div', 'flex items-center gap-1.5');
+          actions.append(
+            buildActionButton('py-1 px-2.5 bg-[#FFF0ED] text-[#FF6B57] font-bold text-[10.5px] rounded-xl hover:bg-[#FFE0D9] transition-all', '🛒 补齐缺料', () => {
+              addMissingListToShopping(recipeId);
+            }),
+            buildActionButton('pill-btn py-1 px-2 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF0ED] hover:bg-[#FF6B57] hover:text-white', '🍱 排入便当', () => {
+              BentoModal.open('planPicker', { targetType: 'recipe', targetId: recipeId });
+            }),
+            buildActionButton('neo-btn-secondary text-xs py-1 px-2.5', '查看', () => {
+              BentoModal.open('recipeDetail', recipeId);
+            })
+          );
+          card.append(left, actions);
+          return card;
+        };
+
+        const fragment = document.createDocumentFragment();
         if (fullMatches.length > 0) {
-          html += `
-            <div>
-              <div class="flex items-center gap-1.5 mb-2 font-black text-xs text-[#2E7D32]">
-                <span>🟢</span> 原料 100% 齐全 · 现有食材即可下锅 (${fullMatches.length}道)
-              </div>
-              <div class="space-y-2">
-                ${fullMatches.map(m => `
-                  <div class="p-3 bg-white border-2 border-[#D8EEDB] rounded-2xl flex items-center justify-between shadow-sm hover:border-[#6ABF69] transition-all">
-                    <div class="flex items-center gap-2.5">
-                      <span class="text-2xl">${m.recipe.icon}</span>
-                      <div>
-                        <div class="flex items-center gap-2">
-                          <h4 class="font-black text-xs text-stone-800 m-0">${m.recipe.name}</h4>
-                          <span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700">可做</span>
-                        </div>
-                        <p class="text-[10px] text-stone-400 m-0 mt-0.5">${[m.recipe.cookTimeMinutes == null ? null : `耗时 ${m.recipe.cookTimeMinutes}分钟`, m.recipe.difficulty == null ? null : `${m.recipe.difficulty}难度`, m.matched.map(i => i.name).join('、')].filter(Boolean).join(' · ')}</p>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-1.5"><button class="pill-btn py-1.5 px-2 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF0ED] hover:bg-[#FF6B57] hover:text-white" onclick="BentoModal.open('planPicker', { targetType: 'recipe', targetId: '${m.recipe.id}' })">🍱 排入便当</button><button class="neo-btn-primary text-xs py-1.5 px-3 shadow-sm" onclick="BentoModal.open('recipeDetail', '${m.recipe.id}')">🍳 立即开火</button></div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `;
+          fragment.append(buildSection('text-[#2E7D32]', `🟢 原料 100% 齐全 · 现有食材即可下锅 (${fullMatches.length}道)`, fullMatches, buildFullCard));
         }
-
         if (partialMatches.length > 0) {
-          html += `
-            <div class="${fullMatches.length > 0 ? 'mt-3.5' : ''}">
-              <div class="flex items-center gap-1.5 mb-2 font-black text-xs text-[#D97706]">
-                <span>🟡</span> 仅缺部分配料 (${partialMatches.length}道)
-              </div>
-              <div class="space-y-2">
-                ${partialMatches.map(m => `
-                  <div class="p-3 bg-white border border-[#FEDBC5] rounded-2xl flex items-center justify-between shadow-sm">
-                    <div class="flex items-center gap-2.5">
-                      <span class="text-2xl">${m.recipe.icon}</span>
-                      <div>
-                        <div class="flex items-center gap-2">
-                          <h4 class="font-black text-xs text-stone-800 m-0">${m.recipe.name}</h4>
-                          <span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-700">原料匹配 ${m.pct}%</span>
-                        </div>
-                        <p class="text-[10px] text-stone-400 m-0 mt-0.5">
-                          现有：${m.matched.map(i => i.name).join('、') || '无'} · 
-                          <span class="text-red-500 font-bold">缺：${m.missing.map(i => i.name).join('、')}</span>
-                        </p>
-                      </div>
-                    </div>
-                    <div class="flex items-center gap-1.5">
-                      <button class="py-1 px-2.5 bg-[#FFF0ED] text-[#FF6B57] font-bold text-[10.5px] rounded-xl hover:bg-[#FFE0D9] transition-all" onclick="addMissingListToShopping('${m.recipe.id}')">🛒 补齐缺料</button>
-                      <button class="pill-btn py-1 px-2 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF0ED] hover:bg-[#FF6B57] hover:text-white" onclick="BentoModal.open('planPicker', { targetType: 'recipe', targetId: '${m.recipe.id}' })">🍱 排入便当</button><button class="neo-btn-secondary text-xs py-1 px-2.5" onclick="BentoModal.open('recipeDetail', '${m.recipe.id}')">查看</button>
-                    </div>
-                  </div>
-                `).join('')}
-              </div>
-            </div>
-          `;
+          fragment.append(buildSection('text-[#D97706]', `🟡 仅缺部分配料 (${partialMatches.length}道)`, partialMatches, buildPartialCard));
         }
-
         if (fullMatches.length === 0 && partialMatches.length === 0) {
-          html = '<div class="p-6 text-center text-stone-400 bg-white rounded-2xl">暂无直接匹配的菜谱，快去【我的菜谱】新增更多拿手菜吧！</div>';
+          fragment.append(createDomElement('div', 'p-6 text-center text-stone-400 bg-white rounded-2xl', '暂无直接匹配的菜谱，快去【我的菜谱】新增更多拿手菜吧！'));
         }
 
-        container.innerHTML = html;
+        container.replaceChildren(fragment);
       },
 
       // 10. 🎯 转盘命中高光卡弹窗装配
@@ -6989,7 +7140,7 @@
 
         const menuContainer = q('#formStoreMenuList');
         if (!menuContainer) return;
-        menuContainer.innerHTML = '';
+        menuContainer.replaceChildren();
 
         if (storeId) {
           const s = BentoService.stores.getById(storeId);
@@ -7260,63 +7411,102 @@
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = '';
+        container.replaceChildren();
         if (emptyState) emptyState.classList.remove('hidden');
         return;
       }
       if (emptyState) emptyState.classList.add('hidden');
 
-      container.innerHTML = filtered.map(store => `
-        <div class="neo-card p-4 m-0 flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 shadow-[var(--shadow-bento-sm)] hover:shadow-[var(--shadow-bento)] cursor-pointer" onclick="BentoModal.open('storeDetail', '${store.id}')">
-          <div>
-            <div class="flex items-start justify-between gap-3 mb-2.5">
-              <div class="flex items-center gap-3 min-w-0 flex-1">
-                <div class="w-11 h-11 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0">
-                  ${store.icon}
-                </div>
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2">
-                    <h4 class="text-sm font-black text-stone-800 truncate m-0">${store.name}</h4>
-                    ${store.price == null || store.price === '' ? '' : `<span class="text-xs font-black text-[#FF6B57]">¥${store.price}/人</span>`}
-                  </div>
-                  <div class="text-xs font-bold text-stone-500 mt-1 flex items-center gap-2">
-                    ${[store.category ? `<span class="text-[#FF6B57] font-extrabold">${store.category}</span>` : '', store.rating == null || store.rating === '' ? '' : `<span class="text-amber-500 font-extrabold">★ ${store.rating}</span>`].filter(Boolean).join('<span>•</span>')}
-                  </div>
-                </div>
-              </div>
-              <button class="w-8 h-8 rounded-full border border-stone-200 bg-white flex items-center justify-center text-base hover:scale-110 transition-transform ${store.favorite ? 'text-[#FF6B57]' : 'text-stone-300'}" onclick="event.stopPropagation(); confirmToggleStoreFavorite('${store.id}')">
-                ${store.favorite ? '♥' : '♡'}
-              </button>
-            </div>
-            <div class="flex flex-wrap items-center gap-2 mb-3">
-              ${store.supportsDineIn ? '<span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200">🍽️ 支持堂食</span>' : ''}
-              ${store.supportsTakeout ? '<span class="px-2.5 py-0.5 rounded-full text-[10.5px] font-black bg-orange-50 text-orange-600 border border-orange-200">🛵 品质外卖</span>' : ''}
-              <span class="text-[11px] text-stone-400 font-bold ml-auto">${store.hours ?? ''}</span>
-            </div>
-            <div class="p-3 rounded-2xl bg-[#FAF7F2] border border-[#F0E8DC] text-xs space-y-1.5 mb-3">
-              <div class="font-bold text-stone-800 leading-relaxed truncate">
-                <span class="text-stone-400 font-normal">招牌：</span>${store.dishes ?? ''}
-              </div>
-              <div class="text-[11.5px] text-stone-500 flex items-center gap-1.5 leading-normal truncate">
-                <span>📍</span><span>${store.address ?? ''}</span>
-              </div>
-            </div>
-          </div>
-          <div class="flex items-center justify-between pt-2 border-t border-stone-100">
-            <button class="neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]" onclick="event.stopPropagation(); BentoModal.open('planPicker', { targetType: 'store', targetId: '${store.id}' })">
-              排入便当计划
-            </button>
-            <div class="flex items-center gap-2">
-              <button class="text-xs font-bold text-stone-500 hover:text-stone-800 py-1.5 px-2 rounded-lg" onclick="event.stopPropagation(); BentoModal.open('storeForm', '${store.id}')">
-                编辑
-              </button>
-              <button class="text-xs font-bold text-stone-400 hover:text-red-500 py-1.5 px-2 rounded-lg" onclick="event.stopPropagation(); confirmDeleteStore('${store.id}')">
-                删除
-              </button>
-            </div>
-          </div>
-        </div>
-      `).join('');
+      const fragment = document.createDocumentFragment();
+      filtered.forEach((store) => {
+        const storeId = store && store.id != null ? String(store.id) : '';
+        const card = createDomElement('div', 'neo-card p-4 m-0 flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 shadow-[var(--shadow-bento-sm)] hover:shadow-[var(--shadow-bento)] cursor-pointer');
+        card.addEventListener('click', () => BentoModal.open('storeDetail', storeId));
+
+        const body = document.createElement('div');
+        const head = createDomElement('div', 'flex items-start justify-between gap-3 mb-2.5');
+        const headLeft = createDomElement('div', 'flex items-center gap-3 min-w-0 flex-1');
+        headLeft.append(createDomElement('div', 'w-11 h-11 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0', store.icon ?? ''));
+
+        const titleBox = createDomElement('div', 'min-w-0 flex-1');
+        const titleRow = createDomElement('div', 'flex items-center gap-2');
+        titleRow.append(createDomElement('h4', 'text-sm font-black text-stone-800 truncate m-0', store.name ?? ''));
+        if (!(store.price == null || store.price === '')) {
+          titleRow.append(createDomElement('span', 'text-xs font-black text-[#FF6B57]', `¥${store.price}/人`));
+        }
+
+        const metaRow = createDomElement('div', 'text-xs font-bold text-stone-500 mt-1 flex items-center gap-2');
+        const metaParts = [];
+        if (store.category) metaParts.push(createDomElement('span', 'text-[#FF6B57] font-extrabold', store.category));
+        if (!(store.rating == null || store.rating === '')) {
+          metaParts.push(createDomElement('span', 'text-amber-500 font-extrabold', `★ ${store.rating}`));
+        }
+        metaParts.forEach((node, idx) => {
+          if (idx > 0) metaRow.append(createDomElement('span', '', '•'));
+          metaRow.append(node);
+        });
+
+        titleBox.append(titleRow, metaRow);
+        headLeft.append(titleBox);
+
+        const favoriteButton = createDomElement(
+          'button',
+          `w-8 h-8 rounded-full border border-stone-200 bg-white flex items-center justify-center text-base hover:scale-110 transition-transform ${store.favorite ? 'text-[#FF6B57]' : 'text-stone-300'}`,
+          store.favorite ? '♥' : '♡'
+        );
+        favoriteButton.type = 'button';
+        favoriteButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          confirmToggleStoreFavorite(storeId);
+        });
+        head.append(headLeft, favoriteButton);
+
+        const badges = createDomElement('div', 'flex flex-wrap items-center gap-2 mb-3');
+        if (store.supportsDineIn) {
+          badges.append(createDomElement('span', 'px-2.5 py-0.5 rounded-full text-[10.5px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200', '🍽️ 支持堂食'));
+        }
+        if (store.supportsTakeout) {
+          badges.append(createDomElement('span', 'px-2.5 py-0.5 rounded-full text-[10.5px] font-black bg-orange-50 text-orange-600 border border-orange-200', '🛵 品质外卖'));
+        }
+        badges.append(createDomElement('span', 'text-[11px] text-stone-400 font-bold ml-auto', store.hours ?? ''));
+
+        const infoBox = createDomElement('div', 'p-3 rounded-2xl bg-[#FAF7F2] border border-[#F0E8DC] text-xs space-y-1.5 mb-3');
+        const dishesLine = createDomElement('div', 'font-bold text-stone-800 leading-relaxed truncate');
+        dishesLine.append(createDomElement('span', 'text-stone-400 font-normal', '招牌：'), document.createTextNode(String(store.dishes ?? '')));
+        const addressLine = createDomElement('div', 'text-[11.5px] text-stone-500 flex items-center gap-1.5 leading-normal truncate');
+        addressLine.append(createDomElement('span', '', '📍'), createDomElement('span', '', store.address ?? ''));
+        infoBox.append(dishesLine, addressLine);
+
+        body.append(head, badges, infoBox);
+
+        const footer = createDomElement('div', 'flex items-center justify-between pt-2 border-t border-stone-100');
+        const planButton = createDomElement('button', 'neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]', '排入便当计划');
+        planButton.type = 'button';
+        planButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          BentoModal.open('planPicker', { targetType: 'store', targetId: storeId });
+        });
+
+        const actions = createDomElement('div', 'flex items-center gap-2');
+        const editButton = createDomElement('button', 'text-xs font-bold text-stone-500 hover:text-stone-800 py-1.5 px-2 rounded-lg', '编辑');
+        editButton.type = 'button';
+        editButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          BentoModal.open('storeForm', storeId);
+        });
+        const deleteButton = createDomElement('button', 'text-xs font-bold text-stone-400 hover:text-red-500 py-1.5 px-2 rounded-lg', '删除');
+        deleteButton.type = 'button';
+        deleteButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          confirmDeleteStore(storeId);
+        });
+        actions.append(editButton, deleteButton);
+        footer.append(planButton, actions);
+
+        card.append(body, footer);
+        fragment.append(card);
+      });
+      container.replaceChildren(fragment);
     }
 
     function setStoreFilter(filter) {
@@ -7340,28 +7530,41 @@
       if (countEl) countEl.innerText = recipes.length;
       if (!container) return;
 
-      container.innerHTML = recipes.map(r => `
-        <div class="neo-card p-4 flex flex-col justify-between m-0 hover:-translate-y-1 transition-all duration-200 shadow-[var(--shadow-bento-sm)] hover:shadow-[var(--shadow-bento)] cursor-pointer" onclick="BentoModal.open('recipeDetail', '${r.id}')">
-          <div>
-            <div class="h-28 bg-[#FFF0ED] border border-[#FEDBC5] rounded-2xl mb-2.5 flex items-center justify-center text-4xl shadow-[0_2px_8px_rgba(255,107,87,0.06)] relative overflow-hidden">
-              <span>${r.icon}</span>
-              ${r.favorite ? '<span class="absolute top-2 right-2 text-sm text-[#FF6B57]">♥</span>' : ''}
-            </div>
-            <div class="flex items-center justify-between mb-1">
-              <h4 class="text-sm font-black m-0">${r.name}</h4>
-              <span class="text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800">${r.difficulty ?? ''}</span>
-            </div>
-            <p class="text-[11px] text-stone-500 mb-2 truncate" data-recipe-ingredient-summary></p>
-          </div>
-          <button class="neo-btn-primary text-xs py-2 w-full shadow-[var(--shadow-primary)]" onclick="event.stopPropagation(); BentoModal.open('recipeDetail', '${r.id}')">
-            查看做法克重与步骤
-          </button>
-        </div>
-      `).join('');
-      container.querySelectorAll('[data-recipe-ingredient-summary]').forEach((summary, idx) => {
-        const r = recipes[idx];
-        summary.textContent = [r.ingredients.map(i => i.name).join('、'), r.cookTimeMinutes == null ? null : `⏱ ${r.cookTimeMinutes}分钟`].filter(Boolean).join(' · ');
+      const fragment = document.createDocumentFragment();
+      recipes.forEach((r) => {
+        const recipeId = r && r.id != null ? String(r.id) : '';
+        const card = createDomElement('div', 'neo-card p-4 flex flex-col justify-between m-0 hover:-translate-y-1 transition-all duration-200 shadow-[var(--shadow-bento-sm)] hover:shadow-[var(--shadow-bento)] cursor-pointer');
+        card.addEventListener('click', () => BentoModal.open('recipeDetail', recipeId));
+
+        const body = document.createElement('div');
+        const cover = createDomElement('div', 'h-28 bg-[#FFF0ED] border border-[#FEDBC5] rounded-2xl mb-2.5 flex items-center justify-center text-4xl shadow-[0_2px_8px_rgba(255,107,87,0.06)] relative overflow-hidden');
+        cover.append(createDomElement('span', '', r.icon ?? ''));
+        if (r.favorite) cover.append(createDomElement('span', 'absolute top-2 right-2 text-sm text-[#FF6B57]', '♥'));
+
+        const titleRow = createDomElement('div', 'flex items-center justify-between mb-1');
+        titleRow.append(
+          createDomElement('h4', 'text-sm font-black m-0', r.name ?? ''),
+          createDomElement('span', 'text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800', r.difficulty ?? '')
+        );
+
+        const ingredients = Array.isArray(r.ingredients) ? r.ingredients : [];
+        const summaryText = [ingredients.map(i => i.name).join('、'), r.cookTimeMinutes == null ? null : `⏱ ${r.cookTimeMinutes}分钟`].filter(Boolean).join(' · ');
+        const summary = createDomElement('p', 'text-[11px] text-stone-500 mb-2 truncate', summaryText);
+        summary.dataset.recipeIngredientSummary = '';
+
+        body.append(cover, titleRow, summary);
+
+        const detailButton = createDomElement('button', 'neo-btn-primary text-xs py-2 w-full shadow-[var(--shadow-primary)]', '查看做法克重与步骤');
+        detailButton.type = 'button';
+        detailButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          BentoModal.open('recipeDetail', recipeId);
+        });
+
+        card.append(body, detailButton);
+        fragment.append(card);
       });
+      container.replaceChildren(fragment);
     }
 
     function renderInventory() {
@@ -7387,43 +7590,59 @@
       const filtered = currentInventoryFilter === 'all' ? pantry : pantry.filter(p => p.category === currentInventoryFilter);
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="col-span-2 p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100">该分类下暂无食材</div>';
+        container.replaceChildren(createDomElement('div', 'col-span-2 p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100', '该分类下暂无食材'));
         return;
       }
 
-      container.innerHTML = filtered.map(item => {
+      const fragment = document.createDocumentFragment();
+      filtered.forEach((item) => {
+        const itemId = item && item.id != null ? String(item.id) : '';
         const hasExpiry = item.expireDaysLeft != null;
         const isUrgent = hasExpiry && item.expireDaysLeft <= 2;
         const isWarning = hasExpiry && item.expireDaysLeft <= 5;
-        const badge = !hasExpiry
+        const badgeClass = !hasExpiry
           ? ''
           : isUrgent
-          ? '<span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-red-100 text-red-600 border border-red-200">临期预警</span>'
-          : (isWarning ? '<span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-700 border border-amber-200">建议尽快</span>' : '<span class="px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200">新鲜</span>');
+            ? 'px-2 py-0.5 rounded-full text-[9px] font-black bg-red-100 text-red-600 border border-red-200'
+            : (isWarning ? 'px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-700 border border-amber-200' : 'px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200');
+        const badgeText = !hasExpiry ? '' : isUrgent ? '临期预警' : (isWarning ? '建议尽快' : '新鲜');
 
-        return `
-          <div class="neo-card p-3.5 m-0 flex items-center justify-between hover:-translate-y-1 transition-all duration-200 cursor-pointer shadow-[var(--shadow-bento-sm)] hover:border-[#FEDBC5]" onclick="BentoModal.open('ingredientDetail', '${item.id}')">
-            <div class="flex items-center gap-3 min-w-0">
-              <div class="w-12 h-12 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0">
-                ${item.icon}
-              </div>
-              <div class="min-w-0">
-                <div class="flex items-center gap-2">
-                  <span class="text-xs font-black text-stone-800 truncate">${item.name}</span>
-                  ${badge}
-                </div>
-                <div class="text-[11px] text-stone-400 mt-0.5">
-                  <span>${item.storageLocation}</span> · <span class="font-bold text-stone-700">${item.stock} ${item.unit}</span>
-                </div>
-              </div>
-            </div>
-            <div class="text-right flex-shrink-0">
-              <div class="text-[11px] font-extrabold ${isUrgent ? 'text-red-500' : 'text-stone-500'}">${hasExpiry ? `余 ${item.expireDaysLeft} 天` : '未填写保质期'}</div>
-              <button class="text-[10.5px] font-bold text-[#FF6B57] hover:underline mt-1" onclick="event.stopPropagation(); BentoModal.open('ingredientDetail', '${item.id}')">档案 →</button>
-            </div>
-          </div>
-        `;
-      }).join('');
+        const card = createDomElement('div', 'neo-card p-3.5 m-0 flex items-center justify-between hover:-translate-y-1 transition-all duration-200 cursor-pointer shadow-[var(--shadow-bento-sm)] hover:border-[#FEDBC5]');
+        card.addEventListener('click', () => BentoModal.open('ingredientDetail', itemId));
+
+        const left = createDomElement('div', 'flex items-center gap-3 min-w-0');
+        left.append(createDomElement('div', 'w-12 h-12 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0', item.icon ?? ''));
+
+        const info = createDomElement('div', 'min-w-0');
+        const nameRow = createDomElement('div', 'flex items-center gap-2');
+        nameRow.append(createDomElement('span', 'text-xs font-black text-stone-800 truncate', item.name ?? ''));
+        if (badgeText) nameRow.append(createDomElement('span', badgeClass, badgeText));
+
+        const metaRow = createDomElement('div', 'text-[11px] text-stone-400 mt-0.5');
+        metaRow.append(
+          createDomElement('span', '', item.storageLocation ?? ''),
+          document.createTextNode(' · '),
+          createDomElement('span', 'font-bold text-stone-700', `${item.stock ?? ''} ${item.unit ?? ''}`)
+        );
+
+        info.append(nameRow, metaRow);
+        left.append(info);
+
+        const right = createDomElement('div', 'text-right flex-shrink-0');
+        right.append(createDomElement('div', `text-[11px] font-extrabold ${isUrgent ? 'text-red-500' : 'text-stone-500'}`, hasExpiry ? `余 ${item.expireDaysLeft} 天` : '未填写保质期'));
+
+        const archiveButton = createDomElement('button', 'text-[10.5px] font-bold text-[#FF6B57] hover:underline mt-1', '档案 →');
+        archiveButton.type = 'button';
+        archiveButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          BentoModal.open('ingredientDetail', itemId);
+        });
+        right.append(archiveButton);
+
+        card.append(left, right);
+        fragment.append(card);
+      });
+      container.replaceChildren(fragment);
     }
 
     function setInventoryFilter(category) {
@@ -7439,17 +7658,72 @@
     // 计划 id / 记录 id / 标题 / 副标题 / 图标一律走 textContent 或 dataset，
     // 绝不拼进 innerHTML 或内联事件属性（防特殊字符断裂与存储型 XSS）。
     // -------------------------------------------------------------------------
+    // -------------------------------------------------------------------------
+    // 【安全 DOM 基础工具】
+    // 业务/用户文本一律走 textContent；事件一律 addEventListener 闭包，
+    // 不把 id / 名称 / 备注拼进 innerHTML 或内联事件属性。
+    // -------------------------------------------------------------------------
+    function createDomElement(tag, className = '', text = null) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== null && text !== undefined) node.textContent = String(text);
+      return node;
+    }
+
+    // 关键词高亮：只对纯文本分段，命中片段包 <mark>，绝不把未转义名称写回 innerHTML。
+    function appendHighlightedText(parent, text, keyword) {
+      const source = text == null ? '' : String(text);
+      const kw = keyword == null ? '' : String(keyword).trim();
+      if (!kw) {
+        parent.append(document.createTextNode(source));
+        return parent;
+      }
+      const lowerSource = source.toLowerCase();
+      const lowerKw = kw.toLowerCase();
+      let cursor = 0;
+      let index = lowerSource.indexOf(lowerKw);
+      while (index !== -1) {
+        if (index > cursor) parent.append(document.createTextNode(source.slice(cursor, index)));
+        const mark = document.createElement('mark');
+        mark.textContent = source.slice(index, index + kw.length);
+        parent.append(mark);
+        cursor = index + kw.length;
+        index = lowerSource.indexOf(lowerKw, cursor);
+      }
+      if (cursor < source.length) parent.append(document.createTextNode(source.slice(cursor)));
+      return parent;
+    }
+
+    // 图片源白名单：合法 base64 位图 data URL、同源 blob URL、受控 /uploads/ 路径。
+    // 拒绝外部 http(s)、协议相对地址、反斜杠、查询串与任何 .. 路径穿越，也拒绝 svg data URL。
     function safeImageSource(src) {
       const value = src == null ? '' : String(src).trim();
       if (!value) return '';
-      try {
-        const url = new URL(value, window.location.href);
-        if (url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'blob:') return url.href;
-        if (url.protocol === 'data:' && /^data:image\/(png|jpe?g|webp|gif);/i.test(value)) return value;
-        return '';
-      } catch (error) {
-        return '';
+
+      if (value.startsWith('/uploads/')) {
+        const path = value.slice('/uploads/'.length);
+        if (!path || path.includes('..') || path.includes('\\') || path.includes('//')) return '';
+        if (!/^[A-Za-z0-9][A-Za-z0-9._\-\/]*$/.test(path)) return '';
+        return value;
       }
+
+      const dataMatch = /^data:image\/(png|jpe?g|webp|gif|bmp);base64,([A-Za-z0-9+/=\s]+)$/i.exec(value);
+      if (dataMatch) {
+        const payload = dataMatch[2].replace(/\s+/g, '');
+        if (!payload || payload.length % 4 === 1) return '';
+        if (!/^[A-Za-z0-9+/]+={0,2}$/.test(payload)) return '';
+        return `data:image/${dataMatch[1].toLowerCase()};base64,${payload}`;
+      }
+
+      if (/^blob:/i.test(value)) {
+        try {
+          const url = new URL(value, window.location.href);
+          if (url.protocol === 'blob:' && url.origin === window.location.origin) return url.href;
+        } catch (error) {
+          return '';
+        }
+      }
+      return '';
     }
 
     // 旧内联入口（编辑/删除/打卡）统一走这里：异常只提示，不产生未处理的 promise 拒绝。
@@ -8304,26 +8578,34 @@
       const daysInMonth = (currentCalendarMonth === 2) ? 28 : ([4, 6, 9, 11].includes(currentCalendarMonth) ? 30 : 31);
       const firstDayOffset = 2;
 
-      let cellsHtml = '';
+      const fragment = document.createDocumentFragment();
       for (let i = 0; i < firstDayOffset; i++) {
-        cellsHtml += '<div class="aspect-square h-auto rounded-xl sm:rounded-2xl bg-transparent border-0 pointer-events-none"></div>';
+        fragment.append(createDomElement('div', 'aspect-square h-auto rounded-xl sm:rounded-2xl bg-transparent border-0 pointer-events-none'));
       }
 
       for (let day = 1; day <= daysInMonth; day++) {
         const isToday = (currentCalendarYear === 2026 && currentCalendarMonth === 9 && day === 11);
         const hasRecord = (day === 9 || day === 10 || day === 11);
-
-        cellsHtml += `
-          <div class="relative aspect-square h-auto rounded-xl sm:rounded-2xl border p-1 sm:p-1.5 flex items-center justify-center text-center cursor-pointer transition-all hover:scale-105 ${isToday ? 'bg-[#FFF0ED] border-[#FF6B57] shadow-sm font-black' : (hasRecord ? 'bg-white border-[#F0E8DC] hover:border-[#FEDBC5]' : 'bg-[#FAF7F2] border-transparent text-stone-400')}" onclick="BentoModal.open('dailyDiary', { year: ${currentCalendarYear}, month: ${currentCalendarMonth}, day: ${day} })">
-            ${isToday ? '<span class="calendar-today-dot absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#FF6B57] pointer-events-none"></span>' : ''}
-            <div class="calendar-day-content w-full flex flex-col items-center justify-center text-center leading-none gap-0.5">
-              <span class="${isToday ? 'text-[#FF6B57] font-black' : ''} text-[10px] sm:text-[11px] font-bold leading-none">${day}</span>
-              ${hasRecord ? '<div class="text-[8px] sm:text-[9px] font-black text-amber-600 truncate leading-tight mt-0.5">🍱 已打卡</div>' : ''}
-            </div>
-          </div>
-        `;
+        // 年月日恒为模块内整数，点击参数只进闭包，不拼内联事件
+        const cell = createDomElement(
+          'div',
+          `relative aspect-square h-auto rounded-xl sm:rounded-2xl border p-1 sm:p-1.5 flex items-center justify-center text-center cursor-pointer transition-all hover:scale-105 ${isToday ? 'bg-[#FFF0ED] border-[#FF6B57] shadow-sm font-black' : (hasRecord ? 'bg-white border-[#F0E8DC] hover:border-[#FEDBC5]' : 'bg-[#FAF7F2] border-transparent text-stone-400')}`
+        );
+        cell.addEventListener('click', () => {
+          BentoModal.open('dailyDiary', { year: currentCalendarYear, month: currentCalendarMonth, day });
+        });
+        if (isToday) {
+          cell.append(createDomElement('span', 'calendar-today-dot absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-[#FF6B57] pointer-events-none'));
+        }
+        const content = createDomElement('div', 'calendar-day-content w-full flex flex-col items-center justify-center text-center leading-none gap-0.5');
+        content.append(createDomElement('span', `${isToday ? 'text-[#FF6B57] font-black' : ''} text-[10px] sm:text-[11px] font-bold leading-none`, day));
+        if (hasRecord) {
+          content.append(createDomElement('div', 'text-[8px] sm:text-[9px] font-black text-amber-600 truncate leading-tight mt-0.5', '🍱 已打卡'));
+        }
+        cell.append(content);
+        fragment.append(cell);
       }
-      grid.innerHTML = cellsHtml;
+      grid.replaceChildren(fragment);
     }
 
     function renderFavorites() {
@@ -8386,41 +8668,58 @@
       }
 
       if (items.length === 0) {
-        container.innerHTML = '';
+        container.replaceChildren();
         if (emptyState) emptyState.classList.remove('hidden');
         return;
       }
       if (emptyState) emptyState.classList.add('hidden');
 
-      container.innerHTML = items.map(item => `
-        <div class="neo-card p-4 m-0 favorite-item-card flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 shadow-[var(--shadow-bento-sm)] hover:shadow-[var(--shadow-bento)] cursor-pointer" onclick="BentoModal.open('${item.type === 'cook' ? 'recipeDetail' : 'storeDetail'}', '${item.id}')">
-          <div>
-            <div class="flex items-start justify-between gap-3 mb-2.5">
-              <div class="flex items-center gap-3 min-w-0 flex-1">
-                <div class="fav-card-icon w-11 h-11 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0">
-                  ${item.icon}
-                </div>
-                <div class="min-w-0 flex-1">
-                  <h4 class="fav-card-title text-sm font-black text-stone-800 truncate m-0">${item.name}</h4>
-                  <div class="fav-card-subtext text-xs font-bold text-stone-500 mt-1">${item.subtext}</div>
-                </div>
-              </div>
-              <button class="fav-card-heart w-8 h-8 rounded-full border border-stone-200 bg-white flex items-center justify-center text-base hover:scale-110 text-[#FF6B57]" onclick="event.stopPropagation(); ${item.type === 'cook' ? `confirmToggleRecipeFavorite('${item.id}')` : `confirmToggleStoreFavorite('${item.id}')`}">
-                ♥
-              </button>
-            </div>
-            <div class="fav-card-detail p-3 rounded-2xl bg-[#FAF7F2] border border-[#F0E8DC] text-xs mb-3 truncate">
-              <span class="font-bold text-stone-700">${item.detail}</span>
-            </div>
-          </div>
-          <div class="flex items-center justify-between pt-2 border-t border-stone-100">
-            <button class="fav-card-cta neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]" onclick="event.stopPropagation(); BentoModal.open('${item.type === 'cook' ? 'recipeDetail' : 'storeDetail'}', '${item.id}')">
-              ${item.type === 'cook' ? '查看配方与做法' : '查看招牌菜单'}
-            </button>
-            <span class="text-[11px] font-bold text-stone-400">${item.categoryBadge}</span>
-          </div>
-        </div>
-      `).join('');
+      const fragment = document.createDocumentFragment();
+      items.forEach((item) => {
+        const isCook = item.type === 'cook';
+        const itemId = item.id != null ? String(item.id) : '';
+        const detailType = isCook ? 'recipeDetail' : 'storeDetail';
+        const card = createDomElement('div', 'neo-card p-4 m-0 favorite-item-card flex flex-col justify-between hover:-translate-y-1 transition-all duration-200 shadow-[var(--shadow-bento-sm)] hover:shadow-[var(--shadow-bento)] cursor-pointer');
+        card.addEventListener('click', () => BentoModal.open(detailType, itemId));
+
+        const body = document.createElement('div');
+        const head = createDomElement('div', 'flex items-start justify-between gap-3 mb-2.5');
+        const headLeft = createDomElement('div', 'flex items-center gap-3 min-w-0 flex-1');
+        headLeft.append(createDomElement('div', 'fav-card-icon w-11 h-11 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0', item.icon ?? ''));
+
+        const textBox = createDomElement('div', 'min-w-0 flex-1');
+        textBox.append(
+          createDomElement('h4', 'fav-card-title text-sm font-black text-stone-800 truncate m-0', item.name ?? ''),
+          createDomElement('div', 'fav-card-subtext text-xs font-bold text-stone-500 mt-1', item.subtext ?? '')
+        );
+        headLeft.append(textBox);
+
+        const heartButton = createDomElement('button', 'fav-card-heart w-8 h-8 rounded-full border border-stone-200 bg-white flex items-center justify-center text-base hover:scale-110 text-[#FF6B57]', '♥');
+        heartButton.type = 'button';
+        heartButton.addEventListener('click', (event) => {
+          event.stopPropagation();
+          if (isCook) confirmToggleRecipeFavorite(itemId);
+          else confirmToggleStoreFavorite(itemId);
+        });
+        head.append(headLeft, heartButton);
+
+        const detailBox = createDomElement('div', 'fav-card-detail p-3 rounded-2xl bg-[#FAF7F2] border border-[#F0E8DC] text-xs mb-3 truncate');
+        detailBox.append(createDomElement('span', 'font-bold text-stone-700', item.detail ?? ''));
+        body.append(head, detailBox);
+
+        const footer = createDomElement('div', 'flex items-center justify-between pt-2 border-t border-stone-100');
+        const cta = createDomElement('button', 'fav-card-cta neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]', isCook ? '查看配方与做法' : '查看招牌菜单');
+        cta.type = 'button';
+        cta.addEventListener('click', (event) => {
+          event.stopPropagation();
+          BentoModal.open(detailType, itemId);
+        });
+        footer.append(cta, createDomElement('span', 'text-[11px] font-bold text-stone-400', item.categoryBadge ?? ''));
+
+        card.append(body, footer);
+        fragment.append(card);
+      });
+      container.replaceChildren(fragment);
     }
 
     function setFavoriteFilter(filter) {
@@ -8696,6 +8995,22 @@
       renderWheelSlices();
     }
 
+    function createSvgElement(tag, attrs = {}) {
+      const node = document.createElementNS('http://www.w3.org/2000/svg', tag);
+      Object.keys(attrs).forEach((key) => node.setAttribute(key, String(attrs[key])));
+      return node;
+    }
+
+    function buildWheelSvgBase() {
+      const svg = createSvgElement('svg', { viewBox: '0 0 320 320', width: '100%', height: '100%' });
+      svg.append(
+        createSvgElement('circle', { cx: 160, cy: 160, r: 156, fill: '#FAF7F2' }),
+        createSvgElement('circle', { cx: 160, cy: 160, r: 150, fill: 'none', stroke: '#EFE6DA', 'stroke-width': 2 }),
+        createSvgElement('circle', { cx: 160, cy: 160, r: 144, fill: 'none', stroke: '#FEDBC5', 'stroke-width': 1.5, 'stroke-dasharray': '6, 8' })
+      );
+      return svg;
+    }
+
     function renderWheelSlices() {
       const rotor = document.getElementById('wheelRotor');
       if (!rotor) return;
@@ -8703,17 +9018,18 @@
       const n = items ? items.length : 0;
 
       if (n === 0) {
-        rotor.innerHTML = `
-          <svg viewBox="0 0 320 320" width="100%" height="100%">
-            <circle cx="160" cy="160" r="156" fill="#FAF7F2" />
-            <circle cx="160" cy="160" r="150" fill="none" stroke="#EFE6DA" stroke-width="2" />
-            <circle cx="160" cy="160" r="144" fill="none" stroke="#FEDBC5" stroke-width="1.5" stroke-dasharray="6, 8" />
-            <circle cx="160" cy="160" r="120" fill="#F3EDE2" />
-            <text x="160" y="145" text-anchor="middle" dominant-baseline="central" fill="#A8A29E" font-size="28">🍃</text>
-            <text x="160" y="180" text-anchor="middle" dominant-baseline="central" fill="#78716C" font-size="12" font-weight="900">暂无可转候选</text>
-            <text x="160" y="200" text-anchor="middle" dominant-baseline="central" fill="#A8A29E" font-size="10" font-weight="700">请前往对应专区添加</text>
-            <circle cx="160" cy="160" r="38" fill="#FAF7F2" stroke="#EFE6DA" stroke-width="2" />
-          </svg>`;
+        const svg = buildWheelSvgBase();
+        svg.append(
+          createSvgElement('circle', { cx: 160, cy: 160, r: 120, fill: '#F3EDE2' })
+        );
+        const leaf = createSvgElement('text', { x: 160, y: 145, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#A8A29E', 'font-size': 28 });
+        leaf.textContent = '🍃';
+        const emptyTitle = createSvgElement('text', { x: 160, y: 180, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#78716C', 'font-size': 12, 'font-weight': 900 });
+        emptyTitle.textContent = '暂无可转候选';
+        const emptyHint = createSvgElement('text', { x: 160, y: 200, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#A8A29E', 'font-size': 10, 'font-weight': 700 });
+        emptyHint.textContent = '请前往对应专区添加';
+        svg.append(leaf, emptyTitle, emptyHint, createSvgElement('circle', { cx: 160, cy: 160, r: 38, fill: '#FAF7F2', stroke: '#EFE6DA', 'stroke-width': 2 }));
+        rotor.replaceChildren(svg);
         return;
       }
 
@@ -8722,25 +9038,17 @@
         let displayTitle = item.title || '';
         if (displayTitle.length > 6) displayTitle = displayTitle.slice(0, 6) + '..';
         const color = WHEEL_PALETTE[0];
-        rotor.innerHTML = `
-          <svg viewBox="0 0 320 320" width="100%" height="100%">
-            <circle cx="160" cy="160" r="156" fill="#FAF7F2" />
-            <circle cx="160" cy="160" r="150" fill="none" stroke="#EFE6DA" stroke-width="2" />
-            <circle cx="160" cy="160" r="144" fill="none" stroke="#FEDBC5" stroke-width="1.5" stroke-dasharray="6, 8" />
-            <circle cx="160" cy="160" r="142" fill="${color}" stroke="#FAF7F2" stroke-width="3" />
-            <text x="160" y="75" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-size="13" font-weight="900">
-              ${displayTitle}
-            </text>
-            <circle cx="160" cy="160" r="38" fill="#FAF7F2" stroke="#EFE6DA" stroke-width="2" />
-          </svg>`;
+        const svg = buildWheelSvgBase();
+        svg.append(createSvgElement('circle', { cx: 160, cy: 160, r: 142, fill: color, stroke: '#FAF7F2', 'stroke-width': 3 }));
+        const label = createSvgElement('text', { x: 160, y: 75, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#FFFFFF', 'font-size': 13, 'font-weight': 900 });
+        label.textContent = displayTitle;
+        svg.append(label, createSvgElement('circle', { cx: 160, cy: 160, r: 38, fill: '#FAF7F2', stroke: '#EFE6DA', 'stroke-width': 2 }));
+        rotor.replaceChildren(svg);
         return;
       }
 
       const sliceAngle = 360 / n;
-      let svgHtml = `<svg viewBox="0 0 320 320" width="100%" height="100%">
-        <circle cx="160" cy="160" r="156" fill="#FAF7F2" />
-        <circle cx="160" cy="160" r="150" fill="none" stroke="#EFE6DA" stroke-width="2" />
-        <circle cx="160" cy="160" r="144" fill="none" stroke="#FEDBC5" stroke-width="1.5" stroke-dasharray="6, 8" />`;
+      const svg = buildWheelSvgBase();
 
       items.forEach((item, idx) => {
         const startDeg = idx * sliceAngle;
@@ -8765,18 +9073,32 @@
           ? `rotate(${midDeg} 160 160) rotate(180 255 160)`
           : `rotate(${midDeg} 160 160)`;
 
-        svgHtml += `
-          <path d="M 160 160 L ${x1} ${y1} A 142 142 0 ${largeArc} 1 ${x2} ${y2} Z" fill="${color}" stroke="#FAF7F2" stroke-width="3"/>
-          <text x="255" y="160" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-size="11" font-weight="900" transform="${textTransform}">
-            <tspan x="255" dy="0">${displayTitle}</tspan>
-          </text>`;
+        svg.append(createSvgElement('path', {
+          d: `M 160 160 L ${x1} ${y1} A 142 142 0 ${largeArc} 1 ${x2} ${y2} Z`,
+          fill: color,
+          stroke: '#FAF7F2',
+          'stroke-width': 3
+        }));
+
+        const text = createSvgElement('text', {
+          x: 255,
+          y: 160,
+          'text-anchor': 'middle',
+          'dominant-baseline': 'central',
+          fill: '#FFFFFF',
+          'font-size': 11,
+          'font-weight': 900,
+          transform: textTransform
+        });
+        const tspan = createSvgElement('tspan', { x: 255, dy: 0 });
+        // 候选名称（含菜谱/店铺名）只作为 SVG 文本节点写入，绝不参与标记解析
+        tspan.textContent = displayTitle;
+        text.append(tspan);
+        svg.append(text);
       });
 
-      svgHtml += `
-        <circle cx="160" cy="160" r="38" fill="#FAF7F2" stroke="#EFE6DA" stroke-width="2" />
-      </svg>`;
-
-      rotor.innerHTML = svgHtml;
+      svg.append(createSvgElement('circle', { cx: 160, cy: 160, r: 38, fill: '#FAF7F2', stroke: '#EFE6DA', 'stroke-width': 2 }));
+      rotor.replaceChildren(svg);
     }
 
     function cleanupActiveSpin(reason = 'cleanup') {
@@ -9269,36 +9591,62 @@
 
         if (badge) badge.innerText = currentPlans.length;
 
-        listEl.innerHTML = currentPlans.map(plan => `
-          <div class="p-3 bg-white border border-[#FEDBC5] rounded-2xl shadow-sm space-y-2" data-reminder-id="${plan.id}">
-            <div class="flex items-center justify-between gap-2">
-              <div class="flex items-center gap-2.5 min-w-0 flex-1">
-                <span class="text-xl w-9 h-9 rounded-xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center flex-shrink-0">${plan.icon}</span>
-                <div class="min-w-0">
-                  <div class="text-xs font-black text-stone-800 truncate">${plan.title}</div>
-                  <div class="text-[10.5px] text-[#FF6B57] font-bold flex items-center gap-1 mt-0.5">
-                    <span>⚠️ 原计划：${getDynamicDateLabel(plan)} ${plan.time || ''} (${plan.slot})</span>
-                  </div>
-                </div>
-              </div>
-              <span class="text-[10px] font-black px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 flex-shrink-0">已到期</span>
-            </div>
-            <div class="flex items-center justify-end gap-1.5 pt-1.5 border-t border-stone-100 flex-wrap">
-              <button type="button" class="neo-btn-primary text-[11px] py-1 px-3 shadow-sm bg-gradient-to-r from-emerald-500 to-teal-600 border-emerald-600 text-white" onclick="PlanReminderScheduler.handleItemCheckin('${plan.id}')">
-                ✓ 打卡
-              </button>
-              <button type="button" class="pill-btn text-[11px] py-1 px-2.5 border-[#FEDBC5] text-[#FF6B57] bg-[#FFF9F6] hover:bg-[#FF6B57] hover:text-white transition-all" onclick="PlanReminderScheduler.handleItemReschedule('${plan.id}')">
-                📅 改期
-              </button>
-              <button type="button" class="pill-btn text-[11px] py-1 px-2 text-stone-500 bg-stone-50 hover:bg-stone-100 transition-all" onclick="PlanReminderScheduler.handleItemSnooze('${plan.id}', 10)">
-                ⏳ 10分后
-              </button>
-              <button type="button" class="pill-btn text-[11px] py-1 px-1.5 text-stone-400 hover:text-red-500 hover:bg-red-50 transition-all" onclick="PlanReminderScheduler.handleItemDelete('${plan.id}')" title="移除计划">
-                🗑️
-              </button>
-            </div>
-          </div>
-        `).join('');
+        listEl.replaceChildren();
+        const fragment = document.createDocumentFragment();
+        currentPlans.forEach((plan) => {
+          const planId = plan && plan.id != null ? String(plan.id) : '';
+          const card = createDomElement('div', 'p-3 bg-white border border-[#FEDBC5] rounded-2xl shadow-sm space-y-2');
+          card.dataset.reminderId = planId;
+
+          const head = createDomElement('div', 'flex items-center justify-between gap-2');
+          const headLeft = createDomElement('div', 'flex items-center gap-2.5 min-w-0 flex-1');
+          headLeft.append(createDomElement('span', 'text-xl w-9 h-9 rounded-xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center flex-shrink-0', plan.icon ?? ''));
+
+          const info = createDomElement('div', 'min-w-0');
+          info.append(createDomElement('div', 'text-xs font-black text-stone-800 truncate', plan.title ?? ''));
+
+          const dateLine = createDomElement('div', 'text-[10.5px] text-[#FF6B57] font-bold flex items-center gap-1 mt-0.5');
+          dateLine.append(createDomElement('span', '', `⚠️ 原计划：${getDynamicDateLabel(plan)} ${plan.time || ''} (${plan.slot})`));
+          info.append(dateLine);
+          headLeft.append(info);
+          head.append(headLeft, createDomElement('span', 'text-[10px] font-black px-2 py-0.5 rounded-full bg-red-50 text-red-600 border border-red-200 flex-shrink-0', '已到期'));
+
+          const actions = createDomElement('div', 'flex items-center justify-end gap-1.5 pt-1.5 border-t border-stone-100 flex-wrap');
+          const actionSpecs = [
+            {
+              className: 'neo-btn-primary text-[11px] py-1 px-3 shadow-sm bg-gradient-to-r from-emerald-500 to-teal-600 border-emerald-600 text-white',
+              label: '✓ 打卡',
+              handler: () => this.handleItemCheckin(planId)
+            },
+            {
+              className: 'pill-btn text-[11px] py-1 px-2.5 border-[#FEDBC5] text-[#FF6B57] bg-[#FFF9F6] hover:bg-[#FF6B57] hover:text-white transition-all',
+              label: '📅 改期',
+              handler: () => this.handleItemReschedule(planId)
+            },
+            {
+              className: 'pill-btn text-[11px] py-1 px-2 text-stone-500 bg-stone-50 hover:bg-stone-100 transition-all',
+              label: '⏳ 10分后',
+              handler: () => this.handleItemSnooze(planId, 10)
+            },
+            {
+              className: 'pill-btn text-[11px] py-1 px-1.5 text-stone-400 hover:text-red-500 hover:bg-red-50 transition-all',
+              label: '🗑️',
+              title: '移除计划',
+              handler: () => this.handleItemDelete(planId)
+            }
+          ];
+          actionSpecs.forEach((spec) => {
+            const button = createDomElement('button', spec.className, spec.label);
+            button.type = 'button';
+            if (spec.title) button.title = spec.title;
+            button.addEventListener('click', spec.handler);
+            actions.append(button);
+          });
+
+          card.append(head, actions);
+          fragment.append(card);
+        });
+        listEl.append(fragment);
       },
 
       handleItemCheckin(planId) {
@@ -9519,13 +9867,26 @@
       if (meta?.unit != null) row.dataset.unit = meta.unit;
       row.dataset.optional = String(!!meta?.optional);
       row.dataset.isPrimary = String(!!meta?.isPrimary);
-      row.innerHTML = `
-        <input type="text" placeholder="食材名 (如 鸡腿肉)" value="" class="recipe-ing-name flex-1 px-3 py-1.5 rounded-xl border border-[#F0E8DC] bg-[#FAF7F2] text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:border-[#FF6B57]" />
-        <input type="text" placeholder="用量 (如 300g/半个)" value="" class="recipe-ing-amount w-28 px-3 py-1.5 rounded-xl border border-[#F0E8DC] bg-[#FAF7F2] text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:border-[#FF6B57]" />
-        <button type="button" onclick="removeRecipeIngRow(this)" class="w-6 h-6 rounded-full border border-transparent text-stone-400 hover:text-red-500 hover:bg-red-50 text-xs font-black flex items-center justify-center transition-all">✕</button>
-      `;
-      row.querySelector('.recipe-ing-name').value = String(name ?? '');
-      row.querySelector('.recipe-ing-amount').value = String(amount ?? '');
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.placeholder = '食材名 (如 鸡腿肉)';
+      nameInput.className = 'recipe-ing-name flex-1 px-3 py-1.5 rounded-xl border border-[#F0E8DC] bg-[#FAF7F2] text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:border-[#FF6B57]';
+
+      const amountInput = document.createElement('input');
+      amountInput.type = 'text';
+      amountInput.placeholder = '用量 (如 300g/半个)';
+      amountInput.className = 'recipe-ing-amount w-28 px-3 py-1.5 rounded-xl border border-[#F0E8DC] bg-[#FAF7F2] text-xs font-bold text-stone-800 focus:bg-white focus:outline-none focus:border-[#FF6B57]';
+
+      const removeButton = createDomElement('button', 'w-6 h-6 rounded-full border border-transparent text-stone-400 hover:text-red-500 hover:bg-red-50 text-xs font-black flex items-center justify-center transition-all', '✕');
+      removeButton.type = 'button';
+      removeButton.addEventListener('click', () => {
+        removeRecipeIngRow(removeButton);
+      });
+
+      row.append(nameInput, amountInput, removeButton);
+      nameInput.value = String(name ?? '');
+      amountInput.value = String(amount ?? '');
       container.appendChild(row);
     }
 
@@ -9559,22 +9920,43 @@
       row.className = 'recipe-step-row p-2.5 bg-[#FAF7F2] border border-[#F0E8DC] rounded-xl space-y-1.5 mb-2';
       if (meta?.id) row.dataset.stepId = meta.id;
       if (meta?.imagePath != null) row.dataset.imagePath = meta.imagePath;
-      row.innerHTML = `
-        <div class="flex items-center justify-between">
-          <span class="step-num font-black text-[#FF6B57] text-[11px]">步骤 ${count}</span>
-          <button type="button" onclick="removeRecipeStepRow(this)" class="w-5 h-5 rounded-full text-stone-300 hover:text-red-500 text-xs font-black flex items-center justify-center transition-all">✕</button>
-        </div>
-        <input type="text" placeholder="步骤小标题 (如 蛋液充分打散快速滑炒)" value="" class="recipe-step-title w-full px-2.5 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
-        <textarea rows="2" placeholder="详细做法要领 (如 鸡蛋加少许盐和一滴料酒充分打散...)" class="recipe-step-desc w-full p-2 rounded-lg border border-[#F0E8DC] bg-white text-xs text-stone-700 focus:outline-none focus:border-[#FF6B57]"></textarea>
-        <div class="flex items-center gap-2 pt-0.5">
-          <span class="text-stone-400 text-[10px] font-bold">⏱ 倒计时(可选分钟数):</span>
-          <input type="number" min="0" max="180" placeholder="0" value="" class="recipe-step-timer w-16 px-2 py-1 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
-          <span class="text-stone-400 text-[10px]">分</span>
-        </div>
-      `;
-      row.querySelector('.recipe-step-title').value = String(title ?? '');
-      row.querySelector('.recipe-step-desc').textContent = String(desc ?? '');
-      row.querySelector('.recipe-step-timer').value = String(timer ?? '');
+
+      const head = createDomElement('div', 'flex items-center justify-between');
+      const stepNum = createDomElement('span', 'step-num font-black text-[#FF6B57] text-[11px]', `步骤 ${count}`);
+      const removeButton = createDomElement('button', 'w-5 h-5 rounded-full text-stone-300 hover:text-red-500 text-xs font-black flex items-center justify-center transition-all', '✕');
+      removeButton.type = 'button';
+      removeButton.addEventListener('click', () => {
+        removeRecipeStepRow(removeButton);
+      });
+      head.append(stepNum, removeButton);
+
+      const titleInput = document.createElement('input');
+      titleInput.type = 'text';
+      titleInput.placeholder = '步骤小标题 (如 蛋液充分打散快速滑炒)';
+      titleInput.className = 'recipe-step-title w-full px-2.5 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]';
+
+      const descInput = document.createElement('textarea');
+      descInput.rows = 2;
+      descInput.placeholder = '详细做法要领 (如 鸡蛋加少许盐和一滴料酒充分打散...)';
+      descInput.className = 'recipe-step-desc w-full p-2 rounded-lg border border-[#F0E8DC] bg-white text-xs text-stone-700 focus:outline-none focus:border-[#FF6B57]';
+
+      const timerRow = createDomElement('div', 'flex items-center gap-2 pt-0.5');
+      const timerInput = document.createElement('input');
+      timerInput.type = 'number';
+      timerInput.min = '0';
+      timerInput.max = '180';
+      timerInput.placeholder = '0';
+      timerInput.className = 'recipe-step-timer w-16 px-2 py-1 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]';
+      timerRow.append(
+        createDomElement('span', 'text-stone-400 text-[10px] font-bold', '⏱ 倒计时(可选分钟数):'),
+        timerInput,
+        createDomElement('span', 'text-stone-400 text-[10px]', '分')
+      );
+
+      row.append(head, titleInput, descInput, timerRow);
+      titleInput.value = String(title ?? '');
+      descInput.textContent = String(desc ?? '');
+      timerInput.value = String(timer ?? '');
       container.appendChild(row);
     }
 
@@ -9611,20 +9993,37 @@
         if (metadata.icon != null) row.dataset.menuIcon = String(metadata.icon);
         if (metadata.desc != null) row.dataset.menuDesc = String(metadata.desc);
       }
-      row.innerHTML = `
-        <input type="text" placeholder="菜品名称 (如 招牌照烧鸡排便当)" class="store-dish-name flex-1 px-2.5 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
-        <div class="flex items-center gap-1">
-          <span class="text-stone-400 text-[10px]">¥</span>
-          <input type="number" min="1" max="999" placeholder="单价" class="store-dish-price w-16 px-2 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
-        </div>
-        <label class="flex items-center gap-1 cursor-pointer font-bold text-stone-600 text-[10.5px]">
-          <input type="checkbox" ${isSig ? 'checked' : ''} class="store-dish-sig w-3.5 h-3.5 rounded text-[#FF6B57] accent-[#FF6B57]" />
-          招牌
-        </label>
-        <button type="button" onclick="removeStoreMenuRow(this)" class="w-5 h-5 rounded-full text-stone-300 hover:text-red-500 text-xs font-black flex items-center justify-center transition-all">✕</button>
-      `;
-      row.querySelector('.store-dish-name').value = name ?? '';
-      row.querySelector('.store-dish-price').value = price ?? '';
+
+      const nameInput = document.createElement('input');
+      nameInput.type = 'text';
+      nameInput.placeholder = '菜品名称 (如 招牌照烧鸡排便当)';
+      nameInput.className = 'store-dish-name flex-1 px-2.5 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]';
+
+      const priceBox = createDomElement('div', 'flex items-center gap-1');
+      const priceInput = document.createElement('input');
+      priceInput.type = 'number';
+      priceInput.min = '1';
+      priceInput.max = '999';
+      priceInput.placeholder = '单价';
+      priceInput.className = 'store-dish-price w-16 px-2 py-1.5 rounded-lg border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]';
+      priceBox.append(createDomElement('span', 'text-stone-400 text-[10px]', '¥'), priceInput);
+
+      const sigLabel = createDomElement('label', 'flex items-center gap-1 cursor-pointer font-bold text-stone-600 text-[10.5px]');
+      const sigCheckbox = document.createElement('input');
+      sigCheckbox.type = 'checkbox';
+      sigCheckbox.className = 'store-dish-sig w-3.5 h-3.5 rounded text-[#FF6B57] accent-[#FF6B57]';
+      sigCheckbox.checked = Boolean(isSig);
+      sigLabel.append(sigCheckbox, document.createTextNode('招牌'));
+
+      const removeButton = createDomElement('button', 'w-5 h-5 rounded-full text-stone-300 hover:text-red-500 text-xs font-black flex items-center justify-center transition-all', '✕');
+      removeButton.type = 'button';
+      removeButton.addEventListener('click', () => {
+        removeStoreMenuRow(removeButton);
+      });
+
+      row.append(nameInput, priceBox, sigLabel, removeButton);
+      nameInput.value = name ?? '';
+      priceInput.value = price ?? '';
       container.appendChild(row);
     }
 
@@ -9672,11 +10071,13 @@
       const barWrap = document.getElementById(`stepTimerBarWrap-${stepIdx}`);
       const bar = document.getElementById(`stepTimerBar-${stepIdx}`);
 
+      if (btn?.dataset.timerDone === 'true') return;
+
       // 若当前特定步骤正在运行中 -> 暂停
       if (activeStepTimers[stepKey] && !activeStepTimers[stepKey].isPaused) {
         clearInterval(activeStepTimers[stepKey].intervalId);
         activeStepTimers[stepKey].isPaused = true;
-        if (btn) btn.innerHTML = `▶ 继续计时 (${formatSeconds(activeStepTimers[stepKey].remainingSec)})`;
+        if (btn) btn.textContent = `▶ 继续计时 (${formatSeconds(activeStepTimers[stepKey].remainingSec)})`;
         updateGlobalTimerCapsule();
         showToast(`步骤 ${stepIdx + 1} 计时已暂停`, 'info');
         return;
@@ -9731,14 +10132,16 @@
           delete activeStepTimers[stepKey];
 
           if (btn) {
-            btn.innerHTML = '✓ 计时完成！(点击关闭闹铃)';
+            btn.dataset.timerDone = 'true';
+            btn.textContent = '✓ 计时完成！(点击关闭闹铃)';
             btn.classList.add('animate-bounce');
-            btn.onclick = () => {
+            btn.addEventListener('click', () => {
               BentoAudioManager.stopTimerAlarm(stepKey);
-              btn.innerHTML = '✓ 计时已完成';
+              btn.textContent = '✓ 计时已完成';
               btn.classList.remove('animate-bounce');
-            };
+            }, { once: true });
           }
+
           if (bar) bar.style.width = '0%';
 
           BentoAudioManager.playTimerAlarm(stepKey);
@@ -9748,7 +10151,7 @@
           showToast(`⏱️ 步骤 ${stepIdx + 1} 倒计时完成！请开盖调味或出锅`, '🔥');
           updateGlobalTimerCapsule();
         } else {
-          if (btn) btn.innerHTML = `⏳ 倒数 ${formatSeconds(remaining)}`;
+          if (btn) btn.textContent = `⏳ 倒数 ${formatSeconds(remaining)}`;
           if (bar) bar.style.width = `${(remaining / totalSeconds) * 100}%`;
           updateGlobalTimerCapsule();
         }
@@ -10030,36 +10433,49 @@
       if (badge) badge.innerText = `${tools.length} 件设备在库`;
 
       if (tools.length === 0) {
-        grid.innerHTML = `
-          <div class="col-span-full p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100">
-            <span class="text-3xl block mb-2">🍳</span>
-            <p class="font-bold text-xs">厨房设备库暂无设备，点击上方按钮录入常用烹饪厨具吧！</p>
-          </div>
-        `;
+        const empty = createDomElement('div', 'col-span-full p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100');
+        empty.append(
+          createDomElement('span', 'text-3xl block mb-2', '🍳'),
+          createDomElement('p', 'font-bold text-xs', '厨房设备库暂无设备，点击上方按钮录入常用烹饪厨具吧！')
+        );
+        grid.replaceChildren(empty);
         return;
       }
 
-      grid.innerHTML = tools.map(t => {
+      const fragment = document.createDocumentFragment();
+      tools.forEach((t) => {
+        const toolId = t && t.id != null ? String(t.id) : '';
+        const toolName = t && t.name != null ? String(t.name) : '';
         const isGood = t.status === '状态良好';
-        return `
-          <div class="neo-card p-3.5 m-0 relative group hover:border-[#FEDBC5] transition-all">
-            <button class="w-5 h-5 rounded-full bg-stone-100 hover:bg-red-50 hover:text-red-500 text-stone-400 text-xs font-black absolute top-2.5 right-2.5 flex items-center justify-center transition-all" onclick="deleteTool('${t.id}', '${t.name}')" title="删除该工具">✕</button>
-            <div class="flex items-start gap-3">
-              <span class="text-3xl p-1 bg-[#FAF7F2] rounded-xl border border-[#F0E8DC]">${t.icon ?? ''}</span>
-              <div>
-                <h4 class="text-xs font-black text-stone-800 m-0">${t.name}</h4>
-                <div class="flex items-center gap-1.5 mt-1">
-                  <span class="px-2 py-0.5 rounded-full text-[9px] font-black ${isGood ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}">
-                    ${t.status ?? '未标注'}
-                  </span>
-                  ${t.category ? `<span class="text-[9.5px] font-bold text-stone-400">#${t.category}</span>` : ''}
-                </div>
-              </div>
-            </div>
-            ${t.notes ? `<p class="text-[10px] text-stone-500 mt-2 m-0 bg-[#FAF7F2] p-1.5 rounded-lg border border-[#F0E8DC] line-clamp-2">${t.notes}</p>` : ''}
-          </div>
-        `;
-      }).join('');
+
+        const card = createDomElement('div', 'neo-card p-3.5 m-0 relative group hover:border-[#FEDBC5] transition-all');
+
+        const deleteButton = createDomElement('button', 'w-5 h-5 rounded-full bg-stone-100 hover:bg-red-50 hover:text-red-500 text-stone-400 text-xs font-black absolute top-2.5 right-2.5 flex items-center justify-center transition-all', '✕');
+        deleteButton.type = 'button';
+        deleteButton.title = '删除该工具';
+        deleteButton.addEventListener('click', () => {
+          runSilentAction(() => deleteTool(toolId, toolName));
+        });
+
+        const row = createDomElement('div', 'flex items-start gap-3');
+        row.append(createDomElement('span', 'text-3xl p-1 bg-[#FAF7F2] rounded-xl border border-[#F0E8DC]', t.icon ?? ''));
+
+        const info = document.createElement('div');
+        info.append(createDomElement('h4', 'text-xs font-black text-stone-800 m-0', toolName));
+
+        const badgeRow = createDomElement('div', 'flex items-center gap-1.5 mt-1');
+        badgeRow.append(createDomElement('span', `px-2 py-0.5 rounded-full text-[9px] font-black ${isGood ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'}`, t.status ?? '未标注'));
+        if (t.category) badgeRow.append(createDomElement('span', 'text-[9.5px] font-bold text-stone-400', `#${t.category}`));
+        info.append(badgeRow);
+        row.append(info);
+
+        card.append(deleteButton, row);
+        if (t.notes) {
+          card.append(createDomElement('p', 'text-[10px] text-stone-500 mt-2 m-0 bg-[#FAF7F2] p-1.5 rounded-lg border border-[#F0E8DC] line-clamp-2', t.notes));
+        }
+        fragment.append(card);
+      });
+      grid.replaceChildren(fragment);
     }
 
     function handleToolFormSubmit(e) {
@@ -10158,15 +10574,19 @@
       if (!slotView) return;
 
       const data = currentRecordPhotos[slot];
-      if (data) {
-        slotView.innerHTML = `<img src="${data}" class="w-full h-full object-cover rounded-xl" />`;
+      const safeSrc = data ? safeImageSource(data) : '';
+      if (safeSrc) {
+        const image = document.createElement('img');
+        image.className = 'w-full h-full object-cover rounded-xl';
+        image.src = safeSrc;
+        image.alt = '';
+        slotView.replaceChildren(image);
         if (removeBtn) removeBtn.classList.remove('hidden');
       } else {
         const isCover = slot === 0;
-        slotView.innerHTML = `
-          <span class="text-base ${isCover ? 'text-[#FF6B57]' : 'text-stone-300'}">${isCover ? '📷' : '➕'}</span>
-          <span class="text-[9px] font-bold text-stone-400 mt-0.5">${isCover ? '主图相框' : `相框 ${slot+1}`}</span>
-        `;
+        const icon = createDomElement('span', `text-base ${isCover ? 'text-[#FF6B57]' : 'text-stone-300'}`, isCover ? '📷' : '➕');
+        const label = createDomElement('span', 'text-[9px] font-bold text-stone-400 mt-0.5', isCover ? '主图相框' : `相框 ${slot+1}`);
+        slotView.replaceChildren(icon, label);
         if (removeBtn) removeBtn.classList.add('hidden');
       }
     }
@@ -10188,8 +10608,9 @@
     function openImageLightbox(src) {
       const modal = document.getElementById('modalImageLightbox');
       const img = document.getElementById('lightboxImg');
-      if (modal && img) {
-        img.src = src;
+      const safeSrc = safeImageSource(src);
+      if (modal && img && safeSrc) {
+        img.src = safeSrc;
         modal.classList.remove('hidden');
       }
     }
@@ -10383,14 +10804,19 @@
       const barWidth = 26;
       const step = w / 7;
 
-      let svg = `<svg viewBox="0 0 ${w} ${h}" class="w-full h-full">`;
-      
-      // 2000 kcal 基准虚线
+      // 数据为确定数值（无业务文本），SVG 走 createElementNS，不拼 innerHTML
+      const svg = createSvgElement('svg', { viewBox: `0 0 ${w} ${h}`, class: 'w-full h-full' });
+
       const targetY = h - (2000 / maxCal) * (h - 30) - 20;
-      svg += `
-        <line x1="10" y1="${targetY}" x2="${w-10}" y2="${targetY}" stroke="#FF6B57" stroke-dasharray="4,4" stroke-opacity="0.4" stroke-width="1.5" />
-        <text x="${w-12}" y="${targetY - 4}" fill="#FF6B57" font-size="9" font-weight="900" text-anchor="end">2000 kcal 目标线</text>
-      `;
+      svg.append(createSvgElement('line', {
+        x1: 10, y1: targetY, x2: w - 10, y2: targetY,
+        stroke: '#FF6B57', 'stroke-dasharray': '4,4', 'stroke-opacity': 0.4, 'stroke-width': 1.5
+      }));
+      const targetLabel = createSvgElement('text', {
+        x: w - 12, y: targetY - 4, fill: '#FF6B57', 'font-size': 9, 'font-weight': 900, 'text-anchor': 'end'
+      });
+      targetLabel.textContent = '2000 kcal 目标线';
+      svg.append(targetLabel);
 
       calories.forEach((cal, idx) => {
         const x = idx * step + step / 2 - barWidth / 2;
@@ -10398,17 +10824,26 @@
         const y = h - barH - 22;
         const isOver = cal > 2000;
 
-        svg += `
-          <rect x="${x}" y="${y}" width="${barWidth}" height="${barH}" rx="6" fill="${isOver ? '#FF8575' : '#6ABF69'}" opacity="0.85">
-            <title>${days[idx]}: ${cal} kcal</title>
-          </rect>
-          <text x="${x + barWidth/2}" y="${y - 4}" fill="#78716C" font-size="9.5" font-weight="bold" text-anchor="middle">${cal}</text>
-          <text x="${x + barWidth/2}" y="${h - 6}" fill="#A8A29E" font-size="10" font-weight="bold" text-anchor="middle">${days[idx]}</text>
-        `;
+        const rect = createSvgElement('rect', {
+          x, y, width: barWidth, height: barH, rx: 6,
+          fill: isOver ? '#FF8575' : '#6ABF69', opacity: 0.85
+        });
+        const title = createSvgElement('title', {});
+        title.textContent = `${days[idx]}: ${cal} kcal`;
+        rect.append(title);
+
+        const valueLabel = createSvgElement('text', {
+          x: x + barWidth / 2, y: y - 4, fill: '#78716C', 'font-size': 9.5, 'font-weight': 'bold', 'text-anchor': 'middle'
+        });
+        valueLabel.textContent = String(cal);
+        const dayLabel = createSvgElement('text', {
+          x: x + barWidth / 2, y: h - 6, fill: '#A8A29E', 'font-size': 10, 'font-weight': 'bold', 'text-anchor': 'middle'
+        });
+        dayLabel.textContent = days[idx];
+        svg.append(rect, valueLabel, dayLabel);
       });
 
-      svg += '</svg>';
-      wrap.innerHTML = svg;
+      wrap.replaceChildren(svg);
     }
 
     function renderChannelDonutChart(pctCook, pctTakeout, pctDineIn) {
@@ -10417,38 +10852,40 @@
 
       const r = 50;
       const c = 2 * Math.PI * r;
-      const offCook = 0;
       const strokeCook = (pctCook / 100) * c;
       const strokeTakeout = (pctTakeout / 100) * c;
       const strokeDineIn = (pctDineIn / 100) * c;
 
-      const svg = `
-        <svg viewBox="0 0 140 140" class="w-32 h-32">
-          <circle cx="70" cy="70" r="${r}" fill="none" stroke="#F5EFE6" stroke-width="16" />
-          
-          <!-- 自烹 (绿) -->
-          <circle cx="70" cy="70" r="${r}" fill="none" stroke="#6ABF69" stroke-width="16"
-                  stroke-dasharray="${strokeCook} ${c - strokeCook}"
-                  stroke-dashoffset="0"
-                  transform="rotate(-90 70 70)" stroke-linecap="round" />
-          
-          <!-- 外卖 (橙) -->
-          <circle cx="70" cy="70" r="${r}" fill="none" stroke="#FFC53D" stroke-width="16"
-                  stroke-dasharray="${strokeTakeout} ${c - strokeTakeout}"
-                  stroke-dashoffset="${-strokeCook}"
-                  transform="rotate(-90 70 70)" stroke-linecap="round" />
-
-          <!-- 堂食 (紫) -->
-          <circle cx="70" cy="70" r="${r}" fill="none" stroke="#B388FF" stroke-width="16"
-                  stroke-dasharray="${strokeDineIn} ${c - strokeDineIn}"
-                  stroke-dashoffset="${-(strokeCook + strokeTakeout)}"
-                  transform="rotate(-90 70 70)" stroke-linecap="round" />
-
-          <text x="70" y="66" text-anchor="middle" font-size="11" font-weight="black" fill="#2D2621">下厨率</text>
-          <text x="70" y="82" text-anchor="middle" font-size="14" font-weight="900" fill="#6ABF69">${pctCook}%</text>
-        </svg>
-      `;
-      wrap.innerHTML = svg;
+      // 百分比是确定数值（纯数字），SVG 用 createElementNS 构造，不经过任何标记解析
+      const svg = createSvgElement('svg', { viewBox: '0 0 140 140', class: 'w-32 h-32' });
+      svg.append(createSvgElement('circle', { cx: 70, cy: 70, r, fill: 'none', stroke: '#F5EFE6', 'stroke-width': 16 }));
+      svg.append(createSvgElement('circle', {
+        cx: 70, cy: 70, r, fill: 'none', stroke: '#6ABF69', 'stroke-width': 16,
+        'stroke-dasharray': `${strokeCook} ${c - strokeCook}`,
+        'stroke-dashoffset': 0,
+        transform: 'rotate(-90 70 70)',
+        'stroke-linecap': 'round'
+      }));
+      svg.append(createSvgElement('circle', {
+        cx: 70, cy: 70, r, fill: 'none', stroke: '#FFC53D', 'stroke-width': 16,
+        'stroke-dasharray': `${strokeTakeout} ${c - strokeTakeout}`,
+        'stroke-dashoffset': -strokeCook,
+        transform: 'rotate(-90 70 70)',
+        'stroke-linecap': 'round'
+      }));
+      svg.append(createSvgElement('circle', {
+        cx: 70, cy: 70, r, fill: 'none', stroke: '#B388FF', 'stroke-width': 16,
+        'stroke-dasharray': `${strokeDineIn} ${c - strokeDineIn}`,
+        'stroke-dashoffset': -(strokeCook + strokeTakeout),
+        transform: 'rotate(-90 70 70)',
+        'stroke-linecap': 'round'
+      }));
+      const label = createSvgElement('text', { x: 70, y: 66, 'text-anchor': 'middle', 'font-size': 11, 'font-weight': 'black', fill: '#2D2621' });
+      label.textContent = '下厨率';
+      const value = createSvgElement('text', { x: 70, y: 82, 'text-anchor': 'middle', 'font-size': 14, 'font-weight': 900, fill: '#6ABF69' });
+      value.textContent = `${pctCook}%`;
+      svg.append(label, value);
+      wrap.replaceChildren(svg);
     }
 
     // -------------------------------------------------------------------------
@@ -10803,11 +11240,17 @@
       }));
     }
 
+    function detailEntityId(payload) {
+      return payload && typeof payload === 'object' ? payload.id : payload;
+    }
+
     function openEditRecipe(recipeId) {
+      // 详情 DTO 交由 adapter 重新读取远端详情，避免编辑使用缺少关系字段的缓存。
       BentoModal.open('recipeForm', recipeId);
     }
 
     function confirmDeleteRecipe(recipeId) {
+      recipeId = detailEntityId(recipeId);
       const recipe = BentoService.recipes.getById ? BentoService.recipes.getById(recipeId) : null;
       const name = recipe ? recipe.name : '该菜谱';
       return runDelete(() => requestDestructiveConfirm({
@@ -10823,6 +11266,7 @@
     }
 
     function confirmDeletePantryItem(itemId) {
+      itemId = detailEntityId(itemId);
       const item = BentoService.pantry.getById ? BentoService.pantry.getById(itemId) : null;
       const name = item ? item.name : '该食材';
       return runDelete(() => requestDestructiveConfirm({
@@ -10838,6 +11282,7 @@
     }
 
     function confirmDeleteStore(storeId) {
+      storeId = detailEntityId(storeId);
       const store = BentoService.stores.getById ? BentoService.stores.getById(storeId) : null;
       const name = store ? store.name : '该店铺';
       return runDelete(() => requestDestructiveConfirm({
@@ -10867,6 +11312,7 @@
     }
 
     async function confirmToggleRecipeFavorite(recipeId) {
+      recipeId = detailEntityId(recipeId);
       const r = BentoService.recipes.getById(recipeId);
       if (!r) return;
       if (!r.favorite) {
@@ -10885,6 +11331,7 @@
     }
 
     async function confirmToggleStoreFavorite(storeId) {
+      storeId = detailEntityId(storeId);
       const s = BentoService.stores.getById(storeId);
       if (!s) return;
       if (!s.favorite) {

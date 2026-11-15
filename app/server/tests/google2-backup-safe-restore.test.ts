@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
-import { dirname, join, parse, resolve } from 'node:path';
+import { dirname, join, parse, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { ZipArchive } from 'archiver';
@@ -324,11 +324,20 @@ describe('备份安全恢复集成', () => {
     const staging = resolveRestoreTempDirectory();
     const defaultDatabasePath = resolve(projectRoot, 'data/test.db');
 
-    expect(uploads.toLowerCase().startsWith(resolve(tmpdir()).toLowerCase())).toBe(true);
-    expect(staging.toLowerCase()).toBe(dirname(databasePath).toLowerCase());
-    // 默认 repo/data/test.db 下 uploads 位于另一块磁盘（临时盘）。
-    if (resolve(databasePath).toLowerCase() === defaultDatabasePath.toLowerCase()) {
-      expect(parse(uploads).root.toLowerCase()).not.toBe(parse(databasePath).root.toLowerCase());
+    if (process.env.DAFAN_ISOLATION_ROOT !== undefined) {
+      const isolationRoot = resolve(process.env.DAFAN_ISOLATION_ROOT).toLowerCase();
+      expect(uploads.toLowerCase().startsWith(`${isolationRoot}${sep}`)).toBe(true);
+      expect(uploads.toLowerCase()).not.toBe(dirname(databasePath).toLowerCase());
+      expect(uploads.toLowerCase()).not.toBe(resolve(projectRoot, 'data/uploads').toLowerCase());
+      expect(staging.toLowerCase()).toBe(resolve(isolationRoot, '.tmp').toLowerCase());
+      expect(parse(staging).root.toLowerCase()).toBe(parse(databasePath).root.toLowerCase());
+    } else {
+      expect(uploads.toLowerCase().startsWith(resolve(tmpdir()).toLowerCase())).toBe(true);
+      expect(staging.toLowerCase()).toBe(dirname(databasePath).toLowerCase());
+      // 默认 repo/data/test.db 下 uploads 位于另一块磁盘（临时盘）。
+      if (resolve(databasePath).toLowerCase() === defaultDatabasePath.toLowerCase()) {
+        expect(parse(uploads).root.toLowerCase()).not.toBe(parse(databasePath).root.toLowerCase());
+      }
     }
 
     const uploadPath = join(uploads, 'ac1-restore-original.png');
