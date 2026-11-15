@@ -6289,11 +6289,11 @@
           if (submitBtn) submitBtn.innerText = '确认排入计划';
 
           if (payload && payload.targetType === 'recipe') {
-            initialTargetVal = `recipe:${payload.targetId}`;
+            initialTargetVal = `recipe:${detailEntityId(payload.targetId)}`;
             initialChannel = 'cook';
           } else if (payload && payload.targetType === 'store') {
             const dishName = payload.targetName || '招牌特色便当';
-            initialTargetVal = `store:${payload.targetId}:${dishName}`;
+            initialTargetVal = `store:${detailEntityId(payload.targetId)}:${dishName}`;
             initialChannel = payload.channel || 'takeout';
           }
         }

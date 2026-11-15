@@ -1227,6 +1227,25 @@ describe('T-004R 收藏与编辑关系数据完整性', () => {
 });
 
 describe('T-004R 详情 DTO 动作与计时完成回归', () => {
+  it.each(['recipes', 'stores'] as const)('%s 详情排餐 DTO 自动预选并提交当前真实 ID', async (domain) => {
+    bootInline();
+    const entity = domain === 'recipes' ? recipeFixture(PAYLOADS.quotes) : storeFixture(PAYLOADS.quotes);
+    service()[domain].data = [entity];
+    const modal = (window as any).BentoModal;
+    modal.setupPlanPicker({ targetType: domain === 'recipes' ? 'recipe' : 'store', targetId: entity });
+    const selected = (document.getElementById('planPickerSelectTarget') as HTMLInputElement).value;
+    expect(selected).toContain(entity.id);
+    expect(document.getElementById('comboboxTriggerText')?.textContent).toContain(entity.name);
+    const add = vi.spyOn(service().plans, 'add').mockReturnValue(true);
+    modal.handlePlanPickerSubmit({ preventDefault: vi.fn() });
+    expect(add).toHaveBeenCalledOnce();
+    expect(add.mock.calls[0][0]).toMatchObject({
+      targetId: entity.id,
+      targetType: domain === 'recipes' ? 'recipe' : 'store'
+    });
+    expect((window as any).__xss).toBeUndefined();
+  });
+
   it.each(['recipes', 'stores'] as const)('%s 收藏入口接受详情 DTO 并传原始 ID', async (domain) => {
     bootInline();
     const entity = domain === 'recipes' ? recipeFixture(PAYLOADS.quotes) : storeFixture(PAYLOADS.quotes);
