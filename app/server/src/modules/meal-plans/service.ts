@@ -11,6 +11,7 @@ import type {
 
 import { VersionConflictError } from '../../database/optimistic-lock.js';
 import { recordDeletedItem } from '../../database/deleted-items.js';
+import { isValidBusinessDate } from '../calendar/business-date.js';
 import { recordDtoWithPhotos } from '../meal-records/service.js';
 
 export interface PlanItemInput {
@@ -190,7 +191,7 @@ function httpError(statusCode: number, message: string): Error {
 }
 
 function validatePlan(input: PlanInput): void {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.planDate)) throw httpError(400, '计划日期必须使用 YYYY-MM-DD 格式');
+  if (!isValidBusinessDate(input.planDate)) throw httpError(400, '计划日期必须使用 YYYY-MM-DD 格式且为真实日期');
   if (!Number.isInteger(input.dinerCount) || input.dinerCount < 0) throw httpError(400, '食用人数必须是非负整数');
   cleanedPlanTime(input.time);
   cleanedPlanText(input.title, '计划标题', PLAN_TITLE_LIMIT);
@@ -311,6 +312,7 @@ export async function updatePlan(database: PrismaClient, id: string, version: nu
     const merged: PlanInput = {
       planDate: input.planDate ?? current.planDate,
       mealType: input.mealType ?? current.mealType,
+      // 省略 dinerCount → 保留原值（PlanPicker 未提供人数控件，不得被静默覆盖成 1）。
       dinerCount: input.dinerCount ?? current.dinerCount,
       status: input.status ?? current.status,
       notes: input.notes === undefined ? current.notes : input.notes,
@@ -322,27 +324,48 @@ export async function updatePlan(database: PrismaClient, id: string, version: nu
       items: input.items
     };
     validatePlan(merged);
+    // 唯一键预检：日期/餐次撞已有计划时给可读 409（与 createPlan 同一提示），
+    // 而不是把 Prisma P2002 冒成 500「服务器内部错误」。软删除行同样占用唯一键。
+    if (merged.planDate !== current.planDate || merged.mealType !== current.mealType) {
+      const clashing = await tx.mealPlan.findUnique({
+        where: { planDate_mealType: { planDate: merged.planDate, mealType: merged.mealType } }
+      });
+      if (clashing && clashing.id !== id) throw httpError(409, '该日期和餐次已存在计划');
+    }
     if (input.items) await tx.mealPlanItem.deleteMany({ where: { mealPlanId: id } });
     if (input.dinerIds) await tx.mealPlanDiner.deleteMany({ where: { mealPlanId: id } });
-    await tx.mealPlan.update({
-      where: { id },
-      data: {
-        planDate: merged.planDate,
-        mealType: merged.mealType,
-        dinerCount: merged.dinerCount,
-        status: merged.status,
-        notes: merged.notes,
-        time: cleanedPlanTime(merged.time),
-        title: cleanedPlanText(merged.title, '计划标题', PLAN_TITLE_LIMIT),
-        subtext: cleanedPlanText(merged.subtext, '计划副文案', PLAN_SUBTEXT_LIMIT),
-        icon: cleanedPlanText(merged.icon, '计划图标', PLAN_ICON_LIMIT),
-        version: { increment: 1 },
-        ...(input.items ? { items: { create: itemCreates(input.items) } } : {}),
-        ...(input.dinerIds ? { diners: { create: [...new Set(input.dinerIds)].map((dinerId) => ({ dinerId })) } } : {})
-      }
-    });
+    try {
+      await tx.mealPlan.update({
+        where: { id },
+        data: {
+          planDate: merged.planDate,
+          mealType: merged.mealType,
+          dinerCount: merged.dinerCount,
+          status: merged.status,
+          notes: merged.notes,
+          time: cleanedPlanTime(merged.time),
+          title: cleanedPlanText(merged.title, '计划标题', PLAN_TITLE_LIMIT),
+          subtext: cleanedPlanText(merged.subtext, '计划副文案', PLAN_SUBTEXT_LIMIT),
+          icon: cleanedPlanText(merged.icon, '计划图标', PLAN_ICON_LIMIT),
+          version: { increment: 1 },
+          ...(input.items ? { items: { create: itemCreates(input.items) } } : {}),
+          ...(input.dinerIds
+            ? { diners: { create: [...new Set(input.dinerIds)].map((dinerId) => ({ dinerId })) } }
+            : {})
+        }
+      });
+    } catch (error) {
+      // 并发窗口兜底：预检与时序之间的唯一键竞争仍映射为可读 409，不暴露 500。
+      if (isUniqueConstraintError(error)) throw httpError(409, '该日期和餐次已存在计划');
+      throw error;
+    }
     return tx.mealPlan.findUniqueOrThrow({ where: { id }, include: planInclude });
   });
+}
+
+/** Prisma 唯一约束冲突（SQLite P2002）识别：只用于把已知业务冲突映射成 409。 */
+function isUniqueConstraintError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && (error as { code?: unknown }).code === 'P2002');
 }
 
 export async function deletePlan(database: PrismaClient, id: string, version: number) {

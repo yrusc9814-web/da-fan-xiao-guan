@@ -11,6 +11,7 @@ import {
   stringSchema,
   versionBodySchema
 } from '../../shared/validation-schemas.js';
+import { isValidBusinessDate } from '../calendar/business-date.js';
 import {
   confirmConsumption,
   confirmImmediateMeal,
@@ -74,6 +75,23 @@ interface ImmediateMealBody {
   selections?: BatchSelections;
 }
 
+/** 缺省日期用本地业务日；显式传入时必须通过真实日历日期校验（E6）。 */
+function todayBusinessDate(): string {
+  return new Date().toLocaleDateString('sv-SE');
+}
+
+/**
+ * 即时用餐 recordDate 校验：schema 只做 string 形状，这里补严格日历校验。
+ * 拒绝 '2026-9-1' / 'abc' / 2026-02-31 等，避免写入后任何月份迭代/范围查询都看不到的幽灵记录。
+ */
+function resolveImmediateRecordDate(recordDate: string | undefined): string {
+  if (recordDate === undefined) return todayBusinessDate();
+  if (!isValidBusinessDate(recordDate)) {
+    throw Object.assign(new Error('记录日期必须使用 YYYY-MM-DD 格式且为真实存在的日期'), { statusCode: 400 });
+  }
+  return recordDate;
+}
+
 export async function registerConsumptionRoutes(app: FastifyInstance, database: PrismaClient): Promise<void> {
   app.post<{ Params: { id: string }; Body: { recordVersion: number; selections?: BatchSelections } }>(
     '/api/v1/records/:id/consumption-preview',
@@ -99,7 +117,7 @@ export async function registerConsumptionRoutes(app: FastifyInstance, database: 
       return success(
         await getImmediateMealPreview(database, {
           ...rest,
-          recordDate: recordDate ?? new Date().toLocaleDateString('sv-SE'),
+          recordDate: resolveImmediateRecordDate(recordDate),
           recordTime,
           notes,
           dinerIds
@@ -117,7 +135,9 @@ export async function registerConsumptionRoutes(app: FastifyInstance, database: 
       return success(
         await confirmImmediateMeal(database, {
           ...rest,
-          recordDate: recordDate ?? new Date().toLocaleDateString('sv-SE'),
+          // 与预览同一口径：显式日期必须真实存在，缺省才用本地业务日。
+          // 只校验预览会让非法日期在确认时落库，形成任何视图都看不到的幽灵记录。
+          recordDate: resolveImmediateRecordDate(recordDate),
           recordTime,
           notes,
           dinerIds

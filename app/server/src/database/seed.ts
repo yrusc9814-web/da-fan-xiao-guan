@@ -1,5 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
+import { normalizeIngredientCategory } from '../modules/ingredients/categories.js';
+
 function businessDate(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
@@ -14,6 +16,7 @@ const recipeSeeds = [
   {
     id: 'dev-recipe-tomato-eggs',
     name: '番茄炒蛋',
+    category: '快手家常',
     imagePath: 'tomato-eggs.png',
     cookingTimeMinutes: 15,
     tags: ['家常菜', '快手菜']
@@ -21,6 +24,7 @@ const recipeSeeds = [
   {
     id: 'dev-recipe-steamed-fish',
     name: '清蒸鲈鱼',
+    category: '鲜美水产',
     imagePath: 'steamed-fish.png',
     cookingTimeMinutes: 25,
     tags: ['低脂', '高蛋白']
@@ -28,6 +32,7 @@ const recipeSeeds = [
   {
     id: 'dev-recipe-broccoli',
     name: '蒜蓉西兰花',
+    category: '清爽时蔬',
     imagePath: 'broccoli.png',
     cookingTimeMinutes: 10,
     tags: ['素食', '减脂']
@@ -35,14 +40,23 @@ const recipeSeeds = [
   {
     id: 'dev-recipe-braised-ribs',
     name: '红烧排骨',
+    category: '肉禽鲜香',
     imagePath: 'braised-ribs.png',
     cookingTimeMinutes: 40,
     tags: ['下饭菜', '家常菜']
   },
-  { id: 'dev-recipe-tofu', name: '麻婆豆腐', imagePath: 'tofu.png', cookingTimeMinutes: 20, tags: ['川菜', '下饭菜'] },
+  {
+    id: 'dev-recipe-tofu',
+    name: '麻婆豆腐',
+    category: '快手家常',
+    imagePath: 'tofu.png',
+    cookingTimeMinutes: 20,
+    tags: ['川菜', '下饭菜']
+  },
   {
     id: 'dev-recipe-shrimp',
     name: '虾仁炒时蔬',
+    category: '清爽时蔬',
     imagePath: 'shrimp.png',
     cookingTimeMinutes: 15,
     tags: ['低脂', '高蛋白']
@@ -61,6 +75,7 @@ export async function seedDevelopmentData(database: PrismaClient): Promise<void>
       where: { id: recipe.id },
       update: {
         name: recipe.name,
+        category: recipe.category,
         imagePath: recipe.imagePath,
         cookingTimeMinutes: recipe.cookingTimeMinutes,
         enabledForRecommendation: true,
@@ -69,6 +84,7 @@ export async function seedDevelopmentData(database: PrismaClient): Promise<void>
       create: {
         id: recipe.id,
         name: recipe.name,
+        category: recipe.category,
         imagePath: recipe.imagePath,
         cookingTimeMinutes: recipe.cookingTimeMinutes
       }
@@ -91,66 +107,182 @@ export async function seedDevelopmentData(database: PrismaClient): Promise<void>
   }
 
   const today = new Date();
-  const expiryDates = [addDays(today, 2), addDays(today, 3), addDays(today, 3), addDays(today, 3), addDays(today, 3)];
+  /**
+   * 12 种种子食材：统一 7 大分类、合理单位、存放位置与真实采购日，并各建一条活批次，
+   * 使「全部 (N) = 各分类计数之和」、图标按名称差异化、库存扣减与推荐都能直接跑通。
+   */
   const ingredientSeeds = [
-    { id: 'dev-ingredient-broccoli', name: '生菜', quantity: 1, minStock: 2, expiryDate: businessDate(expiryDates[0]) },
-    { id: 'dev-ingredient-eggs', name: '鸡蛋', quantity: 2, minStock: 6, expiryDate: businessDate(expiryDates[1]) },
-    { id: 'dev-ingredient-milk', name: '牛奶', quantity: 1, minStock: 2, expiryDate: businessDate(expiryDates[2]) },
-    { id: 'dev-ingredient-tomato', name: '番茄', quantity: 1, minStock: 3, expiryDate: businessDate(expiryDates[3]) },
-    { id: 'dev-ingredient-tofu', name: '豆腐', quantity: 1, minStock: 2, expiryDate: businessDate(expiryDates[4]) },
-    { id: 'dev-ingredient-rice', name: '大米', quantity: 1, minStock: 2, expiryDate: businessDate(addDays(today, 5)) },
+    {
+      id: 'dev-ingredient-broccoli',
+      name: '生菜',
+      category: '蔬菜',
+      unit: 'PIECE',
+      quantity: 1,
+      minStock: 2,
+      location: '冷藏室',
+      shelfLifeDays: 2
+    },
+    {
+      id: 'dev-ingredient-eggs',
+      name: '鸡蛋',
+      category: '蛋奶豆制',
+      unit: 'PIECE',
+      quantity: 2,
+      minStock: 6,
+      location: '冷藏室',
+      shelfLifeDays: 3
+    },
+    {
+      id: 'dev-ingredient-milk',
+      name: '牛奶',
+      category: '蛋奶豆制',
+      unit: 'MILLILITER',
+      quantity: 1000,
+      minStock: 500,
+      location: '冷藏室',
+      shelfLifeDays: 3
+    },
+    {
+      id: 'dev-ingredient-tomato',
+      name: '番茄',
+      category: '蔬菜',
+      unit: 'GRAM',
+      quantity: 500,
+      minStock: 300,
+      location: '冷藏室',
+      shelfLifeDays: 3
+    },
+    {
+      id: 'dev-ingredient-tofu',
+      name: '豆腐',
+      category: '蛋奶豆制',
+      unit: 'GRAM',
+      quantity: 400,
+      minStock: 200,
+      location: '冷藏室',
+      shelfLifeDays: 3
+    },
+    {
+      id: 'dev-ingredient-rice',
+      name: '大米',
+      category: '主食粮油',
+      unit: 'GRAM',
+      quantity: 2000,
+      minStock: 500,
+      location: '储物柜',
+      shelfLifeDays: 180
+    },
     {
       id: 'dev-ingredient-carrot',
       name: '胡萝卜',
-      quantity: 1,
-      minStock: 2,
-      expiryDate: businessDate(addDays(today, 6))
+      category: '蔬菜',
+      unit: 'GRAM',
+      quantity: 500,
+      minStock: 200,
+      location: '冷藏室',
+      shelfLifeDays: 14
     },
     {
       id: 'dev-ingredient-mushroom',
       name: '香菇',
-      quantity: 1,
-      minStock: 2,
-      expiryDate: businessDate(addDays(today, 7))
+      category: '蔬菜',
+      unit: 'GRAM',
+      quantity: 300,
+      minStock: 100,
+      location: '冷藏室',
+      shelfLifeDays: 7
     },
     {
       id: 'dev-ingredient-cucumber',
       name: '黄瓜',
+      category: '蔬菜',
+      unit: 'PIECE',
       quantity: 2,
       minStock: 2,
-      expiryDate: businessDate(addDays(today, 8))
+      location: '冷藏室',
+      shelfLifeDays: 5
     },
-    { id: 'dev-ingredient-corn', name: '玉米', quantity: 2, minStock: 2, expiryDate: businessDate(addDays(today, 9)) },
-    { id: 'dev-ingredient-pork', name: '排骨', quantity: 2, minStock: 2, expiryDate: businessDate(addDays(today, 10)) },
+    {
+      id: 'dev-ingredient-corn',
+      name: '玉米',
+      category: '主食粮油',
+      unit: 'PIECE',
+      quantity: 2,
+      minStock: 2,
+      location: '冷藏室',
+      shelfLifeDays: 6
+    },
+    {
+      id: 'dev-ingredient-pork',
+      name: '排骨',
+      category: '肉禽',
+      unit: 'GRAM',
+      quantity: 500,
+      minStock: 300,
+      location: '冷冻室',
+      shelfLifeDays: 30
+    },
     {
       id: 'dev-ingredient-shrimp',
       name: '虾仁',
-      quantity: 3,
-      minStock: 3,
-      expiryDate: businessDate(addDays(today, 11))
+      category: '水产',
+      unit: 'GRAM',
+      quantity: 300,
+      minStock: 200,
+      location: '冷冻室',
+      shelfLifeDays: 20
     }
   ] as const;
 
   for (const ingredient of ingredientSeeds) {
-    await database.ingredient.upsert({
+    const purchaseDate = businessDate(today);
+    const expiryDate = businessDate(addDays(today, ingredient.shelfLifeDays));
+    let current = await database.ingredient.upsert({
       where: { id: ingredient.id },
-      update: {
-        name: ingredient.name,
-        quantity: ingredient.quantity,
-        minStock: ingredient.minStock,
-        expiryDate: ingredient.expiryDate,
-        unit: 'PIECE',
-        deletedAt: null
-      },
+      // 已有演示食材可能被用户编辑、消耗或删除，重复 seed 保留其全部事实。
+      update: {},
       create: {
         id: ingredient.id,
         name: ingredient.name,
+        category: ingredient.category,
         quantity: ingredient.quantity,
         minStock: ingredient.minStock,
-        expiryDate: ingredient.expiryDate,
-        unit: 'PIECE'
+        purchaseDate,
+        expiryDate,
+        location: ingredient.location,
+        unit: ingredient.unit
       }
     });
+    // 老版本种子只补空元数据，不能改变数量、单位、日期或用户已有位置。
+    if (current.deletedAt === null && (!current.category?.trim() || !current.location?.trim())) {
+      current = await database.ingredient.update({
+        where: { id: current.id },
+        data: {
+          ...(!current.category?.trim() ? { category: normalizeIngredientCategory(null, current.name) } : {}),
+          ...(!current.location?.trim() ? { location: ingredient.location } : {})
+        }
+      });
+    }
+    // 仅为仍有存量且无活批次的食材补建；不覆盖或复活任何已有批次。
+    if (current.deletedAt === null && current.quantity > 0) {
+      const active = await database.inventoryBatch.findFirst({
+        where: { ingredientId: current.id, deletedAt: null, quantity: { gt: 0 } },
+        select: { id: true }
+      });
+      if (!active) {
+        await database.inventoryBatch.create({
+          data: {
+            ingredientId: current.id,
+            quantity: current.quantity,
+            unit: current.unit,
+            purchaseDate: current.purchaseDate,
+            expiryDate: current.expiryDate,
+            location: current.location,
+            opened: current.opened
+          }
+        });
+      }
+    }
   }
 
   const recordSeeds = [

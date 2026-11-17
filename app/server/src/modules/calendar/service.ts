@@ -1,12 +1,19 @@
 import type { PrismaClient } from '@prisma/client';
 
+import { isValidBusinessDate } from './business-date.js';
+
 function httpError(statusCode: number, message: string): Error {
   return Object.assign(new Error(message), { statusCode });
 }
 
 export async function getCalendar(database: PrismaClient, query: { start: string; end: string }) {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(query.start) || !/^\d{4}-\d{2}-\d{2}$/.test(query.end) || query.start > query.end) {
-    throw httpError(400, '日历起止日期无效');
+  // 形状 + 真实日历日期：2026-02-31 / 平年 02-29 / 2026-13-01 一律 400，
+  // 不允许 rollover，也不允许用空结果掩盖调用方错误。
+  if (!isValidBusinessDate(query.start) || !isValidBusinessDate(query.end)) {
+    throw httpError(400, '日历起止日期无效：必须是真实存在的 YYYY-MM-DD 日期');
+  }
+  if (query.start > query.end) {
+    throw httpError(400, '日历起止日期无效：开始日期不能晚于结束日期');
   }
   const [plans, records] = await Promise.all([
     database.mealPlan.findMany({

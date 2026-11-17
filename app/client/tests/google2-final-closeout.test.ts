@@ -73,8 +73,9 @@ describe('VAN-38 final closeout: inventory expiry mapping', () => {
     ['not-a-date', '未填写保质期', []],
     ['2026-09-05', '余 4 天', ['建议尽快']],
     ['2026-09-09', '余 8 天', ['新鲜']],
-    ['2026-09-01', '余 0 天', ['临期预警']],
-    ['2026-08-31', '余 -1 天', ['临期预警']]
+    // C1：今日到期单独文案；已过期绝不出现负天数或「临期预警」
+    ['2026-09-01', '今日到期', ['今日到期']],
+    ['2026-08-31', '已过期 1 天', ['已过期']]
   ])('真实 pantry 映射后由 renderInventory 输出 %s', async (expiryDate, expectedDays, badges) => {
     boot();
     await settle();
@@ -91,7 +92,7 @@ describe('VAN-38 final closeout: inventory expiry mapping', () => {
     const card = document.querySelector('#inventoryCardGrid > div') as HTMLElement;
     expect(card).toBeTruthy();
     expect(card.textContent).toContain(expectedDays);
-    for (const badge of ['新鲜', '临期预警', '建议尽快']) {
+    for (const badge of ['新鲜', '临期预警', '建议尽快', '今日到期', '已过期']) {
       if (badges.includes(badge)) expect(card.textContent).toContain(badge);
       else expect(card.textContent).not.toContain(badge);
     }
@@ -389,9 +390,12 @@ describe('VAN-140 final closeout: shopping list safe DOM rendering', () => {
     expect(toggle).toHaveBeenCalledWith(maliciousId);
     expect(toggle).toHaveBeenCalledTimes(1);
 
+    // 每行两个动作按钮（✏️ 编辑 + ✕ 删除），共 4 个
     const deleteButtons = Array.from(container.querySelectorAll('button')) as HTMLButtonElement[];
-    expect(deleteButtons).toHaveLength(2);
-    deleteButtons[1].click();
+    expect(deleteButtons).toHaveLength(4);
+    const rowDeleteButtons = deleteButtons.filter((button) => button.textContent === '✕');
+    expect(rowDeleteButtons).toHaveLength(2);
+    rowDeleteButtons[1].click();
     await settle();
     expect(deleted).toEqual([secondId]);
     expect((window as any).__xss).toBeUndefined();

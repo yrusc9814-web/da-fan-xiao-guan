@@ -49,11 +49,35 @@ async function recipeCandidates(
       OR: [{ expiryDate: null }, { expiryDate: { gte: new Date().toLocaleDateString('sv-SE') } }]
     }
   });
-  const byIngredient = new Map<string, typeof batches>();
+  const byIngredient = new Map<string, Array<{ quantity: number; unit: QuantityUnit }>>();
   for (const batch of batches) {
     const list = byIngredient.get(batch.ingredientId) ?? [];
     list.push(batch);
     byIngredient.set(batch.ingredientId, list);
+  }
+  // 历史存量（quantity > 0 但无活批次）按汇总派生等效批次参与匹配，读路径不写库。
+  const today = new Date().toLocaleDateString('sv-SE');
+  // 只要存在任何数量的批次行（含已过期），该食材就不是“从未建过批次”的存量：
+  // 不得再派生等效库存，否则过期批次会被误判为齐备。
+  const stockedIngredientIds = new Set(
+    (
+      await database.inventoryBatch.findMany({
+        where: { deletedAt: null, quantity: { gt: 0 } },
+        select: { ingredientId: true }
+      })
+    ).map((batch) => batch.ingredientId)
+  );
+  const healable = await database.ingredient.findMany({
+    where: {
+      deletedAt: null,
+      quantity: { gt: 0 },
+      OR: [{ expiryDate: null }, { expiryDate: { gte: today } }]
+    },
+    select: { id: true, quantity: true, unit: true, expiryDate: true, opened: true }
+  });
+  for (const ingredient of healable) {
+    if (byIngredient.has(ingredient.id) || stockedIngredientIds.has(ingredient.id)) continue;
+    byIngredient.set(ingredient.id, [{ quantity: ingredient.quantity, unit: ingredient.unit }]);
   }
   return recipes.flatMap((recipe) => {
     const haystack = [
@@ -70,8 +94,9 @@ async function recipeCandidates(
     )
       return [];
     const missing: string[] = [];
-    for (const item of recipe.ingredients.filter((x) => !x.optional && x.quantity != null && x.unit != null)) {
-      if (!item.ingredientId) {
+    // 必需配料只要缺关联食材或数量/单位，就无法证明库存齐备：inventoryOnly 必须 fail-closed 排除。
+    for (const item of recipe.ingredients.filter((x) => !x.optional)) {
+      if (!item.ingredientId || item.quantity == null || item.unit == null) {
         missing.push(item.ingredientNameSnapshot);
         continue;
       }
@@ -79,7 +104,7 @@ async function recipeCandidates(
         (sum, b) => sum + (convertQuantity(b.quantity, b.unit, item.unit as QuantityUnit) ?? 0),
         0
       );
-      if (available < (item.quantity ?? 0)) missing.push(item.ingredientNameSnapshot);
+      if (available < item.quantity) missing.push(item.ingredientNameSnapshot);
     }
     if (input.inventoryOnly && missing.length) return [];
     const score =

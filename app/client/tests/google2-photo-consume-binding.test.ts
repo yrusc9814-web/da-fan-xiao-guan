@@ -213,15 +213,31 @@ describe('Google2 photo/consume real DOM bindings', () => {
     expect(document.querySelector('#photoSlotView-0 img')).toBeNull();
   });
 
-  it('non-GRAM rejects gram buttons visibly without sending a request', async () => {
-    const item = ingredientDto({ unit: 'PIECE' });
-    const f = boot((url) => (url.endsWith('/ingredients/i1') ? item : page));
-    const messages: string[] = [];
-    (window as any).showToast = (message: string) => messages.push(message);
+  it('non-GRAM 食材按真实单位维度扣减，而不是硬发 100g', async () => {
+    const item = ingredientDto({ unit: 'PIECE', quantity: 5 });
+    const f = boot((url) =>
+      url.endsWith('/ingredients/i1/consume')
+        ? { ingredient: ingredientDto({ unit: 'PIECE', quantity: 4, version: 4 }) }
+        : url.endsWith('/ingredients/i1')
+          ? item
+          : page
+    );
+    (window as any).showToast = vi.fn();
     await (window as any).BentoModal.open('ingredientDetail', 'i1');
-    (document.querySelector('#modalIngredientDetail button[onclick*="100"]') as HTMLButtonElement).click();
-    expect(messages.some((message) => message.includes('GRAM'))).toBe(true);
-    expect(f.mock.calls.some(([url]) => String(url).includes('/consume'))).toBe(false);
+    // 快捷消耗按钮按真实单位维度生成：计件食材的按钮文案是「消耗 1个」
+    const button = document.getElementById('ingredientDetailConsume-100') as HTMLButtonElement;
+    expect(button.textContent).toContain('消耗 1个');
+    button.click();
+    await vi.waitFor(() => {
+      const call = f.mock.calls.find(([url]) => String(url).includes('/consume'));
+      expect(call).toBeTruthy();
+      expect(JSON.parse(call![1].body as string)).toMatchObject({
+        mode: 'QUANTITY',
+        quantity: 1,
+        unit: 'PIECE',
+        ingredientVersion: 3
+      });
+    });
   });
 
   it('409 refreshes the visible detail version and the next real click retries with it', async () => {
@@ -242,8 +258,7 @@ describe('Google2 photo/consume real DOM bindings', () => {
     const messages: string[] = [];
     (window as any).showToast = (message: string) => messages.push(message);
     await (window as any).BentoModal.open('ingredientDetail', 'i1');
-    const click = () =>
-      (document.querySelector('#modalIngredientDetail button[onclick*="100"]') as HTMLButtonElement).click();
+    const click = () => (document.getElementById('ingredientDetailConsume-100') as HTMLButtonElement).click();
     click();
     await vi.waitFor(() => expect(messages).toContain('版本冲突'));
     expect((window as any).BentoModal.currentPayload.version).toBe(4);
@@ -285,9 +300,14 @@ describe('Google2 photo/consume real DOM bindings', () => {
     );
     (window as any).BentoService.pantry.data = [(window as any).DafanDomainAdapter.mapPantryItem(ingredientDto())];
     await (window as any).BentoModal.open('ingredientDetail', 'i1');
-    const buttons = document.querySelectorAll('#modalIngredientDetail button');
-    const button = amount === 100 ? buttons[1] : amount === 250 ? buttons[2] : buttons[3];
-    (button as HTMLButtonElement).click();
+    // 三个快捷消耗按钮按 id 定位（文案已按单位维度动态生成）
+    const buttonId =
+      amount === 100
+        ? 'ingredientDetailConsume-100'
+        : amount === 250
+          ? 'ingredientDetailConsume-250'
+          : 'ingredientDetailConsume-all';
+    (document.getElementById(buttonId) as HTMLButtonElement).click();
     await vi.waitFor(() =>
       expect(
         f.mock.calls.some(([u, i]) => String(u).includes('/consume') && (i as RequestInit)?.method === 'POST')

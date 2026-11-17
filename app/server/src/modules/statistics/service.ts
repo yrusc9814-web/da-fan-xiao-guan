@@ -82,8 +82,29 @@ function sumOrNull(values: Array<number | null>): { total: number | null; count:
   };
 }
 
-function buildCostSummary(records: Array<{ sourceType: string; cost: number | null }>): StatisticsCostSummary {
+/** 按渠道统计的「有价记录数」：均价分母只能用 cost != null 的记录（E8）。 */
+export type CostSummaryWithPricedCounts = StatisticsCostSummary & {
+  /** 外卖渠道中 cost 非 null 的记录数（真 0 计入）；均价 = takeoutCost / takeoutPricedRecordCount。 */
+  takeoutPricedRecordCount: number;
+  /** 堂食渠道中 cost 非 null 的记录数（真 0 计入）；均价 = dineInCost / dineInPricedRecordCount。 */
+  dineInPricedRecordCount: number;
+  homemadePricedRecordCount: number;
+  /**
+   * 同义别名：当前前端按 *PricedCount 读取均价分母。
+   * 只提供 *RecordCount 会让前端读不到而静默隐藏均价，因此两个名字都返回同值。
+   */
+  takeoutPricedCount: number;
+  dineInPricedCount: number;
+};
+
+/** 统计 DTO 的局部返回扩展：只加字段，不改 shared 契约，也不改 takeoutRecordCount 的「共 N 顿」语义。 */
+export type StatisticsDtoWithPricedCounts = Omit<StatisticsDto, 'costSummary'> & {
+  costSummary: CostSummaryWithPricedCounts;
+};
+
+function buildCostSummary(records: Array<{ sourceType: string; cost: number | null }>): CostSummaryWithPricedCounts {
   const bySource = (sourceType: string) => records.filter((record) => record.sourceType === sourceType);
+  const pricedCount = (sourceType: string) => bySource(sourceType).filter((record) => record.cost !== null).length;
   const total = sumOrNull(records.map((record) => record.cost));
   const takeout = sumOrNull(bySource('TAKEOUT').map((record) => record.cost));
   const dineIn = sumOrNull(bySource('DINE_IN').map((record) => record.cost));
@@ -99,7 +120,14 @@ function buildCostSummary(records: Array<{ sourceType: string; cost: number | nu
     takeoutRecordCount: bySource('TAKEOUT').length,
     dineInRecordCount: bySource('DINE_IN').length,
     homemadeRecordCount: bySource('HOMEMADE').length,
-    customRecordCount: bySource('CUSTOM').length
+    customRecordCount: bySource('CUSTOM').length,
+    // 均价分母：只数 cost != null 的记录，避免未填金额的餐次把人均消费摊薄。
+    // takeoutRecordCount / dineInRecordCount 仍为全部条数（「共 N 顿」语义不变）。
+    takeoutPricedRecordCount: pricedCount('TAKEOUT'),
+    dineInPricedRecordCount: pricedCount('DINE_IN'),
+    homemadePricedRecordCount: pricedCount('HOMEMADE'),
+    takeoutPricedCount: pricedCount('TAKEOUT'),
+    dineInPricedCount: pricedCount('DINE_IN')
   };
 }
 
@@ -130,7 +158,7 @@ function buildSatietySummary(records: Array<{ satiety: number | null }>): Statis
 export async function getStatistics(
   database: PrismaClient,
   query: { start?: string; end?: string; dinerId?: string }
-): Promise<StatisticsDto> {
+): Promise<StatisticsDtoWithPricedCounts> {
   const fallback = defaultRange();
   const start = query.start ?? fallback.start;
   const end = query.end ?? fallback.end;

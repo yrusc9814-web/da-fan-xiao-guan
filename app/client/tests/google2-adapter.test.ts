@@ -1841,7 +1841,7 @@ describe('Google2 legacy entry adapter', () => {
     expect(pantry.data).toEqual([]);
   });
 
-  it('pantry 编辑提交批次字段或未知单位时明确阻断且不发请求', async () => {
+  it('pantry 编辑：批次字段可提交，非法批次/未知单位快速失败且不发请求', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
     const pantry: any = { data: [{ id: 'i1', name: '旧', version: 2, location: '冷藏室' }] };
@@ -1851,9 +1851,10 @@ describe('Google2 legacy entry adapter', () => {
     fetchMock.mockClear();
     (window as any).DafanDomainAdapter.replacePantryService(pantry);
     const before = structuredClone(pantry.data);
+    // 后端 Ingredient PUT 已支持 batches（无 migration），但批次缺少单位必须 fail-closed
     await expect(
       pantry.save({ id: 'i1', version: 2, name: '改', unit: '个', unitKey: 'PIECE', batches: [{ quantity: 1 }] })
-    ).rejects.toMatchObject({ code: 'INGREDIENT_BATCHES_UNSUPPORTED' });
+    ).rejects.toMatchObject({ code: 'INGREDIENT_BATCH_INVALID' });
     await expect(pantry.save({ name: '新', unit: '斗' })).rejects.toMatchObject({
       code: 'INGREDIENT_UNIT_UNSUPPORTED'
     });
@@ -2153,7 +2154,7 @@ describe('Google2 legacy entry adapter', () => {
         unitKey: 'PIECE',
         isChecked: false,
         source: '手动备忘',
-        category: ''
+        category: '调味'
       }),
       expect.objectContaining({
         id: 'it2',
@@ -2373,23 +2374,25 @@ describe('Google2 legacy entry adapter', () => {
     expect(empty.hasStructuredQuantity).toBe(false);
   });
 
-  it('mapShoppingItem：分类只接受字符串并去空白，其余回退空串', () => {
+  it('mapShoppingItem：分类统一到七类，空值及无效分类按食材名推导', () => {
     // 单用例过滤运行时前序用例不会执行，这里在缺失时自行加载正式适配器源码
     if (!(window as any).DafanDomainAdapter) {
-      vi.stubGlobal('fetch', vi.fn(async () => jsonFail(503, 'OFFLINE', 'offline')));
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async () => jsonFail(503, 'OFFLINE', 'offline'))
+      );
       window.eval(adapter);
     }
     const mapShoppingItem = (window as any).DafanDomainAdapter.mapShoppingItem;
     const base = { id: 'it-cat', ingredientNameSnapshot: '小葱', quantity: 1, unit: 'BAG', sourceType: 'MANUAL' };
-    // 非空分类去首尾空白；内容原样保留（后端 category 是自由文本，不做枚举白名单）
     expect(mapShoppingItem({ ...base, category: '  调味 ' }).category).toBe('调味');
     expect(mapShoppingItem({ ...base, category: '肉禽' }).category).toBe('肉禽');
-    // null / undefined / 空白 / 非字符串一律回退空串，绝不透传原值
     for (const category of [null, undefined, '', '   ', 42, true, ['蔬菜'], { name: '蔬菜' }]) {
-      expect(mapShoppingItem({ ...base, category }).category).toBe('');
+      expect(mapShoppingItem({ ...base, category }).category).toBe('调味');
     }
-    // 字段缺失同样回退空串
-    expect(mapShoppingItem(base).category).toBe('');
+    expect(mapShoppingItem(base).category).toBe('调味');
+    expect(mapShoppingItem({ ...base, ingredientNameSnapshot: '鸡蛋', category: '蛋奶' }).category).toBe('蛋奶豆制');
+    expect(mapShoppingItem({ ...base, ingredientNameSnapshot: '未知物品' }).category).toBe('其他');
   });
 
   const realPageMarkup = new DOMParser().parseFromString(html, 'text/html').body.innerHTML;
@@ -2459,7 +2462,14 @@ describe('Google2 legacy entry adapter', () => {
           JSON.stringify({
             success: true,
             data: String(url).includes('/dashboard')
-              ? { branding: {}, todayRecords: [], recommendedRecipes: [], inventory: {}, weeklyStats: {}, calendarDays: [] }
+              ? {
+                  branding: {},
+                  todayRecords: [],
+                  recommendedRecipes: [],
+                  inventory: {},
+                  weeklyStats: {},
+                  calendarDays: []
+                }
               : String(url).includes('/statistics')
                 ? {}
                 : { items: [], page: 1, pageSize: 100, total: 0, totalPages: 1 }
@@ -2536,13 +2546,11 @@ describe('Google2 legacy entry adapter', () => {
     const json = (data: unknown, status = 200) => ({
       ok: status < 400,
       status,
-      text: async () =>
-        JSON.stringify(status < 400 ? { success: true, data } : { success: false, error: data })
+      text: async () => JSON.stringify(status < 400 ? { success: true, data } : { success: false, error: data })
     });
     const fetchMock = vi.fn(async (url: string) => {
       const path = String(url);
-      if (path.includes('/records/rec1/confirm'))
-        return json({ code: 'VERSION_CONFLICT', message: '版本冲突' }, 409);
+      if (path.includes('/records/rec1/confirm')) return json({ code: 'VERSION_CONFLICT', message: '版本冲突' }, 409);
       if (path.includes('/records/rec1'))
         return json(recordDto({ id: 'rec1', status: 'CONFIRMED', version: 4, recordDate: '2026-09-28' }));
       if (path.includes('/dashboard'))
@@ -2598,8 +2606,7 @@ describe('Google2 legacy entry adapter', () => {
     const json = (data: unknown, status = 200) => ({
       ok: status < 400,
       status,
-      text: async () =>
-        JSON.stringify(status < 400 ? { success: true, data } : { success: false, error: data })
+      text: async () => JSON.stringify(status < 400 ? { success: true, data } : { success: false, error: data })
     });
     const fetchMock = vi.fn(async (url: string) => {
       const path = String(url);
@@ -2656,13 +2663,34 @@ describe('Google2 legacy entry adapter', () => {
     await bootRealShoppingPage();
     const malicious = '<img src=x onerror="window.__xss=201">';
     const dtos = [
-      { id: 'it-a', ingredientNameSnapshot: '小葱', quantity: 2, unit: 'PIECE', sourceType: 'MANUAL', category: ' 调味 ' },
-      { id: 'it-b', ingredientNameSnapshot: '盐', quantity: null, unit: null, sourceType: 'MANUAL', category: malicious },
-      { id: 'it-c', ingredientNameSnapshot: '土豆', quantity: 200, unit: 'GRAM', sourceType: 'RECIPE', category: '   ' },
+      {
+        id: 'it-a',
+        ingredientNameSnapshot: '小葱',
+        quantity: 2,
+        unit: 'PIECE',
+        sourceType: 'MANUAL',
+        category: ' 调味 '
+      },
+      {
+        id: 'it-b',
+        ingredientNameSnapshot: '盐',
+        quantity: null,
+        unit: null,
+        sourceType: 'MANUAL',
+        category: malicious
+      },
+      {
+        id: 'it-c',
+        ingredientNameSnapshot: '土豆',
+        quantity: 200,
+        unit: 'GRAM',
+        sourceType: 'RECIPE',
+        category: '   '
+      },
       { id: 'it-d', ingredientNameSnapshot: '牛腩', quantity: 500, unit: 'GRAM', sourceType: 'MANUAL', category: 7 }
     ];
     const mapped = dtos.map((dto) => (window as any).DafanDomainAdapter.mapShoppingItem(dto));
-    expect(mapped.map((item: any) => item.category)).toEqual(['调味', malicious, '', '']);
+    expect(mapped.map((item: any) => item.category)).toEqual(['调味', '调味', '蔬菜', '肉禽']);
     const shopping = (window as any).BentoService.shopping;
     shopping.data = mapped;
     shopping.getAll = () => shopping.data;
@@ -2674,10 +2702,10 @@ describe('Google2 legacy entry adapter', () => {
       for (const attr of Array.from(el.attributes)) expect(attr.name.toLowerCase().startsWith('on')).toBe(false);
     });
     expect((window as any).__xss).toBeUndefined();
-    // 只有两个非空分类胶囊；空白/非字符串分类不产生空胶囊
+    // 所有分类均为七类白名单，恶意文本不会进入分类胶囊。
     const pills = Array.from(container.querySelectorAll('.rounded-full')) as HTMLElement[];
-    expect(pills.map((pill) => pill.textContent)).toEqual(['调味', malicious]);
-    expect(container.textContent).toContain(malicious);
+    expect(pills.map((pill) => pill.textContent)).toEqual(['调味', '调味', '蔬菜', '肉禽']);
+    expect(container.textContent).not.toContain(malicious);
     // 不把正式页面标记遗留给后续用例（否则残留 #modalPinUnlock 会额外触发会话请求）
     document.body.innerHTML = '';
   });
@@ -3417,18 +3445,20 @@ describe('Google2 legacy entry adapter', () => {
 
     fetchMock.mockResolvedValueOnce(
       shoppingJson(
-        shoppingListDto(3, [shoppingItemDto({ ingredientNameSnapshot: '生菜 (手动补货)', quantity: 1, unit: 'PIECE' })])
+        shoppingListDto(3, [shoppingItemDto({ ingredientNameSnapshot: '生菜', quantity: 1, unit: 'PIECE' })])
       )
     );
     await pantry.addToShopping('i1');
     const call = fetchMock.mock.calls.at(-1);
     expect(call[0]).toBe('/api/v1/shopping-lists/sl1/items');
     expect(call[1].method).toBe('POST');
+    // F-07：补货名称只允许纯净食材名，绝不拼「(手动补货)」
     expect(JSON.parse(call[1].body)).toEqual({
       version: 2,
-      ingredientName: '生菜 (手动补货)',
+      ingredientName: '生菜',
       quantity: 1,
       unit: 'PIECE',
+      category: '蔬菜',
       sourceType: 'MANUAL',
       sourceId: null,
       completed: false
@@ -3440,19 +3470,18 @@ describe('Google2 legacy entry adapter', () => {
     close.mockClear();
     toast.mockClear();
     fetchMock.mockResolvedValueOnce(
-      shoppingJson(
-        shoppingListDto(3, [shoppingItemDto({ ingredientNameSnapshot: '散装 (手动补货)', amountText: '适量' })])
-      )
+      shoppingJson(shoppingListDto(3, [shoppingItemDto({ ingredientNameSnapshot: '散装', amountText: '适量' })]))
     );
     await pantry.addToShopping('i2');
     const otherCall = fetchMock.mock.calls.at(-1);
     expect(otherCall[1].method).toBe('POST');
     expect(JSON.parse(otherCall[1].body)).toEqual({
       version: 3,
-      ingredientName: '散装 (手动补货)',
+      ingredientName: '散装',
       quantity: null,
       unit: null,
       amountText: '适量',
+      category: '其他',
       sourceType: 'MANUAL',
       sourceId: null,
       completed: false
@@ -3650,6 +3679,7 @@ describe('Google2 legacy entry adapter', () => {
     await plans.update('p1', { date: '2026-10-03', slot: '晚餐', targetType: 'store', targetId: 's1' });
     expect(fetchMock.mock.calls[1][0]).toBe('/api/v1/plans/p1');
     expect(fetchMock.mock.calls[1][1].method).toBe('PUT');
+    // E11：编辑计划保留既有 dinerCount（fixture=2），绝不硬覆盖回 1
     expect(JSON.parse(fetchMock.mock.calls[1][1].body)).toEqual({
       version: 1,
       planDate: '2026-10-03',
@@ -3658,7 +3688,7 @@ describe('Google2 legacy entry adapter', () => {
       title: null,
       subtext: null,
       icon: null,
-      dinerCount: 1,
+      dinerCount: 2,
       items: [{ itemType: 'STORE', storeId: 's1', sortOrder: 0 }]
     });
 
@@ -4255,8 +4285,7 @@ describe('Google2 legacy entry adapter', () => {
       .mockResolvedValueOnce({
         ok: false,
         status: 409,
-        text: async () =>
-          JSON.stringify({ success: false, error: { code: 'VERSION_CONFLICT', message: '版本冲突' } })
+        text: async () => JSON.stringify({ success: false, error: { code: 'VERSION_CONFLICT', message: '版本冲突' } })
       })
       .mockResolvedValueOnce(arrayJson(recordDto({ id: 'rec1', status: 'CONFIRMED', version: 4 })));
     const error = await records.confirm('rec1').catch((reason: any) => reason);
@@ -4294,8 +4323,7 @@ describe('Google2 legacy entry adapter', () => {
       .mockResolvedValueOnce({
         ok: false,
         status: 409,
-        text: async () =>
-          JSON.stringify({ success: false, error: { code: 'VERSION_CONFLICT', message: '版本冲突' } })
+        text: async () => JSON.stringify({ success: false, error: { code: 'VERSION_CONFLICT', message: '版本冲突' } })
       })
       .mockResolvedValueOnce(arrayJson({ items: [], total: 0 }));
     await expect(records.confirm('rec1')).rejects.toMatchObject({ status: 409 });
@@ -5201,7 +5229,9 @@ describe('Google2 legacy entry adapter', () => {
     };
     const { fetchMock, shopping, calls } = await bootCheckinPrompt([free, egg], routes);
     await shopping.importCheckedToPantry();
-    await expect(calls[0].onSubmit([{ id: 'it-free', quantity: 2, unit: '袋' }])).rejects.toMatchObject({ status: 503 });
+    await expect(calls[0].onSubmit([{ id: 'it-free', quantity: 2, unit: '袋' }])).rejects.toMatchObject({
+      status: 503
+    });
     const firstPending = localStorage.getItem(pendingCheckinKey);
     expect(readPendingRecord()).toMatchObject({ itemIds: ['it-egg', 'it-free'] });
 

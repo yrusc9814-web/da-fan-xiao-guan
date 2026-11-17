@@ -88,9 +88,9 @@ describe('Google2 detail empty-state production path', () => {
     const recipeModal = document.querySelector('#modalRecipeDetail') as HTMLElement;
     expect(recipeModal.querySelector('#recipeDetailCalories')?.textContent).toBe('0 kcal');
     expect(recipeModal.querySelector('#recipeDetailTime')?.textContent).toBe('⏱ 0分钟');
-    expect(recipeModal.querySelector('#recipeDetailIngredientsList')?.textContent).toBe('');
-    expect(recipeModal.querySelector('#recipeDetailStepsList')?.textContent).toBe('');
-    (window as any).BentoModal.setupStoreDetail(store);
+    expect(recipeModal.querySelector('#recipeDetailIngredientsList')?.textContent).toContain('暂未录入食材配方');
+    expect(recipeModal.querySelector('#recipeDetailStepsList')?.textContent).toContain('暂未录入分步做法');
+    (window as any).BentoModal.setupStoreDetail('store-1');
     const ingredient = { id: 'ingredient-1', name: '真实库存', stock: 1100, unit: 'g' };
     services.pantry.data = [ingredient];
     services.pantry.getById = (id: string) => services.pantry.data.find((item: any) => item.id === id);
@@ -262,7 +262,7 @@ describe('Google2 detail empty-state production path', () => {
     expect(badge.innerText).toContain('未填写保质期');
   });
 
-  it('X4 回退后推荐弹窗按名称弱匹配：同名库存即判在库，与 ingredientId 绑定无关', async () => {
+  it('推荐弹窗优先使用精确绑定，失效绑定不得靠同名库存冒充齐备', async () => {
     vi.unstubAllGlobals();
     await bootRealPage();
     await new Promise((resolve) => setTimeout(resolve, 0));
@@ -282,10 +282,8 @@ describe('Google2 detail empty-state production path', () => {
     (window as any).BentoModal.setupPantryRecommend();
     const content = document.getElementById('pantryRecommendContent') as HTMLElement;
     const text = content.innerText;
-    // 推荐弹窗沿用原版名称匹配（真实 UI + API 核查：新建菜谱的 ingredientId 不会自动关联，落库为 null）；
-    // 详情徽标仍按 id 判定（D3 修复保留），见下方 D3 详情徽标用例
-    expect(text).toContain('原料 100% 齐全');
-    expect(text).not.toContain('原料匹配 50%');
+    expect(text).not.toContain('原料 100% 齐全');
+    expect(text).toContain('原料匹配 50%');
   });
 
   it('D5 详情页入口传对象 payload：归一化为 id 后走 adapter，并如实提示错误', async () => {
@@ -322,5 +320,273 @@ describe('Google2 detail empty-state production path', () => {
     (window as any).BentoBus.emit('tools:changed');
     expect(grid.innerText).toContain('新铸铁锅');
     expect((document.getElementById('toolsCountBadge') as HTMLElement).innerText).toContain('2');
+  });
+});
+
+/** 只看未被 hidden 的分隔符/项：隐藏项保留文本节点，不能用整行 textContent 判定孤立分隔符。 */
+function visibleMetaNodes(row: HTMLElement) {
+  return Array.from(row.children).filter((node) => !node.classList.contains('hidden'));
+}
+
+function visibleMetaText(row: HTMLElement) {
+  return visibleMetaNodes(row)
+    .map((node) => node.textContent || '')
+    .join('');
+}
+
+/** 分隔符节点：可见且文本仅为 • 或 · */
+function visibleSeparatorCount(row: HTMLElement) {
+  return visibleMetaNodes(row).filter((node) => /^[•·]$/.test((node.textContent || '').trim())).length;
+}
+
+const blankValues: Array<[string, unknown]> = [
+  ['null', null],
+  ['undefined', undefined],
+  ['空串', ''],
+  ['纯空白', '   ']
+];
+
+describe('T-005R 店铺详情空字段与分隔符（行为断言）', () => {
+  async function openStore(overrides: Record<string, unknown>) {
+    vi.unstubAllGlobals();
+    await bootRealPage();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const services = (window as any).BentoService;
+    const store = {
+      id: 's-meta',
+      name: '空字段店铺',
+      category: null,
+      rating: null,
+      price: null,
+      hours: null,
+      address: null,
+      phone: null,
+      notes: null,
+      supportsDineIn: false,
+      supportsTakeout: false,
+      favorite: false,
+      menuItems: [],
+      history: [],
+      version: 1,
+      ...overrides
+    };
+    services.stores.data = [store];
+    services.stores.getById = (id: string) => services.stores.data.find((item: any) => item.id === id);
+    (window as any).BentoModal.setupStoreDetail('s-meta');
+    // 节点可能被重渲染替换：断言时按 id 重新取，避免读陈旧引用造成假通过
+    const el = (id: string) => document.getElementById(id) as HTMLElement;
+    return {
+      store,
+      services,
+      modal: el('modalStoreDetail'),
+      get row() {
+        return el('storeDetailMetaRow');
+      },
+      get category() {
+        return el('storeDetailCategory');
+      },
+      get rating() {
+        return el('storeDetailRating');
+      },
+      get price() {
+        return el('storeDetailPrice');
+      },
+      get hours() {
+        return el('storeDetailHours');
+      },
+      get address() {
+        return el('storeDetailAddress');
+      },
+      get addressRow() {
+        return el('storeDetailAddressRow');
+      },
+      get phone() {
+        return el('storeDetailPhone');
+      },
+      get phoneRow() {
+        return el('storeDetailPhoneRow');
+      },
+      get notes() {
+        return el('storeDetailNotes');
+      },
+      get notesBox() {
+        return el('storeDetailNotesBox');
+      }
+    };
+  }
+
+  it('category/rating/price 为 null、undefined、空串、纯空白时节点文本为空且整行隐藏', async () => {
+    for (const [, value] of blankValues) {
+      const view = await openStore({ category: value, rating: value, price: value });
+      expect(view.category.textContent).toBe('');
+      expect(view.rating.textContent).toBe('');
+      expect(view.price.textContent).toBe('');
+      expect(view.category.classList.contains('hidden')).toBe(true);
+      expect(view.rating.classList.contains('hidden')).toBe(true);
+      expect(view.price.classList.contains('hidden')).toBe(true);
+      expect(view.row.classList.contains('hidden')).toBe(true);
+      expect(view.row.classList.contains('flex')).toBe(false);
+      expect(visibleSeparatorCount(view.row)).toBe(0);
+      expect(view.row.textContent).not.toContain('★');
+      expect(view.row.textContent).not.toContain('人均');
+      expect(view.row.textContent).not.toContain('null');
+      expect(view.row.textContent).not.toContain('undefined');
+    }
+  });
+
+  it.each([
+    ['全部为空', null, null, null],
+    ['仅分类', '小馆', null, null],
+    ['仅评分', null, 0, null],
+    ['仅人均', null, null, 0],
+    ['分类+评分', '小馆', 0, null],
+    ['分类+人均', '小馆', null, 0],
+    ['评分+人均', null, 0, 0],
+    ['三项齐全', '小馆', 0, 0]
+  ])('%s：分隔符只出现在相邻可见项之间，无孤立 •', async (_label, category, rating, price) => {
+    const view = await openStore({ category, rating, price });
+    const expected: string[] = [];
+    if (category != null) expected.push(String(category));
+    if (rating != null) expected.push(`★ ${rating}`);
+    if (price != null) expected.push(`人均 ¥${price}`);
+    const visible = visibleMetaText(view.row);
+    expect(visibleSeparatorCount(view.row)).toBe(Math.max(0, expected.length - 1));
+    expected.forEach((text) => expect(visible).toContain(text));
+    expect(view.row.classList.contains('hidden')).toBe(expected.length === 0);
+    expect(view.row.classList.contains('flex')).toBe(expected.length > 0);
+    // 0 分与 0 元是真实值：既不能被当成缺值，也不能被替换成占位文案
+    expect(view.rating.textContent).toBe(rating == null ? '' : `★ ${rating}`);
+    expect(view.price.textContent).toBe(price == null ? '' : `人均 ¥${price}`);
+  });
+
+  it('hours/address/phone/notes 空值：文本清空、图标所在外容器隐藏，notesBox 隐藏', async () => {
+    for (const [, value] of blankValues) {
+      const view = await openStore({ hours: value, address: value, phone: value, notes: value });
+      expect(view.hours.textContent).toBe('');
+      expect(view.hours.classList.contains('hidden')).toBe(true);
+      expect(view.address.textContent).toBe('');
+      expect(view.phone.textContent).toBe('');
+      expect(view.notes.textContent).toBe('');
+      expect(view.addressRow.classList.contains('hidden')).toBe(true);
+      expect(view.addressRow.classList.contains('flex')).toBe(false);
+      expect(view.phoneRow.classList.contains('hidden')).toBe(true);
+      expect(view.phoneRow.classList.contains('flex')).toBe(false);
+      expect(view.notesBox.classList.contains('hidden')).toBe(true);
+      // 图标包裹在行容器内，行隐藏即图标不显示，不允许留下只有 📍/📞 的空行
+      expect(view.addressRow.textContent).not.toContain('undefined');
+      expect(view.phoneRow.textContent).not.toContain('null');
+      expect(view.notesBox.textContent).not.toContain('null');
+    }
+  });
+
+  it('先完整后清空再完整：清残留且可恢复，不保留上一家店的分隔符与文案', async () => {
+    const view = await openStore({
+      category: '日式料理',
+      rating: 4.9,
+      price: 36,
+      hours: '10:30 - 21:30',
+      address: '浅草食街 108 号',
+      phone: '0512-68219901',
+      notes: '午市建议提前点单'
+    });
+    const originalNodes = [view.category, view.rating, view.price];
+    expect(view.category.textContent).toBe('日式料理');
+    expect(view.rating.textContent).toBe('★ 4.9');
+    expect(view.price.textContent).toBe('人均 ¥36');
+    expect(visibleSeparatorCount(view.row)).toBe(2);
+    expect(view.hours.textContent).toBe('营业时间 · 10:30 - 21:30');
+    expect(view.addressRow.classList.contains('hidden')).toBe(false);
+    expect(view.phoneRow.classList.contains('hidden')).toBe(false);
+    expect(view.notesBox.classList.contains('hidden')).toBe(false);
+    expect(view.notes.textContent).toBe('午市建议提前点单');
+
+    view.services.stores.data = [
+      { ...view.store, category: null, rating: null, price: null, hours: null, address: null, phone: null, notes: null }
+    ];
+    (window as any).BentoModal.setupStoreDetail('s-meta');
+    [view.category, view.rating, view.price].forEach((node, index) => expect(node).toBe(originalNodes[index]));
+    expect(view.category.textContent).toBe('');
+    expect(view.rating.textContent).toBe('');
+    expect(view.price.textContent).toBe('');
+    expect(view.row.classList.contains('hidden')).toBe(true);
+    expect(visibleSeparatorCount(view.row)).toBe(0);
+    expect(view.hours.textContent).toBe('');
+    expect(view.address.textContent).toBe('');
+    expect(view.addressRow.classList.contains('hidden')).toBe(true);
+    expect(view.phone.textContent).toBe('');
+    expect(view.phoneRow.classList.contains('hidden')).toBe(true);
+    expect(view.notes.textContent).toBe('');
+    expect(view.notesBox.classList.contains('hidden')).toBe(true);
+
+    view.services.stores.data = [
+      {
+        ...view.store,
+        category: '小馆',
+        rating: 0,
+        price: 0,
+        hours: '09:00 - 18:00',
+        address: '新址 1 号',
+        phone: '000-0000',
+        notes: '再次营业'
+      }
+    ];
+    (window as any).BentoModal.setupStoreDetail('s-meta');
+    [view.category, view.rating, view.price].forEach((node, index) => expect(node).toBe(originalNodes[index]));
+    expect(view.hours.classList.contains('hidden')).toBe(false);
+    expect(view.row.classList.contains('hidden')).toBe(false);
+    expect(view.category.textContent).toBe('小馆');
+    expect(view.rating.textContent).toBe('★ 0');
+    expect(view.price.textContent).toBe('人均 ¥0');
+    expect(visibleSeparatorCount(view.row)).toBe(2);
+    expect(view.hours.textContent).toBe('营业时间 · 09:00 - 18:00');
+    expect(view.address.textContent).toBe('新址 1 号');
+    expect(view.addressRow.classList.contains('hidden')).toBe(false);
+    expect(view.phone.textContent).toBe('000-0000');
+    expect(view.phoneRow.classList.contains('hidden')).toBe(false);
+    expect(view.notes.textContent).toBe('再次营业');
+    expect(view.notesBox.classList.contains('hidden')).toBe(false);
+  });
+});
+
+describe('T-005R 食材详情日期空值（行为断言）', () => {
+  async function openIngredient(overrides: Record<string, unknown>) {
+    vi.unstubAllGlobals();
+    await bootRealPage();
+    const services = (window as any).BentoService;
+    const item = { id: 'i-date', name: '日期食材', stock: 100, unit: 'g', ...overrides };
+    services.pantry.data = [item];
+    services.pantry.getById = (id: string) => services.pantry.data.find((x: any) => x.id === id);
+    (window as any).BentoModal.setupIngredientDetail('i-date');
+    const el = (id: string) => document.getElementById(id) as HTMLElement;
+    return {
+      services,
+      get purchase() {
+        return el('ingredientDetailPurchaseDate');
+      },
+      get expire() {
+        return el('ingredientDetailExpireDate');
+      }
+    };
+  }
+
+  it('purchaseDate/expireDate 为 null、undefined、空串、纯空白时回退「未填写」', async () => {
+    for (const [, value] of blankValues) {
+      const view = await openIngredient({ purchaseDate: value, expireDate: value });
+      expect(view.purchase.textContent).toBe('未填写');
+      expect(view.expire.textContent).toBe('未填写');
+    }
+  });
+
+  it('合法日期原样保留，且从有值切到空值会清掉旧日期', async () => {
+    const view = await openIngredient({ purchaseDate: '2026-09-06', expireDate: '2026-09-20' });
+    expect(view.purchase.textContent).toBe('2026-09-06');
+    expect(view.expire.textContent).toBe('2026-09-20');
+
+    view.services.pantry.data = [
+      { id: 'i-date', name: '日期食材', stock: 100, unit: 'g', purchaseDate: null, expireDate: '  ' }
+    ];
+    (window as any).BentoModal.setupIngredientDetail('i-date');
+    expect(view.purchase.textContent).toBe('未填写');
+    expect(view.expire.textContent).toBe('未填写');
   });
 });

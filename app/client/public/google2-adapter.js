@@ -343,6 +343,203 @@
   function emit(name) {
     window.BentoBus?.emit(name);
   }
+  // ---------------------------------------------------------------------------
+  // 【菜谱封面与纯文本图标解耦】
+  // 只有受控 /uploads/ 图片路径才允许进入 <img src>；历史裸占位文件名（如 steamed-fish.png）
+  // 与任意注入载荷一律降级为纯文本 Emoji，绝不把原值写进 src 或事件属性。
+  // ---------------------------------------------------------------------------
+  function isSafeUploadedCoverUrl(value) {
+    if (typeof value !== 'string') return false;
+    if (value.includes('..') || value.includes('\\')) return false;
+    // 与 safeImageSource 保持一致：拒绝协议相对地址（//）与含当前目录段（/./）的路径
+    if (value.includes('//') || value.includes('/./')) return false;
+    return /^\/uploads\/[A-Za-z0-9._/-]+\.(?:jpe?g|png|webp)$/i.test(value);
+  }
+  function isLegacyPlaceholderImageFilename(value) {
+    if (typeof value !== 'string') return false;
+    const text = value.trim();
+    if (!text || text.startsWith('/uploads/')) return false;
+    // 历史脏数据是「裸文件名」（steamed-fish.png / shrimp.png），不含任何路径分隔符；
+    // 带目录的相对路径（如 /cover.jpg）不属于本类，未触碰时原样保留，避免误清真实旧值。
+    // 任务原始建议的字符类含 `/`，此处收窄为不含 `/`：既有 adapter 契约测试要求未触碰的
+    // '/cover.jpg' 原样提交（google2-adapter.test.ts），且带目录路径已被 isImageLikePathText
+    // 拦在纯文本槽位之外，不会以文件名形式外漏，故不影响 XSS/expectInert 断言强度。
+    return /^[A-Za-z0-9._-]+\.(?:jpe?g|png|webp|gif|svg|bmp|ico)$/i.test(text);
+  }
+  /** 任意「像图片路径」的文本（含目录）都不得进入纯文本图标槽位。 */
+  function isImageLikePathText(value) {
+    if (typeof value !== 'string') return false;
+    const text = value.trim();
+    if (!text) return false;
+    return /^[A-Za-z0-9._/-]+\.(?:jpe?g|png|webp|gif|svg|bmp|ico)$/i.test(text);
+  }
+  const RECIPE_CATEGORY_ICONS = {
+    快手家常: '🍳',
+    暖胃炖菜: '🥘',
+    清爽时蔬: '🥦',
+    鲜美水产: '🐟',
+    肉禽鲜香: '🥩',
+    减脂轻食: '🥗',
+    滋补靓汤: '🍲'
+  };
+  function recipeCategoryIcon(category) {
+    const key = typeof category === 'string' ? category.trim() : '';
+    return RECIPE_CATEGORY_ICONS[key] || '🥘';
+  }
+  // ---------------------------------------------------------------------------
+  // 【冰箱食材 7 大分类与图标派生（T-006B）】
+  // 后端 Ingredient 没有 icon 字段（只有 imagePath，无 migration）：显式 Emoji 图标按既有
+  // imagePath 协议原样存储，/uploads/ 上传封面继续保留；读取时按
+  // 「显式合法 Emoji → 名称关键词 → 7 大分类默认图标」派生，历史空/旧分类按名称兜底。
+  // ---------------------------------------------------------------------------
+  const INGREDIENT_CATEGORIES = ['蔬菜', '肉禽', '水产', '蛋奶豆制', '主食粮油', '调味', '其他'];
+  const INGREDIENT_CATEGORY_ICONS = {
+    蔬菜: '🥬',
+    肉禽: '🥩',
+    水产: '🐟',
+    蛋奶豆制: '🥚',
+    主食粮油: '🍚',
+    调味: '🧂',
+    其他: '📦'
+  };
+  // 与后端 app/server/src/modules/ingredients/categories.ts 的 LEGACY_CATEGORY_MAP 保持一致
+  const LEGACY_INGREDIENT_CATEGORY = {
+    蔬菜类: '蔬菜',
+    叶菜: '蔬菜',
+    生鲜蔬菜: '蔬菜',
+    肉类: '肉禽',
+    禽类: '肉禽',
+    肉禽类: '肉禽',
+    猪牛羊肉: '肉禽',
+    海鲜: '水产',
+    水产类: '水产',
+    鱼类: '水产',
+    蛋: '蛋奶豆制',
+    蛋类: '蛋奶豆制',
+    蛋奶: '蛋奶豆制',
+    奶制品: '蛋奶豆制',
+    乳制品: '蛋奶豆制',
+    豆制品: '蛋奶豆制',
+    豆类: '蛋奶豆制',
+    烘焙: '主食粮油',
+    主食: '主食粮油',
+    粮食: '主食粮油',
+    粮油: '主食粮油',
+    米面: '主食粮油',
+    调料: '调味',
+    调味品: '调味',
+    调味料: '调味',
+    水果: '其他',
+    日常: '其他',
+    其他类: '其他'
+  };
+  // 顺序即优先级：调味词必须排在蔬菜「椒」之前，与后端 NAME_RULES 一致
+  const INGREDIENT_NAME_RULES = [
+    ['其他', ['牛油果', '苹果', '香蕉', '葡萄', '橙', '柚', '水果']],
+    [
+      '调味',
+      ['盐', '糖', '酱', '醋', '料酒', '蚝油', '胡椒', '花椒', '味精', '鸡精', '香料', '调味', '葱', '姜', '蒜']
+    ],
+    ['蔬菜', ['土豆', '玉米', '毛豆', '豌豆', '豆角', '四季豆', '黄豆芽', '绿豆芽']],
+    ['蛋奶豆制', ['蛋', '奶', '乳', '豆腐', '豆浆', '豆干', '腐竹', '奶酪', '黄油', '酸奶', '豆']],
+    ['水产', ['虾', '蟹', '鱼', '贝', '蛤', '鱿', '鲍', '海参', '海带', '紫菜', '花甲']],
+    ['肉禽', ['排骨', '猪', '牛', '羊', '鸡', '鸭', '鹅', '火腿', '香肠', '培根', '肉']],
+    ['主食粮油', ['大米', '糯米', '米', '面', '粉', '馒头', '燕麦', '杂粮', '挂面', '面包', '食用油', '淀粉']],
+    ['蔬菜', ['菜', '瓜', '茄', '菇', '菌', '笋', '萝卜', '椒', '番茄', '西红柿']]
+  ];
+  const INGREDIENT_NAME_ICONS = [
+    [/牛油果|苹果|香蕉|梨|桃|葡萄|橙|水果/, '🍎'],
+    [/盐|糖|酱|醋|胡椒|花椒|鸡精|味精|调味/, '🧂'],
+    [/蛋/, '🥚'],
+    [/奶|乳/, '🥛'],
+    [/玉米/, '🌽'],
+    [/土豆/, '🥔'],
+    [/豆角|四季豆|毛豆|豌豆|豆芽/, '🥬'],
+    [/虾|蟹/, '🦐'],
+    [/鱼/, '🐟'],
+    [/排骨|猪|牛|羊|肉/, '🥩'],
+    [/鸡|鸭/, '🍗'],
+    [/豆腐|豆/, '🧈'],
+    [/米|面|粉/, '🍚'],
+    [/胡萝卜/, '🥕'],
+    [/香菇|菇|菌/, '🍄'],
+    [/黄瓜/, '🥒'],
+    [/番茄|西红柿/, '🍅'],
+    [/生菜|青菜|西兰花|菜/, '🥬'],
+    [/油|椒|葱|姜|蒜/, '🧂']
+  ];
+  function inferIngredientCategoryByName(name) {
+    const text = name == null ? '' : String(name).trim();
+    if (!text) return null;
+    for (const [category, keywords] of INGREDIENT_NAME_RULES) {
+      if (keywords.some((keyword) => text.includes(keyword))) return category;
+    }
+    return null;
+  }
+  /** 分类归一：标准 7 类原样；旧名映射；否则按名称推断，最终兜底「其他」。 */
+  function normalizeIngredientCategory(value, name) {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (INGREDIENT_CATEGORIES.includes(text)) return text;
+    const mapped = LEGACY_INGREDIENT_CATEGORY[text];
+    if (mapped) return mapped;
+    return inferIngredientCategoryByName(name) || inferIngredientCategoryByName(text) || '其他';
+  }
+  let ingredientEmojiPattern = null;
+  /** 显式图标合法性：单个（含组合）Emoji；文件名/路径/HTML 特殊字符一律不合法。 */
+  function isIngredientEmoji(value) {
+    const text = value == null ? '' : String(value).trim();
+    if (!text || text.length > 8) return false;
+    if (/^[A-Za-z0-9./_\\-]+$/.test(text)) return false;
+    if (/[<>"'`&\s]/.test(text)) return false;
+    if (!ingredientEmojiPattern) {
+      try {
+        ingredientEmojiPattern = new RegExp(
+          '^\\p{Extended_Pictographic}(?:\\uFE0F|\\u200D\\p{Extended_Pictographic}|[\\u{1F3FB}-\\u{1F3FF}])*$',
+          'u'
+        );
+      } catch {
+        // 无 Unicode property escapes 时按码点范围判断（不写代理对字符类，避免 no-misleading-character-class）
+        ingredientEmojiPattern = false;
+      }
+    }
+    if (ingredientEmojiPattern) return ingredientEmojiPattern.test(text);
+    return Array.from(text).every((char) => {
+      const code = char.codePointAt(0);
+      return (
+        (code >= 0x2600 && code <= 0x27bf) ||
+        (code >= 0x2b00 && code <= 0x2bff) ||
+        (code >= 0x1f000 && code <= 0x1faff) ||
+        code === 0xfe0f ||
+        code === 0x200d
+      );
+    });
+  }
+  /** 读取侧图标派生：显式合法 Emoji → 名称关键词 → 分类默认图标。 */
+  function deriveIngredientIcon(icon, category, name) {
+    const explicit = icon == null ? '' : String(icon).trim();
+    if (isIngredientEmoji(explicit)) return explicit;
+    const text = name == null ? '' : String(name).trim();
+    for (const [pattern, emoji] of INGREDIENT_NAME_ICONS) {
+      if (pattern.test(text)) return emoji;
+    }
+    return INGREDIENT_CATEGORY_ICONS[normalizeIngredientCategory(category, name)];
+  }
+  /** 写入侧协议：Emoji 与受控 /uploads/ 路径原样写入 imagePath；其余清空。 */
+  function ingredientImagePath(item) {
+    const icon = item?.icon == null ? '' : String(item.icon).trim();
+    if (isSafeUploadedCoverUrl(icon)) return icon;
+    if (isIngredientEmoji(icon)) return icon;
+    const original = item?.imagePath == null ? '' : String(item.imagePath).trim();
+    if (isSafeUploadedCoverUrl(original) || isIngredientEmoji(original)) return original;
+    return null;
+  }
+  /** 纯文本/图标槽位：上传路径与历史占位文件名绝不外漏，其余文本（含注入载荷）原样作为纯文本。 */
+  function textIcon(value, fallback) {
+    const text = typeof value === 'string' ? value.trim() : '';
+    if (!text) return fallback;
+    if (isImageLikePathText(text)) return fallback;
+    return text;
+  }
   function mapStore(s) {
     return {
       ...s,
@@ -353,7 +550,8 @@
       phone: s.contact ?? '',
       hours: s.businessHours ?? '',
       dishes: s.recommendedDishes ?? '',
-      icon: s.imagePath || '🍱',
+      // 纯文本图标槽位：/uploads/... 与历史裸文件名不参与文本渲染
+      icon: textIcon(s.imagePath, '🍱'),
       history: Array.isArray(s.relatedRecords) ? s.relatedRecords.map(mapRecord) : [],
       version: s.version
     };
@@ -461,11 +659,18 @@
     return Math.round((target.getTime() - today.getTime()) / 86400000);
   }
   function mapPantryItem(i) {
+    const category = normalizeIngredientCategory(i.category, i.name);
     return {
       ...i,
       unitKey: i.unit,
       unit: UNIT_LABELS[i.unit] ?? (i.unit || ''),
-      icon: i.imagePath || '🥬',
+      // 7 大分类归一：历史空/旧分类按名称兜底，保证「全部(N)」恒等于各分类计数之和
+      category,
+      // 图标派生：显式 Emoji → 名称关键词 → 分类默认；历史裸文件名/上传路径绝不当文本渲染
+      explicitIcon: isIngredientEmoji(i.imagePath) ? String(i.imagePath).trim() : null,
+      icon: deriveIngredientIcon(i.imagePath, category, i.name),
+      imagePath: isSafeUploadedCoverUrl(i.imagePath) ? i.imagePath : null,
+      minStock: i.minStock ?? null,
       stock: i.quantity ?? 0,
       storageLocation: i.location || '',
       purchaseDate: i.purchaseDate || '',
@@ -498,8 +703,7 @@
       // 自由规格优先展示（保留用户原文语义），无原文才用结构化 quantity+单位合成
       amount: amountText || quantityText,
       hasStructuredQuantity: quantity != null && Number(quantity) > 0 && item.unit != null,
-      // 后端 category 为 nullable 纯文本分类；只接受字符串并去空白，其余一律回退空串
-      category: typeof item.category === 'string' ? item.category.trim() : '',
+      category: normalizeIngredientCategory(item.category, item.ingredientNameSnapshot),
       isChecked: !!item.completed,
       source: SHOPPING_SOURCE_LABELS[item.sourceType] || '备忘'
     };
@@ -515,7 +719,9 @@
       ...r,
       // category 是后端独立 nullable 字段；tags/mealTypes 仅用于各自关系展示，不能互相推导。
       category: r.category ?? null,
-      icon: r.imagePath || '🥘',
+      // 封面与图标解耦：coverUrl 只接受受控 /uploads/ 路径；icon 永远是纯文本 Emoji
+      coverUrl: isSafeUploadedCoverUrl(r.imagePath) ? r.imagePath : null,
+      icon: textIcon(r.imagePath, recipeCategoryIcon(r.category)),
       cookTimeMinutes: r.cookingTimeMinutes ?? null,
       calories: r.calories ?? null,
       tags: (r.tags || []).map((t) => (typeof t === 'string' ? { name: t } : { name: t.tag?.name || t.name || '' })),
@@ -623,7 +829,8 @@
         type: 'cook',
         targetId: item.recipe.id,
         title: item.recipe.name || '',
-        icon: item.recipe.imagePath || '🥘'
+        coverUrl: isSafeUploadedCoverUrl(item.recipe.imagePath) ? item.recipe.imagePath : null,
+        icon: textIcon(item.recipe.imagePath, '🥘')
       };
     if (item?.itemType === 'STORE' && item.store) {
       const channel = item.store.supportsTakeout === false && item.store.supportsDineIn ? 'dinein' : 'takeout';
@@ -633,7 +840,8 @@
         type: channel,
         targetId: item.store.id,
         title: item.store.name || '',
-        icon: item.store.imagePath || (channel === 'dinein' ? '🍽️' : '🛵')
+        coverUrl: isSafeUploadedCoverUrl(item.store.imagePath) ? item.store.imagePath : null,
+        icon: textIcon(item.store.imagePath, channel === 'dinein' ? '🍽️' : '🛵')
       };
     }
     return {
@@ -642,11 +850,14 @@
       type: 'cook',
       targetId: '',
       title: item?.customName || '',
+      coverUrl: null,
       icon: '🍱'
     };
   }
   function mapPlan(p) {
-    const target = mapPlanItemTarget((p.items || [])[0]);
+    const item = (p.items || [])[0];
+    const target = mapPlanItemTarget(item);
+    const targetImagePath = item?.recipe?.imagePath ?? item?.store?.imagePath;
     return {
       ...p,
       date: p.planDate,
@@ -657,7 +868,9 @@
       isCompleted: p.status === 'COMPLETED',
       ...target,
       title: p.title ?? null,
-      icon: p.icon ?? null,
+      // 计划自带 icon 为 null 时保持 null（后端 nullable 契约）；但目标是历史裸占位文件名
+      // （steamed-fish.png 等）时用目标推导的干净 Emoji 兜底，绝不把文件名字符串当图标
+      icon: p.icon == null && isLegacyPlaceholderImageFilename(targetImagePath) ? target.icon : textIcon(p.icon, null),
       version: p.version
     };
   }
@@ -894,7 +1107,17 @@
       emit('recipes:changed');
       return mapped;
     };
-    service.save = async (recipe) => {
+    service.save = async (recipe, options) => {
+      // 可选局部提交策略：默认（无 options）保持既有行为——成功即关闭弹窗并提示。
+      // 菜谱表单传入 shouldClose/shouldNotify，由「本次提交是否仍拥有当前表单」在完成时求值，
+      // 避免旧请求关闭用户已重开的新表单或把 toast 弹到新会话上。
+      const policy = options && typeof options === 'object' ? options : null;
+      const allowed = (name) => {
+        const rule = policy ? policy[name] : undefined;
+        if (typeof rule === 'function') return rule() !== false;
+        if (typeof rule === 'boolean') return rule;
+        return true;
+      };
       const ingredients = (recipe.ingredients || []).map((i) => {
         const name = String(i.name || i.ingredientNameSnapshot || i.ingredientName || '').trim();
         const quantity = typeof i.quantity === 'number' ? i.quantity : null;
@@ -971,8 +1194,12 @@
         : [mapped, ...service.data];
       emit('recipes:changed');
       emit('favorites:changed');
-      window.BentoModal?.close(true);
-      toast(recipe.id ? '菜谱已更新' : '菜谱已创建', 'success');
+      // 写入已经到达服务端，不能假装取消；这里只控制后续 UI：不属于当前表单会话的请求不再关窗/提示。
+      // 两个判断都在任何 UI 副作用之前求值：close 本身会重置表单会话，不能让它影响随后的 toast 判断。
+      const closeOwned = allowed('shouldClose');
+      const notifyOwned = allowed('shouldNotify');
+      if (closeOwned) window.BentoModal?.close(true);
+      if (notifyOwned) toast(recipe.id ? '菜谱已更新' : '菜谱已创建', 'success');
       return mapped;
     };
     service.delete = async (id) => {
@@ -1108,55 +1335,108 @@
       emit('pantry:changed');
       return mapped;
     };
+    /**
+     * 到期日来源：编辑时用户可能只填「剩余天数」或「到期日期」，二者择一即可落库。
+     * - 显式 expireDate / expiryDate 优先（真实日期字符串）
+     * - 否则 expireDaysLeft 是相对今天的天数（允许 0 与负数 = 今日到期/已过期，不做 1..365 夹取）
+     * - 都未提供时返回 undefined，编辑语义为「未修改」
+     */
+    const resolveExpiryDate = (item) => {
+      const explicit = typeof item.expireDate === 'string' ? item.expireDate.trim() : '';
+      const explicitIso = typeof item.expiryDate === 'string' ? item.expiryDate.trim() : '';
+      if (/^\d{4}-\d{2}-\d{2}$/.test(explicit)) return explicit;
+      if (/^\d{4}-\d{2}-\d{2}$/.test(explicitIso)) return explicitIso;
+      if (item.expiryDate === null || item.expireDate === null) return null;
+      const rawDays = item.expireDaysLeft;
+      if (rawDays === undefined || rawDays === null || String(rawDays).trim() === '') return undefined;
+      const days = Math.round(Number(rawDays));
+      if (!Number.isFinite(days)) return undefined;
+      return localDateKey(days);
+    };
+    const resolveMinStock = (value) => {
+      if (value === undefined) return undefined;
+      if (value === null || String(value).trim() === '') return null;
+      const number = Number(value);
+      if (!Number.isFinite(number) || number < 0)
+        throw new ApiError(422, 'INGREDIENT_MIN_STOCK_INVALID', '最低库存必须是不小于 0 的数字');
+      return number;
+    };
     service.save = async (item) => {
       const unit = toBackendUnit(item.unitKey || item.unit);
       if (!unit) throw new ApiError(422, 'INGREDIENT_UNIT_UNSUPPORTED', '食材计量单位无法映射到后端单位，无法保存');
+      const imagePath = ingredientImagePath(item);
+      const category = item.category === undefined ? undefined : normalizeIngredientCategory(item.category, item.name);
+      const minStock = resolveMinStock(item.minStock);
       if (item.id) {
+        // 编辑：本地缓存可能尚无该条（旧 fixture/刚刷新），version 优先取调用方传入值
         const existing = service.getById(item.id);
-        if (
-          (item.batches && item.batches.length) ||
-          (item.storageLocation !== undefined && item.storageLocation !== (existing?.location || ''))
-        )
-          throw new ApiError(
-            422,
-            'INGREDIENT_BATCHES_UNSUPPORTED',
-            '后端食材更新不支持修改批次信息（数量/存放位置/到期日），暂无法保存'
-          );
+        const version = Number(item.version ?? existing?.version);
+        if (!Number.isInteger(version) || version < 1)
+          throw new ApiError(409, 'INGREDIENT_VERSION_REQUIRED', '编辑食材缺少有效版本，请刷新后重试');
+        const expiryDate = resolveExpiryDate(item);
+        const location =
+          item.storageLocation === undefined ? undefined : String(item.storageLocation ?? '').trim() || null;
+        // 后端已支持 Ingredient PUT 的 quantity/purchaseDate/expiryDate/location/batches：
+        // 数量与元数据同步进批次，不再抛 INGREDIENT_BATCHES_UNSUPPORTED。
         const body = {
           name: item.name,
-          imagePath: item.imagePath || null,
-          category: item.category || null,
+          imagePath,
+          category: category ?? null,
           unit,
-          minStock: item.minStock ?? null,
+          minStock,
           maxStock: item.maxStock ?? null,
           notes: item.notes || null,
-          version: item.version
+          version
         };
+        if (item.stock !== undefined && item.stock !== null && String(item.stock).trim() !== '') {
+          const quantity = Number(item.stock);
+          if (!Number.isFinite(quantity) || quantity < 0)
+            throw new ApiError(422, 'INGREDIENT_QUANTITY_INVALID', '库存数量必须是不小于 0 的数字');
+          body.quantity = quantity;
+        }
+        if (expiryDate !== undefined) body.expiryDate = expiryDate;
+        if (location !== undefined) body.location = location;
+        if (item.purchaseDate !== undefined) {
+          const purchaseDate = String(item.purchaseDate ?? '').trim();
+          body.purchaseDate = /^\d{4}-\d{2}-\d{2}$/.test(purchaseDate) ? purchaseDate : null;
+        }
+        if (Array.isArray(item.batches) && item.batches.length) {
+          // 批次编辑（后端已支持 Ingredient PUT batches）：逐条校验，缺单位/负数快速失败
+          body.batches = item.batches.map((batch) => {
+            const batchQuantity = Number(batch?.quantity);
+            const batchUnit = toBackendUnit(batch?.unit);
+            if (!Number.isFinite(batchQuantity) || batchQuantity < 0 || !batchUnit)
+              throw new ApiError(422, 'INGREDIENT_BATCH_INVALID', '批次数量与单位不合法，无法保存');
+            return { ...batch, quantity: batchQuantity, unit: batchUnit };
+          });
+        }
         const dto = await ApiClient.put(`/ingredients/${encodeURIComponent(item.id)}`, body);
         const mapped = mapPantryItem(dto);
-        service.data = service.data.map((x) => (x.id === mapped.id ? mapped : x));
+        service.data = service.data.some((x) => x.id === mapped.id)
+          ? service.data.map((x) => (x.id === mapped.id ? mapped : x))
+          : [mapped, ...service.data];
         emit('pantry:changed');
         window.BentoModal?.close(true);
         toast('食材已更新', 'success');
         return mapped;
       }
+      const expiryDate = resolveExpiryDate(item);
       const body = {
         name: item.name,
-        imagePath: item.imagePath || null,
-        category: item.category || null,
+        imagePath,
+        category: category ?? null,
         unit,
-        minStock: item.minStock ?? null,
+        minStock: minStock === undefined ? null : minStock,
         maxStock: item.maxStock ?? null,
         notes: item.notes || null,
         batches: [
           {
             quantity: Number(item.stock),
             unit,
-            purchaseDate: item.purchaseDate || null,
-            expiryDate:
-              item.expireDaysLeft == null || item.expireDaysLeft === ''
-                ? null
-                : localDateKey(Math.round(Number(item.expireDaysLeft))),
+            purchaseDate: /^\d{4}-\d{2}-\d{2}$/.test(String(item.purchaseDate ?? '').trim())
+              ? String(item.purchaseDate).trim()
+              : null,
+            expiryDate: expiryDate === undefined ? null : expiryDate,
             location: item.storageLocation || null,
             opened: !!item.opened,
             consumePriority: !!item.consumePriority,
@@ -1181,6 +1461,54 @@
       toast('食材已删除', 'success');
     };
     const consumePromises = new Map();
+    /** 单位维度：质量 / 体积 / 计件（其余按计件）。快捷消耗按钮按它动态生成。 */
+    const UNIT_DIMENSION = {
+      GRAM: 'mass',
+      KILOGRAM: 'mass',
+      MILLILITER: 'volume',
+      LITER: 'volume',
+      PIECE: 'count',
+      BOX: 'count',
+      BAG: 'count',
+      BOTTLE: 'count',
+      CAN: 'count',
+      PACK: 'count',
+      PORTION: 'count',
+      OTHER: 'count'
+    };
+    /**
+     * 快捷消耗预设：质量 -100g/-250g，体积 -100ml/-250ml，计件 -1/-2 单位。
+     * 返回 { label, quantity, unit }；unit 为后端枚举，label 为按钮文案。
+     */
+    const consumePresets = (item) => {
+      const backendUnit = toBackendUnit(item?.unitKey || item?.unit);
+      const dimension = UNIT_DIMENSION[backendUnit] || 'count';
+      const unitLabel = UNIT_LABELS[backendUnit] ?? (item?.unit || '份');
+      if (dimension === 'mass') {
+        return [
+          { label: '➖ 消耗 100g', quantity: 100, unit: 'GRAM' },
+          { label: '➖ 消耗 250g', quantity: 250, unit: 'GRAM' }
+        ];
+      }
+      if (dimension === 'volume') {
+        return [
+          { label: '➖ 消耗 100ml', quantity: 100, unit: 'MILLILITER' },
+          { label: '➖ 消耗 250ml', quantity: 250, unit: 'MILLILITER' }
+        ];
+      }
+      return [1, 2].map((quantity) => ({
+        label: `➖ 消耗 ${quantity}${unitLabel || '份'}`,
+        quantity,
+        unit: backendUnit || 'PORTION'
+      }));
+    };
+    service.consumePresets = consumePresets;
+    /**
+     * 消耗入参兼容旧调用：
+     * - 'all' → 全部用完
+     * - 数字 100/250 → 兼容旧按钮，按质量单位扣减
+     * - { quantity, unit } → 按真实单位维度扣减（质量/体积/计件）
+     */
     service.consume = (payload, amount) => {
       const id = typeof payload === 'object' ? payload?.id : payload;
       if (!id) return Promise.reject(new ApiError(422, 'INGREDIENT_ID_REQUIRED', '食材缺少真实 ID'));
@@ -1191,13 +1519,17 @@
       const mode = amount === 'all' ? 'ALL' : 'QUANTITY';
       const body = { mode, ingredientVersion: version };
       if (mode === 'QUANTITY') {
-        if (![100, 250].includes(amount))
+        const preset = typeof amount === 'object' && amount !== null ? amount : { quantity: amount, unit: 'GRAM' };
+        const quantity = Number(preset.quantity);
+        const unit = toBackendUnit(preset.unit);
+        // 只接受与食材同维度的标准单位：克食材不能按「个」扣减，未知单位不猜
+        const itemUnit = toBackendUnit(item?.unitKey || item?.unit);
+        if (!Number.isFinite(quantity) || quantity <= 0 || !unit)
           return Promise.reject(new ApiError(422, 'INGREDIENT_CONSUME_AMOUNT_INVALID', '扣减数量无效'));
-        const unit =
-          item?.unitKey || (Object.entries(UNIT_LABELS).find(([, label]) => label === item?.unit)?.[0] ?? null);
-        if (unit !== 'GRAM') return toast('100g/250g 扣减仅适用于克（GRAM）食材', 'error');
-        body.quantity = amount;
-        body.unit = 'GRAM';
+        if (itemUnit && UNIT_DIMENSION[itemUnit] !== UNIT_DIMENSION[unit])
+          return toast('扣减单位与食材单位维度不一致，请刷新后重试', 'error');
+        body.quantity = quantity;
+        body.unit = unit;
       }
       const promise = (async () => {
         const result = await ApiClient.post(`/ingredients/${encodeURIComponent(id)}/consume`, body);
@@ -1212,7 +1544,9 @@
         } catch {
           toast('扣减已成功，但详情刷新失败，请稍后重试', 'warning');
         }
-        toast(mode === 'ALL' ? '已全部消耗该食材' : `已消耗 ${amount}g`, 'success');
+        const consumedLabel =
+          mode === 'ALL' ? '已全部消耗该食材' : `已消耗 ${body.quantity}${UNIT_LABELS[body.unit] ?? ''}`;
+        toast(consumedLabel, 'success');
         return mapped;
       })();
       consumePromises.set(id, promise);
@@ -1238,10 +1572,13 @@
       // OTHER/无展示单位（unitKey === 'OTHER' 或空字符串）派生不出标准规格：
       // 直接按自由规格「适量」加入，绝不生成裸「1」这种无单位字符串。
       const hasUnit = !!item.unit && item.unitKey !== 'OTHER';
+      // 名称只传纯净食材名：绝不拼「(手动补货)」污染购物项名称（F-07）
       await shopping.add(
         {
-          name: `${item.name} (手动补货)`,
+          name: item.name,
           amount: hasUnit ? `1${item.unit}` : '适量',
+          // 补货项带上归一后的 7 大分类（缺失时按名称/兜底推断），入库后分类不会丢
+          category: normalizeIngredientCategory(item.category, item.name),
           isChecked: false,
           source: '冰箱档案手动补货'
         },
@@ -1460,8 +1797,7 @@
         body.ingredientId = updates.ingredientId;
       }
       if (updates.sortOrder !== undefined) {
-        if (!Number.isInteger(updates.sortOrder))
-          throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '排序值必须是整数');
+        if (!Number.isInteger(updates.sortOrder)) throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '排序值必须是整数');
         body.sortOrder = updates.sortOrder;
       }
       if (updates.notes !== undefined) body.notes = updates.notes;
@@ -1679,7 +2015,8 @@
         if (checkinPromise) return { status: 'busy', promise: checkinPromise };
         const pending = readPending();
         if (pending.status === 'invalid') return { status: 'invalid' };
-        if (pending.status === 'ok') return { status: 'replay', promise: checkinWith(pending.value.listId, pending.value.itemIds, pending.value) };
+        if (pending.status === 'ok')
+          return { status: 'replay', promise: checkinWith(pending.value.listId, pending.value.itemIds, pending.value) };
         if (!list || list.id !== promptListId) return { status: 'list-changed' };
         return { status: 'fresh' };
       };
@@ -1776,7 +2113,11 @@
       title: plan.title ?? null,
       subtext: plan.subtext ?? null,
       icon: plan.icon ?? null,
-      dinerCount: 1,
+      // 编辑保留既有食用人数：只有显式提供合法非负整数时才覆盖（绝不硬写 1）
+      dinerCount: (() => {
+        const value = plan?.dinerCount;
+        return Number.isInteger(value) && value >= 0 ? value : 1;
+      })(),
       items: planItemsFromTarget(plan)
     });
     service.getAll = () => service.data;
@@ -2020,6 +2361,259 @@
     }
     window.__google2RecordPhotoCapture = true;
   }
+  // ---------------------------------------------------------------------------
+  // 【菜谱自定义封面：选择 / 预览 / 替换 / 移除 / 上传闭环】
+  // 世代号语义与 recordPhotoGenerations 一致：打开、重选、移除、关闭都递增代次；
+  // 旧代次的上传结果不得写回新会话，更不得提交或关闭新弹窗。
+  // ---------------------------------------------------------------------------
+  const RECIPE_COVER_MAX_BYTES = 8 * 1024 * 1024;
+  const RECIPE_COVER_MIME = new Set(['image/jpeg', 'image/png', 'image/webp']);
+  const RECIPE_COVER_HINT_TEXT = '点击上传成品美图（未上传时默认展示分类图标）';
+  const recipeCoverState = {
+    generation: 0,
+    file: null,
+    previewUrl: '',
+    existingUrl: null,
+    removed: false,
+    uploadCache: null
+  };
+  /**
+   * 菜谱表单提交会话：每次打开/关闭菜谱表单都换成新对象。
+   * 与封面代次（generation）职责不同：generation 管「选图/上传结果是否还属于当前封面」，
+   * 会话对象管「这次提交是否还拥有当前表单」——旧会话的在途提交不得关闭新表单、
+   * 不得弹 toast，也不得用 submitGuard 的 pending 阻塞新会话提交。
+   */
+  let recipeFormSession = { generation: 0 };
+  function rotateRecipeFormSession() {
+    // 只换会话对象，不替换任何全局 API：旧提交据此判断自己是否还拥有当前表单。
+    recipeFormSession = { generation: recipeCoverState.generation };
+    return recipeFormSession;
+  }
+  function recipeCoverNodes() {
+    const container = document.getElementById('recipeCoverPreview');
+    if (!container) return null;
+    const declaredHint = document.getElementById('recipeCoverHint');
+    // 引导文案必须是预览容器内的唯一来源：图片加载失败被移除后仍能看到引导，
+    // 也避免 index 的说明段落与容器内提示重复出现。
+    let hint = declaredHint || container.querySelector('[data-cover-hint]');
+    if (!hint) {
+      hint = document.createElement('span');
+      hint.id = 'recipeCoverHint';
+      hint.dataset.coverHint = 'true';
+      hint.className = 'text-[11px] text-stone-400 font-bold px-3 text-center';
+    }
+    if (hint.parentElement !== container) container.append(hint);
+    return {
+      container,
+      hint,
+      input: document.getElementById('recipeCoverFileInput'),
+      choose: document.getElementById('btnChooseRecipeCover'),
+      remove: document.getElementById('btnRemoveRecipeCover')
+    };
+  }
+  function releaseRecipeCoverPreview() {
+    const url = recipeCoverState.previewUrl;
+    recipeCoverState.previewUrl = '';
+    if (url && url.startsWith('blob:') && typeof URL !== 'undefined' && typeof URL.revokeObjectURL === 'function')
+      URL.revokeObjectURL(url);
+  }
+  /** 封面区只重建受控 <img> 与提示文本，绝不写 innerHTML，也不创建事件属性。 */
+  function renderRecipeCoverState() {
+    const nodes = recipeCoverNodes();
+    if (!nodes) return;
+    const { container, hint, choose, remove } = nodes;
+    const source = recipeCoverState.previewUrl || recipeCoverState.existingUrl || '';
+    container.querySelectorAll('img').forEach((node) => node.remove());
+    hint.textContent = RECIPE_COVER_HINT_TEXT;
+    hint.classList.toggle('hidden', !!source);
+    if (hint.parentElement !== container) {
+      // 从容器外的说明段落迁移进预览区：统一成居中提示样式，避免外边距叠加
+      hint.className = 'text-[11px] text-stone-400 font-bold px-3 text-center';
+      container.append(hint);
+    }
+    if (source) {
+      const image = document.createElement('img');
+      image.src = source;
+      image.alt = '';
+      image.loading = 'lazy';
+      image.decoding = 'async';
+      image.className = 'w-full h-full object-cover';
+      image.addEventListener('error', () => {
+        // 图片加载失败：移除失效 <img> 并露出引导文案，避免预览区变成无提示空白。
+        // 「移除封面」保持可见：状态里仍记着该封面值，用户需要能主动清掉它。
+        image.remove();
+        hint.textContent = RECIPE_COVER_HINT_TEXT;
+        hint.classList.remove('hidden');
+      });
+      container.append(image);
+    }
+    if (choose) choose.textContent = source ? '更换封面' : '＋ 点击上传成品美图';
+    if (remove) remove.classList.toggle('hidden', !source);
+  }
+  function resetRecipeCoverState(recipe) {
+    recipeCoverState.generation += 1;
+    releaseRecipeCoverPreview();
+    recipeCoverState.file = null;
+    recipeCoverState.removed = false;
+    recipeCoverState.uploadCache = null;
+    recipeCoverState.existingUrl = isSafeUploadedCoverUrl(recipe?.imagePath) ? recipe.imagePath : null;
+    const nodes = recipeCoverNodes();
+    if (nodes?.input) nodes.input.value = '';
+    renderRecipeCoverState();
+  }
+  /** 本地预览：优先 objectURL；环境不支持时退回受限 data:image/(jpeg|png|webp) 读取。 */
+  async function previewRecipeCoverFile(file, generation) {
+    if (typeof URL !== 'undefined' && typeof URL.createObjectURL === 'function') {
+      const url = URL.createObjectURL(file);
+      if (recipeCoverState.generation !== generation) {
+        URL.revokeObjectURL(url);
+        return '';
+      }
+      return url;
+    }
+    if (typeof FileReader !== 'function') return '';
+    const dataUrl = await new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(typeof reader.result === 'string' ? reader.result : '');
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+    if (recipeCoverState.generation !== generation) return '';
+    return /^data:image\/(?:jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(dataUrl) ? dataUrl : '';
+  }
+  function recipeCoverError(message, code = 'RECIPE_COVER_INVALID') {
+    return new ApiError(422, code, message);
+  }
+  async function handleRecipeCoverFileSelected(event) {
+    const input = event?.target || document.getElementById('recipeCoverFileInput');
+    const file = input?.files?.[0] || null;
+    // 输入控件的 value 必须立刻清空：同一文件重选也能再次触发 change
+    if (input) input.value = '';
+    if (!file) return false;
+    const type = String(file.type || '').toLowerCase();
+    if (!RECIPE_COVER_MIME.has(type)) {
+      toast('封面仅支持 JPG / PNG / WEBP 图片', 'error');
+      return false;
+    }
+    if (!(Number(file.size) > 0) || Number(file.size) > RECIPE_COVER_MAX_BYTES) {
+      toast('封面图片不能超过 8MB', 'error');
+      return false;
+    }
+    recipeCoverState.generation += 1;
+    const generation = recipeCoverState.generation;
+    releaseRecipeCoverPreview();
+    recipeCoverState.file = file;
+    recipeCoverState.removed = false;
+    recipeCoverState.uploadCache = null;
+    try {
+      const previewUrl = await previewRecipeCoverFile(file, generation);
+      if (recipeCoverState.generation !== generation) return false;
+      if (!previewUrl) throw recipeCoverError('封面预览生成失败，请重试');
+      recipeCoverState.previewUrl = previewUrl;
+      renderRecipeCoverState();
+      return true;
+    } catch (error) {
+      if (recipeCoverState.generation === generation) {
+        recipeCoverState.file = null;
+        renderRecipeCoverState();
+        fail(error);
+      }
+      return false;
+    }
+  }
+  function handleRemoveRecipeCover(event) {
+    event?.preventDefault?.();
+    recipeCoverState.generation += 1;
+    releaseRecipeCoverPreview();
+    recipeCoverState.file = null;
+    recipeCoverState.existingUrl = null;
+    recipeCoverState.uploadCache = null;
+    recipeCoverState.removed = true;
+    const nodes = recipeCoverNodes();
+    if (nodes?.input) nodes.input.value = '';
+    renderRecipeCoverState();
+    return true;
+  }
+  async function uploadRecipeCover(file, generation) {
+    const cached = recipeCoverState.uploadCache;
+    if (cached && cached.generation === generation && cached.file === file) return cached.url;
+    const form = new FormData();
+    form.append('file', file, file.name || 'recipe-cover');
+    const asset = await ApiClient.request('/uploads/images', { method: 'POST', body: form });
+    const url = asset?.url;
+    // 上传返回值同样严格校验：绝不把任意后端字符串当图片源
+    if (!isSafeUploadedCoverUrl(url))
+      throw new ApiError(422, 'RECIPE_COVER_UNSUPPORTED', '封面上传返回的图片地址不可用，请重试');
+    if (recipeCoverState.generation !== generation)
+      throw new ApiError(409, 'RECIPE_COVER_CHANGED', '封面已更换，本次保存未提交');
+    recipeCoverState.uploadCache = { generation, file, url };
+    return url;
+  }
+  /**
+   * 提交时解析最终 imagePath：
+   * - 有新选文件：先上传，复用同一代次/同一文件的缓存（校验失败重提不重复上传）
+   * - 点了移除：显式 null
+   * - 未触碰封面：原值保留；仅历史裸占位文件名顺手清成 null
+   * snapshot 是提交开始时捕获的封面快照：上传等待期间用户关闭/重开表单改了全局状态，
+   * 也不会把新会话的文件/移除标记混进旧请求。
+   */
+  async function resolveRecipeCoverImagePath(existing, snapshot) {
+    const state = snapshot || recipeCoverState;
+    if (state.file) return uploadRecipeCover(state.file, state.generation);
+    if (state.removed) return null;
+    const original = existing?.imagePath ?? null;
+    if (isLegacyPlaceholderImageFilename(original)) return null;
+    return original;
+  }
+  function recipeCoverStatus() {
+    return {
+      generation: recipeCoverState.generation,
+      hasPendingFile: !!recipeCoverState.file,
+      previewUrl: recipeCoverState.previewUrl,
+      existingUrl: recipeCoverState.existingUrl,
+      removed: recipeCoverState.removed
+    };
+  }
+  /** 只读状态接口：供外部（含测试/调试）确认封面会话代次，不提供任何写入入口。 */
+  function coverStatusAdapter() {
+    return Object.freeze({
+      recipe: recipeCoverStatus,
+      isSafeUploadedCoverUrl,
+      isLegacyPlaceholderImageFilename
+    });
+  }
+  function installRecipeCoverControls() {
+    const nodes = recipeCoverNodes();
+    if (!nodes) return;
+    const { input, choose, remove } = nodes;
+    if (input && !input.dataset.google2CoverBound) {
+      input.dataset.google2CoverBound = 'true';
+      input.addEventListener('change', (event) => {
+        void handleRecipeCoverFileSelected(event);
+      });
+    }
+    if (choose && !choose.dataset.google2CoverBound) {
+      choose.dataset.google2CoverBound = 'true';
+      choose.addEventListener('click', (event) => {
+        event.preventDefault();
+        document.getElementById('recipeCoverFileInput')?.click();
+      });
+    }
+    if (remove && !remove.dataset.google2CoverBound) {
+      remove.dataset.google2CoverBound = 'true';
+      remove.addEventListener('click', handleRemoveRecipeCover);
+    }
+    // 表单 submit 兜底监听：内联 onsubmit 在某些宿主（如脚本被 eval 注入的环境）不可达时
+    // 仍能走同一条正式提交实现；withSubmitGuard 按 form 去重，真实浏览器里不会重复提交。
+    const form = document.querySelector('#modalRecipeForm form');
+    if (form && !form.dataset.google2CoverBound) {
+      form.dataset.google2CoverBound = 'true';
+      form.addEventListener('submit', (event) => {
+        const handler = window.BentoModal?.handleRecipeFormSubmit;
+        if (typeof handler === 'function') void handler(event);
+      });
+    }
+  }
   const recordMealType = (slot) => {
     const mealType = toBackendMealType(slot);
     if (!mealType) throw new ApiError(422, 'RECORD_MEAL_TYPE_UNSUPPORTED', '餐次无法映射到后端枚举，无法保存');
@@ -2101,9 +2695,18 @@
     service.delete = async (id) => {
       const item = service.getById(id);
       if (!item) return;
-      await ApiClient.delete(`/records/${encodeURIComponent(id)}?version=${encodeURIComponent(item.version)}`);
+      const result = await ApiClient.delete(
+        `/records/${encodeURIComponent(id)}?version=${encodeURIComponent(item.version)}`
+      );
       service.data = service.data.filter((x) => x.id !== id);
       emit('records:changed');
+      if (result?.revertedPlanId) {
+        try {
+          await window.BentoService?.plans?.reload?.();
+        } catch (error) {
+          fail(error);
+        }
+      }
       toast('该餐记录已删除，月度看板已重算', 'success');
     };
     service.remove = service.delete;
@@ -2149,10 +2752,7 @@
           const mapped = mapRecord(dto);
           upsertById(mapped);
           emit('records:changed');
-          toast(
-            mapped.status === 'CONFIRMED' ? '已确认用餐，已计入日历与统计' : '已同步该记录的最新状态',
-            'success'
-          );
+          toast(mapped.status === 'CONFIRMED' ? '已确认用餐，已计入日历与统计' : '已同步该记录的最新状态', 'success');
           return mapped;
         } catch (error) {
           if (error?.status === 409) {
@@ -2261,6 +2861,7 @@
       card.querySelectorAll('[data-business-value]').forEach((node) => {
         node.textContent = '';
       });
+      resetDashboardRecipeCover(card);
     });
     document.querySelectorAll('[data-binding="todayRecords"] [data-binding^="todayRecord-"]').forEach((slot) => {
       slot.hidden = true;
@@ -2304,6 +2905,41 @@
     if (day < 1 || day > maxDay) return null;
     return { year, month, day };
   };
+  /** 首页推荐卡封面容器：只认卡片首个 .h-24 区块，找不到则不触碰其它节点。 */
+  function dashboardRecipeCoverBox(card) {
+    return card ? card.querySelector('.h-24') : null;
+  }
+  /**
+   * 首页推荐卡封面：仅受控 /uploads/ 路径才创建 <img>；
+   * 加载失败移除图片露出默认 🥘，绝不使用内联 onerror。
+   */
+  function renderDashboardRecipeCover(card, imagePath, category) {
+    const box = dashboardRecipeCoverBox(card);
+    if (!box) return;
+    box.classList.add('relative', 'overflow-hidden');
+    box.replaceChildren();
+    const fallback = document.createElement('span');
+    // 无封面时按菜谱分类派生图标（快手家常🍳/水产🐟/时蔬🥦…），不再恒为 🥘
+    fallback.textContent = recipeCategoryIcon(category);
+    box.append(fallback);
+    if (!isSafeUploadedCoverUrl(imagePath)) return;
+    const image = document.createElement('img');
+    image.src = imagePath;
+    image.alt = '';
+    image.loading = 'lazy';
+    image.decoding = 'async';
+    image.className = 'absolute inset-0 w-full h-full object-cover';
+    image.addEventListener('error', () => image.remove());
+    box.append(image);
+  }
+  function resetDashboardRecipeCover(card) {
+    const box = dashboardRecipeCoverBox(card);
+    if (!box) return;
+    box.replaceChildren();
+    const fallback = document.createElement('span');
+    fallback.textContent = '🥘';
+    box.append(fallback);
+  }
   function mapDashboard(dto) {
     const data = dto || {};
     sanitizeStaticBusinessState();
@@ -2324,7 +2960,14 @@
         if (tagsNode) tagsNode.textContent = (value.tags || []).join('、');
         if (timeNode)
           timeNode.textContent = value.cookingTimeMinutes == null ? '' : `⏱ ${value.cookingTimeMinutes}分钟`;
+        // 菜谱无真实评分时不显示任何假星级（空串，0 分是真实值仍显示 ★ 0）
         if (ratingNode) ratingNode.textContent = value.rating == null ? '' : `★ ${value.rating}`;
+        // 无封面时按菜谱分类派生图标：默认端点不返回 category，回落到已加载菜谱缓存
+        const cachedRecipe =
+          value.category == null && value.id != null ? window.BentoService?.recipes?.getById?.(String(value.id)) : null;
+        renderDashboardRecipeCover(card, value.imagePath, value.category ?? cachedRecipe?.category ?? null);
+      } else {
+        resetDashboardRecipeCover(card);
       }
     });
     const records = data.todayRecords || [];
@@ -2339,12 +2982,17 @@
     setBinding('todayRecordsCount', `${records.filter((x) => x.recorded).length}/${records.length || 3} 餐`);
     const inventory = data.inventory || {};
     setBinding('inventory-totalIngredients', inventory.totalIngredients ?? '');
-    setBinding('inventory-expiringSoon', inventory.expiringSoon ?? '');
+    setBinding(
+      'inventory-expiringSoon',
+      inventory.expiringSoon ??
+        (Array.isArray(inventory.expiringIngredients) ? inventory.expiringIngredients.length : '')
+    );
     setBinding('inventory-insufficient', inventory.insufficient ?? '');
     const stats = data.weeklyStats || {};
     setBinding('weeklyStat-recordedDays', stats.recordedDays == null ? '' : `${stats.recordedDays}/7 天`);
     setBinding('weeklyStat-totalMeals', stats.totalMeals ?? '');
-    setBinding('weeklyStat-averageRating', stats.averageRating == null ? '' : stats.averageRating);
+    // 无真实评分时显示破折号占位；真实 0 分仍显示 0
+    setBinding('weeklyStat-averageRating', stats.averageRating == null ? '—' : stats.averageRating);
     setBinding(
       'weeklyStat-consumedIngredientCount',
       stats.consumedIngredientCount == null ? '' : stats.consumedIngredientCount
@@ -2402,6 +3050,14 @@
             })
         : null;
     };
+    // 周历右上角日期区间：由真实 calendarDays 首尾动态生成，绝不写死「9月1日 – 9月7日」
+    const rangeNode = document.getElementById('weeklyCalendarRange');
+    if (rangeNode) {
+      const firstDate = parseBusinessDate(days[0]?.date);
+      const lastDate = parseBusinessDate(days[days.length - 1]?.date);
+      rangeNode.textContent =
+        firstDate && lastDate ? `${firstDate.month}月${firstDate.day}日 – ${lastDate.month}月${lastDate.day}日` : '';
+    }
     // 桌面网格与移动列表是两套并行视图：各自独立按 days[i] 索引，不能合并成一个循环
     document
       .querySelectorAll('[data-binding="calendarDays"] [data-binding^="calendarDay-"]')
@@ -2409,6 +3065,54 @@
     document
       .querySelectorAll('.mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]')
       .forEach((row, i) => fillWeekRow(row, days[i]));
+    // 今日高亮动态匹配真实当天格：模板里第 7 格写死的「今日」样式必须先摘掉，
+    // 再按真实 isToday 重新挂上，避免今天同时高亮两格或错格。
+    const TODAY_CELL_CLASSES = [
+      'border-2',
+      'border-[#FF6B57]',
+      'bg-[#FFF8F5]',
+      'shadow-[0_4px_12px_rgba(255,107,87,0.2)]',
+      'scale-105',
+      'hover:scale-110'
+    ];
+    document
+      .querySelectorAll(
+        '[data-binding="calendarDays"] [data-binding^="calendarDay-"], .mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]'
+      )
+      .forEach((row) => {
+        const isToday = days.some((day) => day.isToday && day.date === row.dataset.date);
+        row.classList.remove('shadow-[0_3px_10px_rgba(255,107,87,0.18)]');
+        TODAY_CELL_CLASSES.forEach((className) => row.classList.remove(className));
+        if (isToday) row.classList.add(...TODAY_CELL_CLASSES);
+        row.classList.toggle('is-today-week-cell', isToday);
+        row.querySelectorAll('[data-business-value="weekday"], [data-business-value="dayOfMonth"]').forEach((node) => {
+          node.classList.toggle('text-[#FF6B57]', isToday);
+        });
+        // 移动端列表的日期徽标/状态文案有今日专属配色，同样只保留在真实今天那一行
+        const badge = row.querySelector('[data-business-value="dateBadge"]');
+        if (badge) {
+          badge.classList.toggle('bg-[#FF6B57]', isToday);
+          badge.classList.toggle('text-white', isToday);
+          badge.classList.toggle('bg-stone-100', !isToday);
+          badge.classList.toggle('text-stone-600', !isToday);
+        }
+        const statusText = row.querySelector('[data-business-value="statusText"]');
+        if (statusText) {
+          statusText.classList.toggle('text-[#FF6B57]', isToday);
+          statusText.classList.toggle('text-stone-700', !isToday);
+        }
+        const statusPill = row.querySelector('[data-business-value="statusPill"]');
+        if (statusPill) {
+          ['text-[#FF6B57]', 'bg-[#FFF0ED]', 'border-[#FEDBC5]'].forEach((className) =>
+            statusPill.classList.toggle(className, isToday)
+          );
+          ['text-[#2E7D32]', 'bg-[#EDF7EE]', 'text-[#D97706]', 'bg-[#FFF8E6]', 'border-[#FEE8B8]'].forEach(
+            (className) => statusPill.classList.remove(className)
+          );
+          statusPill.classList.toggle('text-stone-600', !isToday);
+          statusPill.classList.toggle('bg-stone-100', !isToday);
+        }
+      });
     const expiring = inventory.expiringIngredients || [];
     document.querySelectorAll('[data-binding^="expiringIngredient-"]').forEach((row, i) => {
       const value = expiring[i];
@@ -2419,7 +3123,10 @@
           '[data-business-value="expiry"]',
           (() => {
             const days = value.expireDaysLeft ?? daysUntil(value.expiryDate);
-            return days == null ? '' : `${days}天后到期`;
+            if (days == null) return '';
+            if (days < 0) return `已过期 ${Math.abs(days)} 天`;
+            if (days === 0) return '今日到期';
+            return `${days}天后到期`;
           })(),
           row
         );
@@ -3026,26 +3733,36 @@
     window.__dafanGoogle2BootCleared = true;
   }
   const submitGuardPending = new WeakMap();
-  function withSubmitGuard(event, task) {
+  /**
+   * options.session：菜谱表单的提交会话对象。同一 form 元素在关闭重开后仍是同一个 DOM 节点，
+   * 若只按 form 去重，旧会话的在途提交会把新会话的提交直接吞掉（返回旧 promise）。
+   * 传入 session 时，旧会话的 pending 不再阻塞新会话；旧 pending 收尾也不会解除新提交的按钮禁用态。
+   */
+  function withSubmitGuard(event, task, options) {
     const form = event?.currentTarget?.tagName === 'FORM' ? event.currentTarget : event?.target?.closest?.('form');
     const key = form || event?.currentTarget || event?.target || document;
-    if (submitGuardPending.has(key)) return submitGuardPending.get(key);
+    const session = options && typeof options === 'object' ? (options.session ?? null) : null;
+    const previous = submitGuardPending.get(key);
+    if (previous && (session === null || previous.session === session)) return previous.pending;
     const button = event?.submitter || form?.querySelector?.('button[type="submit"]');
     if (button) {
       button.dataset.submitting = 'true';
       button.disabled = true;
     }
-    const pending = Promise.resolve()
+    const entry = { session, pending: null };
+    entry.pending = Promise.resolve()
       .then(task)
       .finally(() => {
+        // 只有仍持有该 form 的提交才能解除按钮禁用态；被新会话接管时交给新提交收尾。
+        if (submitGuardPending.get(key) !== entry) return;
         submitGuardPending.delete(key);
         if (button) {
           button.dataset.submitting = 'false';
           button.disabled = false;
         }
       });
-    submitGuardPending.set(key, pending);
-    return pending;
+    submitGuardPending.set(key, entry);
+    return entry.pending;
   }
   function businessDateParts(year, month, day) {
     const pad = (value) => String(value).padStart(2, '0');
@@ -3088,9 +3805,14 @@
     const originalCalendar = window.renderCalendar;
     let calendarRequest = 0;
     let statisticsRequest = 0;
+    // 默认锚定「当前真实本地年月」：启动阶段绝不先刷 2026-09 假打卡月历（A-08/D-004/B18/E1）。
+    // 页面显式传入合法年月（如外部深链/测试预设）时尊重该值，不再回落到写死的 2026-09。
+    const initialMonth = localDateParts();
+    const presetYear = Number(window.currentCalendarYear);
+    const presetMonth = Number(window.currentCalendarMonth);
     const calendarState = {
-      year: Number(window.currentCalendarYear) || 2026,
-      month: Number(window.currentCalendarMonth) || 9
+      year: Number.isInteger(presetYear) && presetYear >= 1900 && presetYear <= 2200 ? presetYear : initialMonth.year,
+      month: Number.isInteger(presetMonth) && presetMonth >= 1 && presetMonth <= 12 ? presetMonth : initialMonth.month
     };
     const setStat = (id, value, empty = '') => {
       const node = document.getElementById(id);
@@ -3169,8 +3891,7 @@
           content.appendChild(dayLabel);
           if (hasRecord) {
             const badge = document.createElement('div');
-            badge.className =
-              'text-[8px] sm:text-[9px] font-black text-amber-600 truncate leading-tight mt-0.5';
+            badge.className = 'text-[8px] sm:text-[9px] font-black text-amber-600 truncate leading-tight mt-0.5';
             badge.textContent = '🍱 已打卡';
             content.appendChild(badge);
           }
@@ -3252,9 +3973,7 @@
       });
       const title = svgElement('title');
       title.appendChild(
-        svgText(
-          `按日期显示已记录热量；未记录日期不绘制柱形；虚线为 ${CALORIE_REFERENCE_KCAL} kcal 通用参考基准`
-        )
+        svgText(`按日期显示已记录热量；未记录日期不绘制柱形；虚线为 ${CALORIE_REFERENCE_KCAL} kcal 通用参考基准`)
       );
       svg.appendChild(title);
       // 原版固定 2000 kcal 参考线：与柱形共用同一 maxCal 比例尺，明确标为参考基准而非个人目标。
@@ -3379,9 +4098,7 @@
         role: 'img',
         'aria-label': '就餐渠道构成环形图'
       });
-      svg.appendChild(
-        svgElement('circle', { cx: 70, cy: 70, r, fill: 'none', stroke: '#F5EFE6', 'stroke-width': 16 })
-      );
+      svg.appendChild(svgElement('circle', { cx: 70, cy: 70, r, fill: 'none', stroke: '#F5EFE6', 'stroke-width': 16 }));
       rows.forEach((row) => {
         if (!row.count) return;
         const length = (row.count / total) * c;
@@ -3475,10 +4192,7 @@
           node.dataset.satietyCategory = segment.category;
           node.dataset.satietyCount = String(segment.count);
           node.title = `${segment.label} ${segment.count}次`;
-          node.setAttribute(
-            'style',
-            `width:${(segment.count / recorded) * 100}%;background:${segment.color}`
-          );
+          node.setAttribute('style', `width:${(segment.count / recorded) * 100}%;background:${segment.color}`);
           node.className = 'h-full';
           return node;
         });
@@ -3519,8 +4233,17 @@
         setStat('statTotalExpense', cost.totalCost == null ? null : `¥ ${cost.totalCost}`);
         setStat('statTakeoutExpense', cost.takeoutCost == null ? null : `¥ ${cost.takeoutCost}`);
         setStat('statDineInExpense', cost.dineInCost == null ? null : `¥ ${cost.dineInCost}`);
-        const takeoutAverage = average(cost.takeoutCost, cost.takeoutRecordCount);
-        const dineInAverage = average(cost.dineInCost, cost.dineInRecordCount);
+        // 均价分母只用 cost != null 的记录数（后端 takeoutPricedCount / dineInPricedCount），
+        // 未填金额的餐次不再稀释人均；分母为 0 时不显示均价。
+        // 后端字段名兼容：takeoutPricedCount（当前实现）与 takeoutPricedRecordCount（契约命名）
+        const pricedCount = (...candidates) => {
+          const value = candidates.find((candidate) => Number.isSafeInteger(candidate) && candidate >= 0);
+          return value === undefined ? null : value;
+        };
+        const takeoutPricedCount = pricedCount(cost.takeoutPricedCount, cost.takeoutPricedRecordCount);
+        const dineInPricedCount = pricedCount(cost.dineInPricedCount, cost.dineInPricedRecordCount);
+        const takeoutAverage = average(cost.takeoutCost, takeoutPricedCount);
+        const dineInAverage = average(cost.dineInCost, dineInPricedCount);
         setStat(
           'statTakeoutCount',
           cost.takeoutRecordCount == null
@@ -3602,20 +4325,21 @@
   function wireLegacyEntryPoints() {
     const modal = window.BentoModal;
     if (!modal || typeof modal.open !== 'function' || modal.__google2Wired) return;
-    // Bind existing buttons to the real services without relying on inline lexical globals.
-    document.querySelectorAll('#modalIngredientDetail button[onclick*="pantry.consume"]').forEach((button) => {
-      const source = button.getAttribute('onclick') || '';
-      const amount = source.includes("'all'") ? 'all' : source.includes(', 250') ? 250 : 100;
-      button.onclick = () => {
-        Promise.resolve(window.BentoService.pantry.consume(modal.currentPayload, amount)).catch(() => undefined);
+    // 快捷消耗按钮已改为按单位维度动态生成（setupIngredientDetail 内绑定闭包），
+    // 这里只兜底「全部用完」，静态 100g/250g 不再作为唯一入口。
+    const consumeAll = document.getElementById('ingredientDetailConsume-all');
+    if (consumeAll && !consumeAll.onclick) {
+      consumeAll.onclick = () => {
+        Promise.resolve(window.BentoService.pantry.consume(modal.currentPayload, 'all')).catch(() => undefined);
       };
-    });
+    }
     document.querySelectorAll('#modalRecipeDetail button[onclick*="cookCheckin"]').forEach((button) => {
       button.onclick = () => window.BentoService.recipes.cookCheckin(modal.currentPayload);
     });
     // Remote detail payloads are DTO objects; legacy setup methods look up by id.
     // Keep the DTO in currentPayload for actions, normalize only the setup lookup.
-    for (const method of ['setupStoreDetail', 'setupRecipeDetail', 'setupIngredientDetail']) {
+    // 食材详情 setup 同时接受 id 与已映射对象，不再把对象降级成 id（避免缓存竞态丢数据）
+    for (const method of ['setupStoreDetail', 'setupRecipeDetail']) {
       if (typeof modal[method] !== 'function') continue;
       const setup = modal[method].bind(modal);
       modal[method] = (payload) => setup(payload && typeof payload === 'object' ? payload.id : payload);
@@ -3624,8 +4348,21 @@
     const originalClose = typeof modal.close === 'function' ? modal.close.bind(modal) : null;
     let currentDiaryDate = null;
     let recordFormContext = null;
+    installRecipeCoverControls();
     const originalSetupDailyDiary =
       typeof modal.setupDailyDiary === 'function' ? modal.setupDailyDiary.bind(modal) : null;
+    // 菜谱表单：标题 icon 由 index 的 setupRecipeForm 重置；封面生命周期由 adapter 在其后接管。
+    // 新建清空、编辑回显既有合法封面，绝不残留上一次会话的选择/预览。
+    if (typeof modal.setupRecipeForm === 'function') {
+      const originalSetupRecipeForm = modal.setupRecipeForm.bind(modal);
+      modal.setupRecipeForm = (payload) => {
+        const result = originalSetupRecipeForm(payload);
+        const recipeId = typeof payload === 'object' && payload ? payload.id : payload;
+        resetRecipeCoverState(recipeId ? modalRecipeService()?.getById?.(recipeId) : null);
+        rotateRecipeFormSession();
+        return result;
+      };
+    }
     if (originalSetupDailyDiary) {
       // index.html 的日记视图已按字段渲染 null（空串），这里只跟踪合法业务日期供录入入口使用，
       // 不再按卡片索引补清理 DOM：按索引取记录会因标题/分组节点错位，replaceAll('null') 会篡改真实文本。
@@ -3635,8 +4372,21 @@
         return originalSetupDailyDiary(payload);
       };
     }
+    /** 当日日记弹窗内「补记一餐」专用入口标记（与 index 的 DIARY_DATE_ENTRY 同一字面量）。 */
+    const DIARY_ENTRY_MARKER = '__dailyDiaryEntry__';
     modal.open = async (name, payload = null, opener = null) => {
       modal.__google2CookContext = null;
+      // D-001：只有「日记弹窗内补记」入口可以携带选中日期（专用标记或当前栈顶为 dailyDiary）；
+      // 其他任何入口先清空，避免从「饮食记录」页新建时把上一次点开的日历日期串写进去。
+      const isCookEntry = Boolean(payload && typeof payload === 'object' && payload.__cookRecipe);
+      if (
+        name === 'recordForm' &&
+        !isCookEntry &&
+        opener !== DIARY_ENTRY_MARKER &&
+        modal.getTop?.()?.name !== 'dailyDiary'
+      ) {
+        currentDiaryDate = null;
+      }
       if (name === 'recordForm') {
         recordFormContext = payload && typeof payload === 'object' ? payload : null;
         if (recordFormContext?.__cookRecipe) {
@@ -3676,8 +4426,8 @@
           return false;
         }
       }
-      // 详情页编辑按钮传入 currentPayload 对象；表单 setup 入口只接受 id。
-      // 先用远端 DTO 刷新 service，再把规范化 id 交给既有 modal setup，避免空表单。
+      // 详情页编辑按钮传入 currentPayload 对象；门店/菜谱 setup 只接受 id，
+      // 食材/购物/工具 setup 能直接读对象（且需要真实 version 之外的本地字段），这里只归一化前两者。
       if ((name === 'storeForm' || name === 'recipeForm') && payload && typeof payload === 'object') {
         const service = name === 'storeForm' ? window.BentoService?.stores : window.BentoService?.recipes;
         if (!service?.getByIdRemote || !payload.id) {
@@ -3711,145 +4461,191 @@
     };
     if (originalClose) {
       modal.close = (...args) => {
+        const formNode = document.getElementById('modalRecipeForm');
+        const formWasOpen = !!formNode && !formNode.classList.contains('hidden');
         const result = originalClose(...args);
+        // 菜谱表单真正关闭（非脏检查拦截）时递增代次并释放本地预览 objectURL
+        if (formWasOpen && formNode && formNode.classList.contains('hidden')) {
+          resetRecipeCoverState(null);
+          rotateRecipeFormSession();
+        }
         recordFormContext = null;
         modal.__google2CookContext = null;
         resetRecordPhotoState([]);
+        // 只有日记上下文真正消失后才清空选中日期：关闭记录表单返回日记时仍沿用该日。
+        if (modal.getTop?.()?.name !== 'dailyDiary') currentDiaryDate = null;
         return result;
       };
     }
+    /**
+     * 提交收尾的所有 UI 副作用（关窗、toast）只属于「本次提交仍拥有当前表单」的会话：
+     * 保存请求一旦发出就无法撤回，服务端写入照常发生，这里只禁止旧请求污染新会话界面。
+     */
     if (modal.handleRecipeFormSubmit)
-      modal.handleRecipeFormSubmit = (event) =>
-        withSubmitGuard(event, async () => {
-          event.preventDefault();
-          // 正式页面严格限定在菜谱弹窗；兼容无弹窗容器的 adapter 单元 fixture。
-          const form = document.querySelector('#modalRecipeForm') || document;
-          const read = (id) => form?.querySelector(`#${id}`);
-          const value = (id) => read(id)?.value ?? '';
-          const id = String(value('formRecipeId')).trim();
-          const existing = id ? modalRecipeService().getById(id) : null;
-          const calories = value('formRecipeCalories');
-          const timeValue = String(value('formRecipeTime')).trim();
-          const time = timeValue === '' ? null : Number(timeValue);
-          if (
-            (!id && (time === null || !Number.isInteger(time) || time < 1 || time > 240)) ||
-            (id && time !== null && (!Number.isInteger(time) || time < 0 || time > 240))
-          )
-            throw new ApiError(422, 'RECIPE_TIME_INVALID', '制作时间必须是新建 1-240 分钟、编辑 0-240 分钟的整数');
-          return modalRecipeService().save({
-            id: id || undefined,
-            version: existing?.version,
-            name: String(value('formRecipeName')).trim(),
-            category:
-              read('formRecipeCategory')?.dataset.valueState === 'unrepresentable'
-                ? undefined
-                : value('formRecipeCategory').trim() || null,
-            cookingTimeMinutes: time,
-            difficulty: value('formRecipeDifficulty').trim() || null,
-            calories,
-            imagePath: existing?.imagePath ?? null,
-            ingredientsText: existing?.ingredientsText ?? null,
-            favorite: existing?.favorite ?? false,
-            spicyLevel: existing?.spicyLevel ?? null,
-            servings: existing?.servings ?? null,
-            sourceNote: existing?.sourceNote ?? null,
-            notes: existing?.notes ?? null,
-            enabledForRecommendation: existing?.enabledForRecommendation ?? true,
-            ingredients: (() => {
-              const rows = Array.from(document.querySelectorAll('#formRecipeIngList .recipe-ing-row'));
-              if (!rows.length) return existing?.ingredients || [];
-              return rows
-                .map((row) => {
-                  const name = row.querySelector('.recipe-ing-name')?.value.trim() || '';
-                  const amount = row.querySelector('.recipe-ing-amount')?.value.trim() || '';
-                  // 行身份优先：ingredientRowId 是菜谱食材行自身 ID，与库存 ingredientId 语义不同
-                  // （两个 ID 可以不同）。旧行查找先按行自身 ID 精确匹配，再按库存 ID 兜底，
-                  // 最后仅按原始名称兼容旧行；新增行不按位置继承已删除行的 ingredientId/flags。
-                  const old =
-                    (row.dataset.ingredientRowId
-                      ? existing?.ingredients?.find((ingredient) => ingredient.id === row.dataset.ingredientRowId)
-                      : undefined) ??
-                    (row.dataset.ingredientId
-                      ? existing?.ingredients?.find(
-                          (ingredient) => (ingredient.id ?? ingredient.ingredientId) === row.dataset.ingredientId
-                        )
-                      : undefined) ??
-                    (row.dataset.originalName
-                      ? existing?.ingredients?.find(
-                          (ingredient) =>
-                            String(ingredient.name ?? ingredient.originalName ?? '').trim() === row.dataset.originalName
-                        )
-                      : undefined);
-                  // 未改动的行原样沿用后端既有数量/单位（后端枚举 OTHER 等无法从展示文案反推，避免静默丢失）。
-                  // 新增行没有 originalName，绝不按位置继承被删除旧行的身份与 flags。
-                  const oldName = String(row.dataset.originalName ?? old?.name ?? old?.originalName ?? '').trim();
-                  const renamed = !!old && name !== oldName;
-                  if (old && amount === (old.amount ?? '')) {
-                    return {
-                      ingredientId: renamed ? null : (old.ingredientId ?? null),
-                      name: name || old.name || '',
-                      quantity: typeof old.quantity === 'number' ? old.quantity : null,
-                      unit: old.unit ?? null,
-                      amountText: old.amountText ?? null,
-                      optional: !!old.optional,
-                      isPrimary: !!old.isPrimary
-                    };
-                  }
-                  // 用户改写过的用量是自由文本（占位提示含「300g / 半个 / 适量」）：只有整段输入可完整解释
-                  // 且可无损还原才写结构化 quantity/unit——即后端单位能反推出与原文完全一致的单位文案
-                  // （UNIT_TO_BACKEND 把「根」「块」等多个中文单位合并进 OTHER 且 OTHER 无展示标签，
-                  // 保存后再读回会退化为纯数字，因此这类有损映射必须整段保留 amountText）。
-                  const match = amount.match(/^([0-9]+(?:\.[0-9]+)?)\s*(.*)$/);
-                  const parsedUnit = match ? toBackendUnit(match[2]) : null;
-                  const losslesslyRepresentable =
-                    !!match && (match[2] === '' || (parsedUnit !== null && UNIT_LABELS[parsedUnit] === match[2]));
-                  return {
-                    ingredientId: old && !renamed ? (old.ingredientId ?? null) : null,
-                    name,
-                    quantity: losslesslyRepresentable ? Number(match[1]) : null,
-                    unit: losslesslyRepresentable ? parsedUnit : null,
-                    amountText: losslesslyRepresentable ? null : amount || null,
-                    optional: old ? !!old.optional : false,
-                    isPrimary: old ? !!old.isPrimary : false
-                  };
-                })
-                .filter((item) => item.name);
-            })(),
-            steps: (() => {
-              const rows = Array.from(document.querySelectorAll('#formRecipeStepList .recipe-step-row'));
-              if (!rows.length) return existing?.steps || [];
-              // 未改动的行原样沿用后端既有 content：避免把 UI 合成标题（"步骤 N"）回写进正文造成漂移。
-              // 正文只来自做法输入（后端 title/content 独立存储，正文绝不拼入标题），连续编辑不累积旧标题。
-              return (
-                rows
-                  .map((row, index) => {
-                    const title = row.querySelector('.recipe-step-title')?.value.trim() || '';
-                    const desc = row.querySelector('.recipe-step-desc')?.value.trim() || '';
-                    const old = row.dataset.stepId
-                      ? existing?.steps?.find((step) => step.id === row.dataset.stepId)
-                      : existing?.steps?.[index];
-                    const oldTitle = old?.title ?? '';
-                    const oldDesc = old?.desc || old?.content || '';
-                    const untouched = old && title === oldTitle && desc === oldDesc;
-                    const content = untouched ? String(old.content ?? old.desc ?? '') : desc;
-                    return {
-                      content,
-                      title: title || null,
-                      timerMinutes: (() => {
-                        const raw = row.querySelector('.recipe-step-timer')?.value.trim() || '';
-                        return raw === '' ? (old?.timerMinutes ?? null) : Number(raw);
-                      })(),
-                      imagePath: old?.imagePath ?? null
-                    };
-                  })
-                  // 只有标题没有正文的行保留下来交给 save 显式失败（提示补正文），绝不静默丢步骤、也绝不拿标题冒充正文
-                  .filter((item) => item.content || item.title)
+      modal.handleRecipeFormSubmit = (event) => {
+        // 会话在提交入口处捕获：旧会话的在途提交不会阻塞新会话提交（见 withSubmitGuard）
+        const submitSession = recipeFormSession;
+        const ownsCurrentSession = () => recipeFormSession === submitSession;
+        return withSubmitGuard(
+          event,
+          async () => {
+            event.preventDefault();
+            // 正式页面严格限定在菜谱弹窗；兼容无弹窗容器的 adapter 单元 fixture。
+            const form = document.querySelector('#modalRecipeForm') || document;
+            const read = (id) => form?.querySelector(`#${id}`);
+            const value = (id) => read(id)?.value ?? '';
+            const id = String(value('formRecipeId')).trim();
+            const existing = id ? modalRecipeService().getById(id) : null;
+            const calories = value('formRecipeCalories');
+            const timeValue = String(value('formRecipeTime')).trim();
+            const time = timeValue === '' ? null : Number(timeValue);
+            if (
+              (!id && (time === null || !Number.isInteger(time) || time < 1 || time > 240)) ||
+              (id && time !== null && (!Number.isInteger(time) || time < 0 || time > 240))
+            )
+              throw new ApiError(422, 'RECIPE_TIME_INVALID', '制作时间必须是新建 1-240 分钟、编辑 0-240 分钟的整数');
+            // 封面会话代次：上传/保存全程捕获，代次变化即视为用户已关闭或重开表单
+            const coverGeneration = recipeCoverState.generation;
+            const ownsCurrentForm = () =>
+              recipeFormSession === submitSession && recipeCoverState.generation === coverGeneration;
+            const imagePath = await resolveRecipeCoverImagePath(existing, {
+              generation: coverGeneration,
+              file: recipeCoverState.file,
+              removed: recipeCoverState.removed
+            });
+            if (recipeCoverState.generation !== coverGeneration)
+              throw new ApiError(409, 'RECIPE_COVER_CHANGED', '封面已更换，本次保存未提交');
+            const save = (saveOptions) =>
+              modalRecipeService().save(
+                {
+                  id: id || undefined,
+                  version: existing?.version,
+                  name: String(value('formRecipeName')).trim(),
+                  category:
+                    read('formRecipeCategory')?.dataset.valueState === 'unrepresentable'
+                      ? undefined
+                      : value('formRecipeCategory').trim() || null,
+                  cookingTimeMinutes: time,
+                  difficulty: value('formRecipeDifficulty').trim() || null,
+                  calories,
+                  imagePath,
+                  ingredientsText: existing?.ingredientsText ?? null,
+                  favorite: existing?.favorite ?? false,
+                  spicyLevel: existing?.spicyLevel ?? null,
+                  servings: existing?.servings ?? null,
+                  sourceNote: existing?.sourceNote ?? null,
+                  notes: existing?.notes ?? null,
+                  enabledForRecommendation: existing?.enabledForRecommendation ?? true,
+                  ingredients: (() => {
+                    const rows = Array.from(document.querySelectorAll('#formRecipeIngList .recipe-ing-row'));
+                    if (!rows.length) return existing?.ingredients || [];
+                    return rows
+                      .map((row) => {
+                        const name = row.querySelector('.recipe-ing-name')?.value.trim() || '';
+                        const amount = row.querySelector('.recipe-ing-amount')?.value.trim() || '';
+                        // 行身份优先：ingredientRowId 是菜谱食材行自身 ID，与库存 ingredientId 语义不同
+                        // （两个 ID 可以不同）。旧行查找先按行自身 ID 精确匹配，再按库存 ID 兜底，
+                        // 最后仅按原始名称兼容旧行；新增行不按位置继承已删除行的 ingredientId/flags。
+                        const old =
+                          (row.dataset.ingredientRowId
+                            ? existing?.ingredients?.find((ingredient) => ingredient.id === row.dataset.ingredientRowId)
+                            : undefined) ??
+                          (row.dataset.ingredientId
+                            ? existing?.ingredients?.find(
+                                (ingredient) => (ingredient.id ?? ingredient.ingredientId) === row.dataset.ingredientId
+                              )
+                            : undefined) ??
+                          (row.dataset.originalName
+                            ? existing?.ingredients?.find(
+                                (ingredient) =>
+                                  String(ingredient.name ?? ingredient.originalName ?? '').trim() ===
+                                  row.dataset.originalName
+                              )
+                            : undefined);
+                        // 未改动的行原样沿用后端既有数量/单位（后端枚举 OTHER 等无法从展示文案反推，避免静默丢失）。
+                        // 新增行没有 originalName，绝不按位置继承被删除旧行的身份与 flags。
+                        const oldName = String(row.dataset.originalName ?? old?.name ?? old?.originalName ?? '').trim();
+                        const renamed = !!old && name !== oldName;
+                        if (old && amount === (old.amount ?? '')) {
+                          return {
+                            ingredientId: renamed ? null : (old.ingredientId ?? null),
+                            name: name || old.name || '',
+                            quantity: typeof old.quantity === 'number' ? old.quantity : null,
+                            unit: old.unit ?? null,
+                            amountText: old.amountText ?? null,
+                            optional: !!old.optional,
+                            isPrimary: !!old.isPrimary
+                          };
+                        }
+                        // 用户改写过的用量是自由文本（占位提示含「300g / 半个 / 适量」）：只有整段输入可完整解释
+                        // 且可无损还原才写结构化 quantity/unit——即后端单位能反推出与原文完全一致的单位文案
+                        // （UNIT_TO_BACKEND 把「根」「块」等多个中文单位合并进 OTHER 且 OTHER 无展示标签，
+                        // 保存后再读回会退化为纯数字，因此这类有损映射必须整段保留 amountText）。
+                        const match = amount.match(/^([0-9]+(?:\.[0-9]+)?)\s*(.*)$/);
+                        const parsedUnit = match ? toBackendUnit(match[2]) : null;
+                        const losslesslyRepresentable =
+                          !!match && (match[2] === '' || (parsedUnit !== null && UNIT_LABELS[parsedUnit] === match[2]));
+                        return {
+                          ingredientId: old && !renamed ? (old.ingredientId ?? null) : null,
+                          name,
+                          quantity: losslesslyRepresentable ? Number(match[1]) : null,
+                          unit: losslesslyRepresentable ? parsedUnit : null,
+                          amountText: losslesslyRepresentable ? null : amount || null,
+                          optional: old ? !!old.optional : false,
+                          isPrimary: old ? !!old.isPrimary : false
+                        };
+                      })
+                      .filter((item) => item.name);
+                  })(),
+                  steps: (() => {
+                    const rows = Array.from(document.querySelectorAll('#formRecipeStepList .recipe-step-row'));
+                    if (!rows.length) return existing?.steps || [];
+                    // 未改动的行原样沿用后端既有 content：避免把 UI 合成标题（"步骤 N"）回写进正文造成漂移。
+                    // 正文只来自做法输入（后端 title/content 独立存储，正文绝不拼入标题），连续编辑不累积旧标题。
+                    return (
+                      rows
+                        .map((row, index) => {
+                          const title = row.querySelector('.recipe-step-title')?.value.trim() || '';
+                          const desc = row.querySelector('.recipe-step-desc')?.value.trim() || '';
+                          const old = row.dataset.stepId
+                            ? existing?.steps?.find((step) => step.id === row.dataset.stepId)
+                            : existing?.steps?.[index];
+                          const oldTitle = old?.title ?? '';
+                          const oldDesc = old?.desc || old?.content || '';
+                          const untouched = old && title === oldTitle && desc === oldDesc;
+                          const content = untouched ? String(old.content ?? old.desc ?? '') : desc;
+                          return {
+                            content,
+                            title: title || null,
+                            timerMinutes: (() => {
+                              const raw = row.querySelector('.recipe-step-timer')?.value.trim() || '';
+                              return raw === '' ? (old?.timerMinutes ?? null) : Number(raw);
+                            })(),
+                            imagePath: old?.imagePath ?? null
+                          };
+                        })
+                        // 只有标题没有正文的行保留下来交给 save 显式失败（提示补正文），绝不静默丢步骤、也绝不拿标题冒充正文
+                        .filter((item) => item.content || item.title)
+                    );
+                  })(),
+                  // 关系字段从既有记录派生（已映射键优先，兼容 legacy 形状），再按后端 enum 严格转换
+                  ...recipeRelationFields(existing)
+                },
+                saveOptions
               );
-            })(),
-            // 关系字段从既有记录派生（已映射键优先，兼容 legacy 形状），再按后端 enum 严格转换
-            ...recipeRelationFields(existing)
-          });
-        }).catch(fail);
+            return save({
+              // 完成时求值：只有仍拥有当前表单会话的请求才允许关窗/提示
+              shouldClose: ownsCurrentForm,
+              shouldNotify: ownsCurrentForm
+            });
+          },
+          { session: submitSession }
+        ).catch((error) => {
+          // 失败提示同样只属于当前表单会话：旧请求的 4xx/5xx 不得弹到用户已重开的新表单上。
+          if (!ownsCurrentSession()) return undefined;
+          return fail(error);
+        });
+      };
     if (modal.handleStoreFormSubmit)
       modal.handleStoreFormSubmit = (event) =>
         withSubmitGuard(event, async () => {
@@ -3905,23 +4701,72 @@
       modal.handleIngredientFormSubmit = (event) =>
         withSubmitGuard(event, async () => {
           event.preventDefault();
-          return window.BentoService.pantry.save({
-            name: document.getElementById('formIngName')?.value.trim() || '',
-            category: document.getElementById('formIngCategory')?.value || '',
-            storageLocation: document.getElementById('formIngLocation')?.value || '',
-            stock: Number(document.getElementById('formIngStockNum')?.value) || null,
-            unit: document.getElementById('formIngStockUnit')?.value || '',
-            expireDaysLeft: document.getElementById('formIngExpireDays')?.value.trim() || null
-          });
+          const read = (id) => document.getElementById(id);
+          const id = read('formIngId')?.value.trim() || '';
+          const payload = {
+            name: read('formIngName')?.value.trim() || '',
+            category: read('formIngCategory')?.value || '',
+            // 未改图标时保留上传封面；用户选择新图标时才替换。
+            icon: (() => {
+              const field = read('formIngIcon');
+              const original = field?.dataset.originalImagePath;
+              return id && isSafeUploadedCoverUrl(original) && field.value === field.dataset.initialIcon
+                ? original
+                : field?.value || '';
+            })(),
+            storageLocation: read('formIngLocation')?.value ?? '',
+            stock: (() => {
+              const raw = String(read('formIngStockNum')?.value ?? '').trim();
+              return raw === '' ? null : Number(raw);
+            })(),
+            unit: read('formIngStockUnit')?.value || '',
+            minStock: (() => {
+              const raw = String(read('formIngMinStock')?.value ?? '').trim();
+              if (raw === '') return null;
+              const value = Number(raw);
+              if (!Number.isFinite(value) || value < 0)
+                throw new ApiError(422, 'INGREDIENT_MIN_STOCK_INVALID', '最低库存必须是不小于 0 的数字');
+              return value;
+            })(),
+            purchaseDate: read('formIngPurchaseDate')?.value || null,
+            // 只有页面确实存在到期日期控件时才传该字段；缺失控件的旧 fixture 走「剩余天数」
+            ...(read('formIngExpireDate') ? { expireDate: read('formIngExpireDate').value || null } : {}),
+            expireDaysLeft: (() => {
+              const raw = String(read('formIngExpireDays')?.value ?? '').trim();
+              // 0 与负数都是合法语义（今日到期 / 已过期），只有空串表示未填写
+              if (raw === '') return null;
+              const days = Number(raw);
+              if (!Number.isFinite(days)) throw new ApiError(422, 'INGREDIENT_EXPIRY_INVALID', '剩余天数必须是数字');
+              return days;
+            })()
+          };
+          if (id) payload.id = id;
+          return window.BentoService.pantry.save(payload);
         }).catch(fail);
     if (modal.handleShoppingFormSubmit)
       modal.handleShoppingFormSubmit = (event) =>
         withSubmitGuard(event, async () => {
           event.preventDefault();
+          const id = document.getElementById('formShopId')?.value.trim() || '';
+          const name = document.getElementById('formShopName')?.value.trim() || '';
+          const category = document.getElementById('formShopCategory')?.value || '';
+          const amount = document.getElementById('formShopAmount')?.value.trim() || '';
+          if (!name) throw new ApiError(422, 'SHOPPING_ITEM_INVALID', '采购物品名称不能为空');
+          // 编辑：真实 PUT 更新（名称/分类/规格），绝不新建重复行
+          const parsed = parseShoppingAmount(amount);
+          if (id) {
+            // 规格可无损解析为「数量+标准单位」时写结构化字段，否则保留自由规格原文
+            return window.BentoService.shopping.updateItem(
+              id,
+              parsed
+                ? { ingredientName: name, category, quantity: parsed.quantity, unit: parsed.unit }
+                : { ingredientName: name, category, amountText: amount || null }
+            );
+          }
           return window.BentoService.shopping.add({
-            name: document.getElementById('formShopName')?.value.trim() || '',
-            category: document.getElementById('formShopCategory')?.value || '',
-            amount: document.getElementById('formShopAmount')?.value.trim() || '1份',
+            name,
+            category,
+            amount: amount || '1份',
             isChecked: false,
             source: '手动备忘'
           });
@@ -3999,7 +4844,8 @@
             type: readValue('formRecordType'),
             // 控件无值就是真实未填写 → null（后端 nullable），不再拼「好好吃饭，心满意足。」这类字面默认
             title: title.trim(),
-            date: id ? undefined : currentDiaryDate || undefined,
+            // 新建记录：日记入口用选中日期，其余入口用真实今天（后端缺省也是本地业务日）
+            date: id ? undefined : currentDiaryDate || localDateKey(0),
             calories: readValue('formRecordCalories'),
             cost: readValue('formRecordCost'),
             // 饱腹感回填时若后端值不在 5 档内（unrepresentable），与 rating 同样省略字段保留后端原值，
@@ -4031,6 +4877,7 @@
           const cookContext = recordFormContext || modal.__google2CookContext;
           if (cookContext?.recipeId && !id) {
             const cookPayload = {
+              // cook-checkin 是独立入口：沿用日记选中日期（若有），否则今天
               recordDate: cookContext.date || currentDiaryDate || localDateKey(0),
               mealType: recordMealType(payload.slot),
               sourceType: recordSourceType(payload.type),
@@ -4073,13 +4920,17 @@
       const wiredToolFormSubmit = (event) =>
         withSubmitGuard(event, async () => {
           event.preventDefault();
-          return window.BentoService.tools.save({
+          const id = document.getElementById('formToolId')?.value.trim() || '';
+          const payload = {
             name: document.getElementById('formToolName')?.value.trim() || '',
             icon: document.getElementById('formToolIcon')?.value || '',
             category: document.getElementById('formToolCategory')?.value || '',
             status: document.getElementById('formToolStatus')?.value || '',
             notes: document.getElementById('formToolNotes')?.value.trim() || ''
-          });
+          };
+          // 编辑：带真实 id → tools.save 走 PUT；新建才 POST
+          if (id) payload.id = id;
+          return window.BentoService.tools.save(payload);
         })
           .then((result) => {
             if (result) window.BentoModal?.close(true);
@@ -4278,6 +5129,14 @@
   window.DafanWheelAdapter = {
     resolveTargetIndex: resolveWheelTargetIndex,
     recommendationBody: wheelRecommendationBody
+  };
+  window.DafanCoverAdapter = coverStatusAdapter();
+  window.DafanIngredientAdapter = {
+    INGREDIENT_CATEGORIES,
+    INGREDIENT_CATEGORY_ICONS,
+    normalizeIngredientCategory,
+    deriveIngredientIcon,
+    isIngredientEmoji
   };
   window.DafanDomainAdapter = {
     mapStore,

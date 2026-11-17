@@ -13,6 +13,7 @@ import { resolve, sep } from 'node:path';
 import { resolveUploadsDirectory } from '../../database/paths.js';
 import { VersionConflictError } from '../../database/optimistic-lock.js';
 import { recordDeletedItem } from '../../database/deleted-items.js';
+import { isValidBusinessDate } from '../calendar/business-date.js';
 import { normalizePagination, toPaginationResponse } from '../../database/pagination.js';
 
 /** 与上传路由同源的上传根目录（data/uploads），用于 file existence 校验。 */
@@ -238,7 +239,7 @@ function httpError(statusCode: number, message: string): Error {
 
 function validate(input: RecordInput): void {
   normalizeTitle(input.title);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(input.recordDate)) throw httpError(400, '记录日期必须使用 YYYY-MM-DD 格式');
+  if (!isValidBusinessDate(input.recordDate)) throw httpError(400, '记录日期必须使用 YYYY-MM-DD 格式且为真实日期');
   if (
     input.rating !== null &&
     input.rating !== undefined &&
@@ -477,7 +478,26 @@ export async function deleteRecord(database: PrismaClient, id: string, version: 
     const deletedAt = new Date();
     await tx.mealRecord.update({ where: { id }, data: { deletedAt, version: { increment: 1 } } });
     await recordDeletedItem(tx, 'MealRecord', id, deletedAt);
-    return { id };
+    // 记录删除后同步回退计划状态（E3）：否则计划仍 COMPLETED，首页继续显示「✓ 已打卡」，
+    // 与今日记录/统计的「未记录」自相矛盾。仅回退仍活跃且仍为 COMPLETED 的来源计划。
+    let revertedPlanId: string | null = null;
+    if (current.sourceMealPlanId) {
+      const plan = await tx.mealPlan.findFirst({
+        where: { id: current.sourceMealPlanId, deletedAt: null },
+        select: { id: true, status: true }
+      });
+      if (plan && plan.status === 'COMPLETED') {
+        await tx.mealPlan.update({
+          where: { id: plan.id },
+          data: { status: 'PLANNED', completedAt: null, version: { increment: 1 } }
+        });
+        revertedPlanId = plan.id;
+        // 用户明确删除记录后释放自动记录唯一关联，允许计划重新打卡。
+        // 归档、relatedPlanId 与消费历史保留；此路径不复活或覆盖已删除记录。
+        await tx.mealRecord.update({ where: { id }, data: { sourceMealPlanId: null } });
+      }
+    }
+    return { id, revertedPlanId };
   });
 }
 

@@ -2362,7 +2362,7 @@
             </div>
             <div class="flex items-center gap-2">
               <button class="pill-btn py-1 px-2.5 text-xs" onclick="switchPage('calendar')">◀</button>
-              <span class="text-xs font-black">9月1日 – 9月7日</span>
+              <span class="text-xs font-black" id="weeklyCalendarRange">本周</span>
               <button class="pill-btn py-1 px-2.5 text-xs" onclick="switchPage('calendar')">▶</button>
             </div>
           </div>
@@ -2758,11 +2758,14 @@
 
         <!-- 分类筛选药丸 -->
         <div class="flex flex-wrap items-center gap-2 mb-3.5" id="inventoryFilterGroup">
-          <button class="pill-btn active py-1.5 px-3 text-xs" id="tabInv-all" onclick="setInventoryFilter('all')">全部 (<span id="countInv-all">8</span>)</button>
-          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-veg" onclick="setInventoryFilter('蔬菜')">🥬 蔬菜 (<span id="countInv-veg">3</span>)</button>
-          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-meat" onclick="setInventoryFilter('肉禽')">🥩 肉禽 (<span id="countInv-meat">3</span>)</button>
-          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-seafood" onclick="setInventoryFilter('水产')">🐟 水产 (<span id="countInv-seafood">1</span>)</button>
-          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-seasoning" onclick="setInventoryFilter('调味')">🧂 调味 (<span id="countInv-seasoning">1</span>)</button>
+          <button class="pill-btn active py-1.5 px-3 text-xs" id="tabInv-all" data-category="all" onclick="setInventoryFilter('all')">全部 (<span id="countInv-all">0</span>)</button>
+          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-veg" data-category="蔬菜" onclick="setInventoryFilter('蔬菜')">🥬 蔬菜 (<span id="countInv-蔬菜">0</span>)</button>
+          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-meat" data-category="肉禽" onclick="setInventoryFilter('肉禽')">🥩 肉禽 (<span id="countInv-肉禽">0</span>)</button>
+          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-seafood" data-category="水产" onclick="setInventoryFilter('水产')">🐟 水产 (<span id="countInv-水产">0</span>)</button>
+          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-dairy" data-category="蛋奶豆制" onclick="setInventoryFilter('蛋奶豆制')">🥚 蛋奶豆制 (<span id="countInv-蛋奶豆制">0</span>)</button>
+          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-staple" data-category="主食粮油" onclick="setInventoryFilter('主食粮油')">🍚 主食粮油 (<span id="countInv-主食粮油">0</span>)</button>
+          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-seasoning" data-category="调味" onclick="setInventoryFilter('调味')">🧂 调味 (<span id="countInv-调味">0</span>)</button>
+          <button class="pill-btn py-1.5 px-3 text-xs" id="tabInv-other" data-category="其他" onclick="setInventoryFilter('其他')">📦 其他 (<span id="countInv-其他">0</span>)</button>
         </div>
 
         <!-- 动态食材网格 -->
@@ -2859,7 +2862,7 @@
             </div>
             <div class="calendar-nav-box flex items-center gap-2">
               <button class="pill-btn py-1 px-3 text-xs" onclick="changeCalendarMonth(-1)">◀ 上个月</button>
-              <span class="text-xs font-black px-2 whitespace-nowrap flex-shrink-0" id="calendarCurrentMonthLabel">2026年 9月</span>
+              <span class="text-xs font-black px-2 whitespace-nowrap flex-shrink-0" id="calendarCurrentMonthLabel"></span>
               <button class="pill-btn py-1 px-3 text-xs" onclick="changeCalendarMonth(1)">下个月 ▶</button>
             </div>
           </div>
@@ -3134,11 +3137,11 @@
             <span class="text-2xl w-10 h-10 rounded-2xl bg-white border border-[#FEDBC5] flex items-center justify-center shadow-sm" id="storeDetailIcon">🍱</span>
             <div class="min-w-0">
               <h3 class="text-base font-black text-[#2D2621] m-0 truncate" id="storeDetailName">浅草和风便当屋</h3>
-              <div class="flex items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5">
+              <div class="flex items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5" id="storeDetailMetaRow">
                 <span class="text-[#FF6B57]" id="storeDetailCategory">日式料理</span>
-                <span>•</span>
+                <span id="storeDetailMetaSeparator1">•</span>
                 <span class="text-amber-600 font-extrabold" id="storeDetailRating">★ 4.9</span>
-                <span>•</span>
+                <span id="storeDetailMetaSeparator2">•</span>
                 <span id="storeDetailPrice">人均 ¥36</span>
               </div>
             </div>
@@ -3157,12 +3160,12 @@
               </div>
               <span class="text-[11px] text-stone-400 font-bold" id="storeDetailHours">营业时间 · 10:30 - 21:30</span>
             </div>
-            <div class="text-[11.5px] text-stone-600 flex items-start gap-1.5 pt-1 border-t border-stone-100">
+            <div class="text-[11.5px] text-stone-600 flex items-start gap-1.5 pt-1 border-t border-stone-100" id="storeDetailAddressRow">
               <span>📍</span>
               <span class="flex-1" id="storeDetailAddress">浅草食街 108 号 (距家 800m)</span>
             </div>
             <div class="flex items-center justify-between text-[11px] text-stone-500 pt-0.5">
-              <span class="text-[#FF6B57] font-bold flex items-center gap-1">
+              <span class="text-[#FF6B57] font-bold flex items-center gap-1" id="storeDetailPhoneRow">
                 <span>📞</span> <span id="storeDetailPhone">0512-68219901</span>
               </span>
               <span id="storeDetailDeliveryNote" class="text-stone-400 font-medium">起送 ¥25 · 配送费 ¥3</span>
@@ -3294,6 +3297,7 @@
         </div>
         <form onsubmit="handleToolFormSubmit(event)" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
           <div class="overflow-y-auto flex-1 min-h-0 pr-1 space-y-3">
+          <input type="hidden" id="formToolId" value="" />
           <div>
             <label class="block text-stone-600 font-black mb-1">设备名称</label>
             <input type="text" id="formToolName" required placeholder="如：多功能电压力锅 / 华夫饼机" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
@@ -3366,18 +3370,10 @@
       <div class="modal-dialog relative w-full max-w-lg bg-[#FCFAF7] border-2 border-[#FEDBC5] rounded-3xl shadow-2xl p-4 sm:p-5 z-10 max-h-[90vh] flex flex-col overflow-hidden">
         <div class="flex items-center justify-between pb-3 border-b border-[#F0E8DC] flex-shrink-0">
           <div class="flex items-center gap-2.5 min-w-0">
-            <span class="text-2xl w-10 h-10 rounded-2xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center shadow-sm" id="recipeDetailIcon">🥘</span>
+            <span class="text-2xl w-10 h-10 rounded-2xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center shadow-sm overflow-hidden relative" id="recipeDetailIcon">🥘</span>
             <div class="min-w-0">
               <h3 class="text-base font-black text-[#2D2621] m-0 truncate" id="recipeDetailName">西红柿牛腩煲</h3>
-              <div class="flex items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5">
-                <span class="text-[#FF6B57]" id="recipeDetailCategory">暖胃炖菜</span>
-                <span>•</span>
-                <span id="recipeDetailTime">⏱ 45分钟</span>
-                <span>•</span>
-                <span class="px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[10px]" id="recipeDetailDifficulty">中等难度</span>
-                <span>•</span>
-                <span class="text-[#FF6B57] font-extrabold" id="recipeDetailCalories">520 kcal</span>
-              </div>
+              <div class="hidden flex-wrap items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5" id="recipeDetailMetaRow"></div>
             </div>
           </div>
           <button class="w-7 h-7 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
@@ -3446,11 +3442,7 @@
             <span class="text-2xl w-10 h-10 rounded-2xl bg-white border border-[#FEDBC5] flex items-center justify-center shadow-sm" id="ingredientDetailIcon">🥩</span>
             <div class="min-w-0">
               <h3 class="text-base font-black text-[#2D2621] m-0 truncate" id="ingredientDetailName">精选牛腩肉</h3>
-              <div class="flex items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5">
-                <span class="text-[#FF6B57]" id="ingredientDetailCategory">肉禽类</span>
-                <span>•</span>
-                <span class="px-1.5 py-0.2 rounded bg-stone-100 text-stone-700 text-[10px]" id="ingredientDetailLocation">冷冻室</span>
-              </div>
+              <div class="hidden flex-wrap items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5" id="ingredientDetailMetaRow"></div>
             </div>
           </div>
           <button class="w-7 h-7 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
@@ -3478,13 +3470,13 @@
             </div>
           </div>
 
-          <!-- 快捷消耗动作 -->
+          <!-- 快捷消耗动作：按食材实际单位维度动态生成（质量/体积/计件） -->
           <div class="p-3 bg-[#FAF7F2] border border-[#F0E8DC] rounded-2xl space-y-2">
             <div class="text-[11px] font-bold text-stone-600">快捷库存消耗调整</div>
-            <div class="grid grid-cols-3 gap-1.5">
-              <button type="button" class="pill-btn py-1.5 text-[11px] justify-center" onclick="BentoService.pantry.consume(BentoModal.currentPayload, 100)">➖ 消耗 100g</button>
-              <button type="button" class="pill-btn py-1.5 text-[11px] justify-center" onclick="BentoService.pantry.consume(BentoModal.currentPayload, 250)">➖ 消耗 250g</button>
-              <button type="button" class="pill-btn py-1.5 text-[11px] justify-center text-red-500 hover:text-red-600" onclick="BentoService.pantry.consume(BentoModal.currentPayload, 'all')">❌ 全部用完</button>
+            <div class="grid grid-cols-3 gap-1.5" id="ingredientDetailConsumeGroup">
+              <button type="button" class="pill-btn py-1.5 text-[11px] justify-center" id="ingredientDetailConsume-100">➖ 消耗 100g</button>
+              <button type="button" class="pill-btn py-1.5 text-[11px] justify-center" id="ingredientDetailConsume-250">➖ 消耗 250g</button>
+              <button type="button" class="pill-btn py-1.5 text-[11px] justify-center text-red-500 hover:text-red-600" id="ingredientDetailConsume-all">❌ 全部用完</button>
             </div>
           </div>
 
@@ -3507,6 +3499,7 @@
             🗑️ 移除食材
           </button>
           <div class="flex items-center gap-2">
+            <button type="button" class="neo-btn-secondary text-xs py-2 px-3" id="btnEditIngredientDetail">✏️ 编辑</button>
             <button type="button" class="neo-btn-secondary text-xs py-2 px-3" onclick="BentoModal.close()">关闭</button>
             <button type="button" class="neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]" onclick="BentoService.pantry.addToShopping(BentoModal.currentPayload)">
               🛒 加入补货清单
@@ -3715,7 +3708,7 @@
         </div>
         <div class="pt-3 border-t border-[#F0E8DC] flex items-center justify-between flex-shrink-0">
           <button type="button" class="neo-btn-secondary text-xs py-2 px-4" onclick="BentoModal.close()">返回日历</button>
-          <button type="button" class="neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]" onclick="BentoModal.open('recordForm')">+ 为这天补记一餐</button>
+          <button type="button" class="neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]" onclick="BentoModal.open('recordForm', null, '__dailyDiaryEntry__')">+ 为这天补记一餐</button>
         </div>
       </div>
     </div>
@@ -3777,6 +3770,26 @@
               <button type="button" class="pill-btn active py-1 px-3 text-xs font-bold" onclick="selectRecipeDifficulty(this, '简单')">简单</button>
               <button type="button" class="pill-btn py-1 px-3 text-xs font-bold" onclick="selectRecipeDifficulty(this, '中等')">中等</button>
               <button type="button" class="pill-btn py-1 px-3 text-xs font-bold" onclick="selectRecipeDifficulty(this, '进阶')">进阶</button>
+            </div>
+          </div>
+
+          <!-- 菜谱成品封面图（上传/状态/事件由适配器接管） -->
+          <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl">
+            <div class="flex items-center justify-between mb-2">
+              <label class="text-xs font-black text-stone-700 flex items-center gap-1.5 m-0">
+                <span>📸</span> 菜谱成品封面图（可选 · 支持 JPG / PNG / WEBP，≤ 8MB）
+              </label>
+              <span class="text-[10px] text-stone-400">未上传时展示分类图标</span>
+            </div>
+            <input type="file" id="recipeCoverFileInput" accept="image/jpeg,image/png,image/webp" class="hidden" />
+            <button type="button" id="btnChooseRecipeCover" class="w-full py-1.5 border-2 border-dashed border-[#FEDBC5] rounded-xl text-[#FF6B57] hover:bg-[#FFF5F2] font-black text-xs transition-all flex items-center justify-center gap-1">
+              <span>＋</span> 点击上传成品美图
+            </button>
+            <div id="recipeCoverPreview" class="mt-2 h-28 rounded-xl border border-dashed border-[#F0E8DC] bg-[#FAF7F2] flex items-center justify-center overflow-hidden">
+              <span class="text-[11px] text-stone-400 font-bold px-3 text-center" id="recipeCoverHint">点击上传成品美图（未上传时默认展示分类图标）</span>
+            </div>
+            <div class="flex items-center justify-end mt-2">
+              <button type="button" id="btnRemoveRecipeCover" class="hidden text-[11px] font-black text-stone-400 hover:text-red-500 py-1 px-2 transition-all">移除封面</button>
             </div>
           </div>
 
@@ -3913,6 +3926,7 @@
           <button class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
         </div>
         <form onsubmit="BentoModal.handleIngredientFormSubmit(event)" class="overflow-y-auto pr-1 text-xs space-y-3">
+          <input type="hidden" id="formIngId" value="" />
           <div>
             <label class="block text-stone-600 font-black mb-1">食材品名</label>
             <input type="text" id="formIngName" required placeholder="如：精选安格斯牛腩肉" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
@@ -3920,21 +3934,53 @@
           <div class="grid grid-cols-2 gap-2">
             <div>
               <label class="block text-stone-600 font-black mb-1">分类</label>
-              <select id="formIngCategory" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]">
-                <option>蔬菜</option><option>肉禽</option><option>水产</option><option>调味</option><option>蛋奶</option><option>烘焙</option>
+              <select id="formIngCategory" onchange="BentoModal.onIngredientCategoryChange(this.value)" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]">
+                <option value="蔬菜">蔬菜</option>
+                <option value="肉禽">肉禽</option>
+                <option value="水产">水产</option>
+                <option value="蛋奶豆制">蛋奶豆制</option>
+                <option value="主食粮油">主食粮油</option>
+                <option value="调味">调味</option>
+                <option value="其他">其他</option>
               </select>
             </div>
             <div>
-              <label class="block text-stone-600 font-black mb-1">存放区域</label>
-              <select id="formIngLocation" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]">
-                <option>冷藏室</option><option>冷冻室</option><option>果蔬保鲜</option><option>常温干货</option>
+              <label class="block text-stone-600 font-black mb-1">食材图标</label>
+              <select id="formIngIcon" onchange="this.dataset.manual='true'" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]">
+                <option value="🥬">🥬 叶菜</option>
+                <option value="🥕">🥕 根茎</option>
+                <option value="🍅">🍅 茄果</option>
+                <option value="🌽">🌽 玉米</option>
+                <option value="🍄">🍄 菌菇</option>
+                <option value="🥩">🥩 红肉</option>
+                <option value="🍗">🍗 禽肉</option>
+                <option value="🦐">🦐 虾蟹</option>
+                <option value="🐟">🐟 鱼类</option>
+                <option value="🥚">🥚 蛋类</option>
+                <option value="🥛">🥛 奶类</option>
+                <option value="🧈">🧈 豆制品</option>
+                <option value="🍚">🍚 米面</option>
+                <option value="🧂">🧂 调味</option>
+                <option value="📦">📦 其他</option>
               </select>
             </div>
           </div>
           <div class="grid grid-cols-2 gap-2">
             <div>
+              <label class="block text-stone-600 font-black mb-1">存放区域</label>
+              <select id="formIngLocation" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]">
+                <option value="">未指定</option><option>冷藏室</option><option>冷冻室</option><option>果蔬保鲜</option><option>常温干货</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-stone-600 font-black mb-1">最低库存（缺料预警）</label>
+              <input type="number" id="formIngMinStock" min="0" step="any" placeholder="留空则不预警" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
               <label class="block text-stone-600 font-black mb-1">库存数量</label>
-              <input type="number" id="formIngStockNum" value="500" min="1" required class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+              <input type="number" id="formIngStockNum" value="500" min="0" step="any" required class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
             </div>
             <div>
               <label class="block text-stone-600 font-black mb-1">计量单位</label>
@@ -3953,13 +3999,23 @@
               </select>
             </div>
           </div>
+          <div class="grid grid-cols-2 gap-2">
+            <div>
+              <label class="block text-stone-600 font-black mb-1">采购日期</label>
+              <input type="date" id="formIngPurchaseDate" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+            </div>
+            <div>
+              <label class="block text-stone-600 font-black mb-1">到期日期</label>
+              <input type="date" id="formIngExpireDate" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+            </div>
+          </div>
           <div>
-            <label class="block text-stone-600 font-black mb-1">预计保质期 (剩余天数)</label>
-            <input type="number" id="formIngExpireDays" value="5" min="1" max="365" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+            <label class="block text-stone-600 font-black mb-1">预计保质期 (剩余天数 · 未填到期日期时使用)</label>
+            <input type="number" id="formIngExpireDays" placeholder="如 5；0 表示今日到期" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
           </div>
           <div class="flex items-center justify-end gap-2 pt-2 border-t border-[#F0E8DC] flex-shrink-0">
             <button type="button" class="neo-btn-secondary text-xs py-2 px-4" onclick="BentoModal.close()">取消</button>
-            <button type="submit" class="neo-btn-primary text-xs py-2 px-5 shadow-[var(--shadow-primary)]">🥬 放入冰箱</button>
+            <button type="submit" class="neo-btn-primary text-xs py-2 px-5 shadow-[var(--shadow-primary)]" id="formIngSubmitBtn">🥬 放入冰箱</button>
           </div>
         </form>
       </div>
@@ -4097,6 +4153,7 @@
           <button class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
         </div>
         <form onsubmit="BentoModal.handleShoppingFormSubmit(event)" class="overflow-y-auto pr-1 text-xs space-y-3">
+          <input type="hidden" id="formShopId" value="" />
           <div>
             <label class="block text-stone-500 font-bold mb-1">采购物品名称</label>
             <input type="text" id="formShopName" required placeholder="如：新鲜牛腩、小葱一把" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800" />
@@ -4105,7 +4162,13 @@
             <div>
               <label class="block text-stone-500 font-bold mb-1">分类</label>
               <select id="formShopCategory" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800">
-                <option>蔬菜</option><option>肉禽</option><option>水产</option><option>水果</option><option>调味</option><option>日常</option>
+                <option value="蔬菜">蔬菜</option>
+                <option value="肉禽">肉禽</option>
+                <option value="水产">水产</option>
+                <option value="蛋奶豆制">蛋奶豆制</option>
+                <option value="主食粮油">主食粮油</option>
+                <option value="调味">调味</option>
+                <option value="其他">其他</option>
               </select>
             </div>
             <div>
@@ -4553,7 +4616,7 @@
             calories: recipe.calories,
             satiety: 5,
             notes: `按菜谱亲手制作，${cookMinutesText}自烹治愈食光！`,
-            icon: recipe.icon
+            icon: sanitizeRecipeIconText(recipe.icon, recipe.category)
           }).then(saved => {
             if (saved && saved.id) window.__cookedRecordIds = [...(window.__cookedRecordIds || []), saved.id];
           });
@@ -5067,8 +5130,8 @@
               stock: 1,
               unit: '份',
               purchaseDate: new Date().toISOString().slice(0, 10),
-              expireDate: '2026-09-18',
-              expireDaysLeft: 7,
+              expireDate: null,
+              expireDaysLeft: null,
               relatedRecipes: []
             });
           });
@@ -5445,7 +5508,7 @@
       },
 
       open(modalName, payload = null, openerElement = null) {
-        const opener = openerElement || document.activeElement;
+        const opener = openerElement instanceof Element ? openerElement : document.activeElement;
 
         // Dirty Check: 若当前处于 7 大受保护表单中且有未保存修改，呼出自研温润确认框
         const currentTop = this.getTop();
@@ -5525,15 +5588,13 @@
             document.getElementById('modalRecordForm').classList.remove('hidden');
             this.captureFormSnapshot('recordForm');
             break;
-          case 'shoppingForm': {
-            const shopForm = document.querySelector('#modalShoppingForm form');
-            if (shopForm) shopForm.reset();
+          case 'shoppingForm':
+            this.setupShoppingForm(payload);
             document.getElementById('modalShoppingForm').classList.remove('hidden');
             this.captureFormSnapshot('shoppingForm');
             break;
-          }
           case 'toolForm':
-            this.setupToolForm();
+            this.setupToolForm(payload);
             document.getElementById('modalToolForm').classList.remove('hidden');
             this.captureFormSnapshot('toolForm');
             break;
@@ -5692,22 +5753,86 @@
       setupStoreDetail(storeId) {
         const store = BentoService.stores.getById(storeId);
         if (!store) return;
-        document.getElementById('storeDetailIcon').innerText = store.icon ?? '';
+        // 小图标框只显示干净短文本：历史裸文件名 / 上传路径 / 注入串一律降级为 Emoji
+        document.getElementById('storeDetailIcon').innerText = sanitizeIconText(store.icon, '🍱');
         document.getElementById('storeDetailName').innerText = store.name ?? '';
-        document.getElementById('storeDetailCategory').innerText = store.category ?? '';
-        document.getElementById('storeDetailRating').innerText = store.rating == null ? '' : `★ ${store.rating}`;
-        document.getElementById('storeDetailPrice').innerText = store.price == null ? '' : `人均 ¥${store.price}`;
-        document.getElementById('storeDetailHours').innerText = store.hours == null ? '' : `营业时间 · ${store.hours}`;
-        document.getElementById('storeDetailAddress').innerText = store.address ?? '';
-        document.getElementById('storeDetailPhone').innerText = store.phone ?? '';
-        document.getElementById('storeDetailNotes').innerText = store.notes ?? '';
 
-        // 人均为空时整条配送门槛文案不展示价格区间，不得把 null 当成低价
-        const hasPrice = store.price !== null && store.price !== undefined && store.price !== '';
+        // 副标题：null / undefined / 纯空白一律视为缺值；只显示非空节点与其间的分隔符，
+        // 三项全空则隐藏整行。0 分评分与 0 元人均是真实值，必须保留。
+        // 缺值节点仍以原 id 留在 DOM 中，但 textContent 为空串。
+        const storeMetaRow = document.getElementById('storeDetailMetaRow');
+        const categoryText = metaText(store.category);
+        const ratingText = store.rating == null ? '' : metaText(store.rating);
+        const priceText = store.price == null ? '' : metaText(store.price);
+        // 保留模板里的原节点引用，只更新 textContent 与 hidden，避免每次重建 DOM
+        const storeMetaItems = [
+          { node: document.getElementById('storeDetailCategory'), text: categoryText },
+          { node: document.getElementById('storeDetailRating'), text: ratingText ? `★ ${ratingText}` : '' },
+          { node: document.getElementById('storeDetailPrice'), text: priceText ? `人均 ¥${priceText}` : '' }
+        ];
+        const storeMetaVisible = storeMetaItems.map((item) => Boolean(item.text));
+        storeMetaItems.forEach((item) => {
+          if (!item.node) return;
+          item.node.textContent = item.text;
+          item.node.classList.toggle('hidden', !item.text);
+        });
+        // 分隔符 1 需要分类与评分同时可见；分隔符 2 需要人均可见且前面至少一项可见
+        const storeMetaSeparators = [
+          null,
+          storeMetaVisible[1] && storeMetaVisible[0],
+          storeMetaVisible[2] && (storeMetaVisible[0] || storeMetaVisible[1])
+        ];
+        storeMetaSeparators.forEach((visible, idx) => {
+          if (idx === 0) return;
+          const separator = document.getElementById(`storeDetailMetaSeparator${idx}`);
+          if (!separator) return;
+          separator.textContent = visible ? '•' : '';
+          separator.classList.toggle('hidden', !visible);
+        });
+        if (storeMetaRow) {
+          const hasStoreMeta = storeMetaVisible.some(Boolean);
+          storeMetaRow.classList.toggle('hidden', !hasStoreMeta);
+          storeMetaRow.classList.toggle('flex', hasStoreMeta);
+        }
+
+        // 营业时间空值：文本清空并隐藏节点本身，恢复有值时重新显示
+        const hoursText = metaText(store.hours);
+        const hoursNode = document.getElementById('storeDetailHours');
+        if (hoursNode) {
+          hoursNode.textContent = hoursText ? `营业时间 · ${hoursText}` : '';
+          hoursNode.classList.toggle('hidden', !hoursText);
+        }
+
+        const addressText = metaText(store.address);
+        document.getElementById('storeDetailAddress').innerText = addressText;
+        const addressRow = document.getElementById('storeDetailAddressRow');
+        if (addressRow) {
+          addressRow.classList.toggle('hidden', !addressText);
+          addressRow.classList.toggle('flex', Boolean(addressText));
+        }
+
+        const phoneText = String(store.phone ?? '').trim();
+        document.getElementById('storeDetailPhone').innerText = phoneText;
+        const phoneRow = document.getElementById('storeDetailPhoneRow');
+        if (phoneRow) {
+          phoneRow.classList.toggle('hidden', !phoneText);
+          phoneRow.classList.toggle('flex', Boolean(phoneText));
+        }
+
+        const notesText = metaText(store.notes);
+        document.getElementById('storeDetailNotes').innerText = notesText;
+        const notesBox = document.getElementById('storeDetailNotesBox');
+        if (notesBox) notesBox.classList.toggle('hidden', !notesText);
+
+        // 人均为空时整条配送门槛文案不展示价格区间，不得把 null 当成低价。
+        // 以已归一的 priceText 判断是否有价（纯空白不算有价），阈值比较仅在可解析数值时进行。
+        const hasPrice = Boolean(priceText);
+        const priceValue = hasPrice ? Number(priceText) : NaN;
+        const isHighPrice = Number.isFinite(priceValue) && priceValue > 40;
         const deliveryNote = !store.supportsTakeout
           ? '仅支持堂食到店'
           : hasPrice
-            ? `起送 ¥${store.price > 40 ? 35 : 20} · 配送费 ¥${store.price > 40 ? 4 : 3}`
+            ? `起送 ¥${isHighPrice ? 35 : 20} · 配送费 ¥${isHighPrice ? 4 : 3}`
             : '外卖配送 · 起送与配送费以商家为准';
         document.getElementById('storeDetailDeliveryNote').innerText = deliveryNote;
 
@@ -5734,7 +5859,9 @@
             const left = createDomElement('div', 'flex items-center gap-2.5 min-w-0 flex-1');
             const menuIcon = createDomElement('span', 'text-xl w-9 h-9 rounded-xl bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0');
             // 图标可为 null：只写空串，不把 null 字面量渲染成图标
-            menuIcon.textContent = `${item.icon ?? ''}`;
+            // 小图标框不接受文件名/路径/注入串：非空文本统一降级为干净 Emoji
+            const menuIconText = `${item.icon ?? ''}`.trim();
+            menuIcon.textContent = menuIconText ? sanitizeIconText(menuIconText, '🍽️') : '';
             left.append(menuIcon);
 
             const info = createDomElement('div', 'min-w-0');
@@ -5798,12 +5925,42 @@
         const recipe = BentoService.recipes.getById(recipeId);
         if (!recipe) return;
 
-        document.getElementById('recipeDetailIcon').innerText = recipe.icon ?? '';
+        const iconBox = document.getElementById('recipeDetailIcon');
+        if (iconBox) {
+          iconBox.classList.add('overflow-hidden', 'relative');
+          iconBox.style.cursor = '';
+          renderSafeCover(iconBox, recipeCoverSource(recipe), recipe.icon, {
+            category: recipe.category,
+            imgClass: 'w-full h-full object-cover',
+            onClick: recipeCoverSource(recipe) ? () => openImageLightbox(recipeCoverSource(recipe)) : undefined
+          });
+          if (recipeCoverSource(recipe)) iconBox.style.cursor = 'zoom-in';
+        }
         document.getElementById('recipeDetailName').innerText = recipe.name ?? '';
-        document.getElementById('recipeDetailCategory').innerText = recipe.category ?? '';
-        document.getElementById('recipeDetailTime').innerText = recipe.cookTimeMinutes == null ? '' : `⏱ ${recipe.cookTimeMinutes}分钟`;
-        document.getElementById('recipeDetailDifficulty').innerText = recipe.difficulty == null ? '' : `${recipe.difficulty}难度`;
-        document.getElementById('recipeDetailCalories').innerText = recipe.calories == null ? '' : `${recipe.calories} kcal`;
+
+        // 副标题：只拼接真实非空项；空白字符串按缺失处理，空项不产生分隔符，全部为空则隐藏整行
+        const metaRow = document.getElementById('recipeDetailMetaRow');
+        const recipeTimeText = recipe.cookTimeMinutes == null ? '' : String(recipe.cookTimeMinutes).trim();
+        const recipeDifficultyText = recipe.difficulty == null ? '' : String(recipe.difficulty).trim();
+        const recipeCaloriesText = recipe.calories == null ? '' : String(recipe.calories).trim();
+        const metaItems = [
+          { id: 'recipeDetailCategory', className: 'text-[#FF6B57]', text: String(recipe.category ?? '').trim() },
+          { id: 'recipeDetailTime', className: '', text: recipeTimeText ? `⏱ ${recipeTimeText}分钟` : '' },
+          { id: 'recipeDetailDifficulty', className: 'px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 text-[10px]', text: recipeDifficultyText ? `${recipeDifficultyText}难度` : '' },
+          { id: 'recipeDetailCalories', className: 'text-[#FF6B57] font-extrabold', text: recipeCaloriesText ? `${recipeCaloriesText} kcal` : '' }
+        ].filter((item) => item.text);
+        if (metaRow) {
+          const metaFragment = document.createDocumentFragment();
+          metaItems.forEach((item, idx) => {
+            if (idx > 0) metaFragment.append(createDomElement('span', '', '·'));
+            const node = createDomElement('span', item.className, item.text);
+            node.id = item.id;
+            metaFragment.append(node);
+          });
+          metaRow.replaceChildren(metaFragment);
+          metaRow.classList.toggle('hidden', metaItems.length === 0);
+          metaRow.classList.toggle('flex', metaItems.length > 0);
+        }
         const calSpan = document.getElementById('recipeDetailCaloriesSpan'); if (calSpan) calSpan.innerText = recipe.calories == null ? '' : recipe.calories;
 
         // 食材比对
@@ -5850,6 +6007,9 @@
           row.append(left, badgeBox);
           ingFragment.append(row);
         });
+        if (ingredients.length === 0) {
+          ingFragment.append(createDomElement('div', 'p-3 text-center text-stone-400 bg-white rounded-xl border border-dashed border-[#F0E8DC] font-bold', '暂未录入食材配方，点击左下角「编辑」可补充'));
+        }
         ingContainer.replaceChildren(ingFragment);
 
         // 步骤与计时器
@@ -5888,6 +6048,9 @@
 
           stepFragment.append(card);
         });
+        if (steps.length === 0) {
+          stepFragment.append(createDomElement('div', 'p-3 text-center text-stone-400 bg-white rounded-xl border border-dashed border-[#F0E8DC] font-bold', '暂未录入分步做法，点击左下角「编辑」可补充'));
+        }
         stepsContainer.replaceChildren(stepFragment);
 
         // 收藏状态
@@ -5904,26 +6067,63 @@
       },
 
       setupIngredientDetail(pantryId) {
-        const item = BentoService.pantry.getById(pantryId);
+        // 支持 id 与已映射对象：详情打开时远端 DTO 已刷新到缓存，但并发 reload 可能先清空缓存，
+        // 直接使用传入对象可保证按钮绑定与展示基于真实 DTO。
+        const item =
+          pantryId && typeof pantryId === 'object' ? pantryId : BentoService.pantry.getById(String(pantryId));
         if (!item) return;
 
-        document.getElementById('ingredientDetailIcon').innerText = item.icon;
+        document.getElementById('ingredientDetailIcon').innerText = sanitizeIconText(item.icon, '🥬');
         document.getElementById('ingredientDetailName').innerText = item.name;
-        document.getElementById('ingredientDetailCategory').innerText = item.category;
-        document.getElementById('ingredientDetailLocation').innerText = item.storageLocation;
+        // 副标题：只拼接真实非空项；分类或存放区域缺失时不留孤立分隔符，全空隐藏整行
+        const categoryText = String(item.category ?? '').trim();
+        const locationText = String(item.storageLocation ?? '').trim();
+        const metaRowEl = document.getElementById('ingredientDetailMetaRow');
+        if (metaRowEl) {
+          const metaFragment = document.createDocumentFragment();
+          if (categoryText) {
+            const categoryEl = createDomElement('span', 'text-[#FF6B57]', categoryText);
+            categoryEl.id = 'ingredientDetailCategory';
+            metaFragment.append(categoryEl);
+          }
+          if (categoryText && locationText) metaFragment.append(createDomElement('span', '', '·'));
+          if (locationText) {
+            const locationEl = createDomElement('span', 'px-1.5 py-0.2 rounded bg-stone-100 text-stone-700 text-[10px]', locationText);
+            locationEl.id = 'ingredientDetailLocation';
+            metaFragment.append(locationEl);
+          }
+          metaRowEl.replaceChildren(metaFragment);
+          const hasMeta = Boolean(categoryText || locationText);
+          metaRowEl.classList.toggle('hidden', !hasMeta);
+          metaRowEl.classList.toggle('flex', hasMeta);
+        }
         document.getElementById('ingredientDetailStock').innerText = `${item.stock} ${item.unit}`;
-        document.getElementById('ingredientDetailPurchaseDate').innerText = item.purchaseDate;
-        document.getElementById('ingredientDetailExpireDate').innerText = item.expireDate;
+        // 采购/到期日期：null / undefined / 纯空白一律显示「未填写」，不把空值写成空白或字面 null
+        const purchaseDateText = metaText(item.purchaseDate);
+        const expireDateText = metaText(item.expireDate);
+        document.getElementById('ingredientDetailPurchaseDate').innerText = purchaseDateText || '未填写';
+        document.getElementById('ingredientDetailExpireDate').innerText = expireDateText || '未填写';
 
         const badge = document.getElementById('ingredientDetailExpiryBadge');
         const bar = document.getElementById('ingredientDetailExpiryBar');
 
-        // D1：未填保质期时 expireDaysLeft 为 undefined，不能让「保质期充裕 · 还剩 undefined 天」直出
+        // D1：未填保质期时 expireDaysLeft 为 undefined，不能让「保质期充裕 · 还剩 undefined 天」直出。
+        // 过期（<0）统一红色「已过期 X 天」，0 天为「今日到期」，绝不显示「余 -37 天」或临期预警。
         if (item.expireDaysLeft == null) {
           badge.innerText = '未填写保质期';
           badge.className = 'font-black text-stone-400';
           bar.className = 'h-full bg-stone-300 transition-all';
           bar.style.width = '0%';
+        } else if (item.expireDaysLeft < 0) {
+          badge.innerText = `已过期 ${Math.abs(item.expireDaysLeft)} 天`;
+          badge.className = 'font-black text-red-500';
+          bar.className = 'h-full bg-red-500 transition-all';
+          bar.style.width = '100%';
+        } else if (item.expireDaysLeft === 0) {
+          badge.innerText = '今日到期';
+          badge.className = 'font-black text-red-500';
+          bar.className = 'h-full bg-red-400 transition-all';
+          bar.style.width = '30%';
         } else if (item.expireDaysLeft <= 2) {
           badge.innerText = `仅剩 ${item.expireDaysLeft} 天过期！`;
           badge.className = 'font-black text-red-500';
@@ -5941,6 +6141,32 @@
           bar.style.width = '85%';
         }
 
+        // 快捷消耗按钮：按食材真实单位维度生成（质量/体积/计件），点击只传 {quantity, unit}
+        const consumePresets =
+          typeof BentoService.pantry.consumePresets === 'function' ? BentoService.pantry.consumePresets(item) : [];
+        const allButton = document.getElementById('ingredientDetailConsume-all');
+        consumePresets.forEach((preset, index) => {
+          const button = document.getElementById(`ingredientDetailConsume-${index === 0 ? 100 : 250}`);
+          if (!button) return;
+          button.innerText = preset.label;
+          button.onclick = () => {
+            Promise.resolve(
+              BentoService.pantry.consume(BentoModal.currentPayload, {
+                quantity: preset.quantity,
+                unit: preset.unit
+              })
+            ).catch(() => undefined);
+          };
+        });
+        if (allButton)
+          allButton.onclick = () => {
+            Promise.resolve(BentoService.pantry.consume(BentoModal.currentPayload, 'all')).catch(() => undefined);
+          };
+        const editButton = document.getElementById('btnEditIngredientDetail');
+        if (editButton) {
+          editButton.onclick = () => BentoModal.open('ingredientForm', item);
+        }
+
         // 关联菜谱
         const recipesContainer = document.getElementById('ingredientDetailRelatedRecipes');
         const matchedRecipes = BentoService.recipes.data.filter(r => r.ingredients.some(ing => ing.name.includes(item.name) || item.name.includes(ing.pantryKeyword)));
@@ -5955,7 +6181,9 @@
             row.addEventListener('click', () => BentoModal.open('recipeDetail', recipeId));
 
             const left = createDomElement('div', 'flex items-center gap-2');
-            left.append(createDomElement('span', 'text-lg', r.icon ?? ''));
+            const relatedIconBox = createDomElement('span', 'text-lg w-7 h-7 rounded-lg bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center overflow-hidden relative flex-shrink-0', sanitizeRecipeIconText(r.icon, r.category));
+            appendSafeCoverImage(relatedIconBox, recipeCoverSource(r), { alt: r.name ?? '' });
+            left.append(relatedIconBox);
             const info = createDomElement('div', '');
             const nameLine = createDomElement('span', 'font-black text-stone-800 text-xs', r.name ?? '');
             const timeLine = createDomElement('span', 'text-[10.5px] text-stone-400 ml-1', r.cookTimeMinutes == null ? '' : `⏱ ${r.cookTimeMinutes}分钟`);
@@ -5986,7 +6214,7 @@
             value: `recipe:${r.id}`,
             name: r.name,
             sub: ['自烹', r.cookTimeMinutes == null ? null : `⏱ ${r.cookTimeMinutes}分`, r.calories == null ? null : `${r.calories} kcal`].filter(Boolean).join(' · '),
-            icon: r.icon,
+            icon: sanitizeRecipeIconText(r.icon, r.category),
             group: '自烹菜谱',
             type: 'recipe',
             id: r.id
@@ -6094,7 +6322,7 @@
           });
 
           const left = createDomElement('div', 'flex items-center gap-2 min-w-0');
-          left.append(createDomElement('span', 'text-base w-7 h-7 rounded-lg bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0', item.icon ?? ''));
+          left.append(createDomElement('span', 'text-base w-7 h-7 rounded-lg bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0', sanitizeIconText(item.icon, '')));
 
           const textBox = createDomElement('div', 'min-w-0');
           const titleRow = createDomElement('div', 'flex items-center gap-1.5');
@@ -6125,7 +6353,7 @@
         if (targetInput) targetInput.value = val;
         if (triggerText) {
           triggerText.replaceChildren(
-            document.createTextNode(`${icon || '🍱'} `),
+            document.createTextNode(`${sanitizeIconText(icon, '🍱')} `),
             createDomElement('span', 'font-bold text-stone-800', name ?? '')
           );
         }
@@ -6353,7 +6581,7 @@
           const r = BentoService.recipes.getById(targetId);
           title = r ? `${r.name}配白米饭` : '自烹便当';
           subtext = `自烹营养餐 · 预估 ${r ? r.calories : 480} kcal`;
-          icon = r ? r.icon : '🥘';
+          icon = r ? sanitizeRecipeIconText(r.icon, r.category) : '🥘';
         } else {
           targetType = 'store';
           const parts = targetVal.split(':');
@@ -6374,7 +6602,7 @@
           const channelLabel = channel === 'dinein' ? '堂食' : '外卖';
           title = `${s ? s.name : channelLabel} · ${dishName}`;
           subtext = `${s ? s.category : '品质餐饮'} · 人均 ¥${s ? s.price : 35} (${channelLabel})`;
-          icon = s ? s.icon : (channel === 'dinein' ? '🍽️' : '🛵');
+          icon = s ? sanitizeIconText(s.icon, '🍱') : (channel === 'dinein' ? '🍽️' : '🛵');
         }
 
         let success = false;
@@ -6529,7 +6757,12 @@
 
       // 5. 日历单日饮食底页装配
       setupDailyDiary(payload) {
-        const { year, month, day } = payload || { year: 2026, month: 9, day: 11 };
+        const today = new Date();
+        const { year, month, day } = payload || {
+          year: today.getFullYear(),
+          month: today.getMonth() + 1,
+          day: today.getDate()
+        };
         const dateStr = `${year}-${month < 10 ? '0' + month : month}-${day < 10 ? '0' + day : day}`;
         document.getElementById('dailyDiaryDateTitle').innerText = `${year}年${month}月${day}日 饮食日记全景`;
 
@@ -6539,10 +6772,16 @@
         const confirmedRecords = dayRecords.filter(r => r.status === 'CONFIRMED');
         const draftRecords = dayRecords.filter(r => r.status === 'DRAFT');
 
-        const totalCal = confirmedRecords.reduce((sum, r) => sum + (r.calories || 0), 0);
+        // 只有真实记录过热量（非 null）才参与汇总；全 null 显示「未记录热量」，显式 0 仍显示 0 kcal
+        const calorieRecords = confirmedRecords.filter((r) => r.calories != null);
+        const totalCal = calorieRecords.reduce((sum, r) => sum + Number(r.calories), 0);
         const subtitleParts = [];
         if (confirmedRecords.length > 0) {
-          subtitleParts.push(`共摄入约 ${totalCal} kcal · 已确认 ${confirmedRecords.length} 餐`);
+          subtitleParts.push(
+            calorieRecords.length > 0
+              ? `共摄入约 ${totalCal} kcal · 已确认 ${confirmedRecords.length} 餐`
+              : `未记录热量 · 已确认 ${confirmedRecords.length} 餐`
+          );
         } else {
           subtitleParts.push('暂无已确认就餐记录');
         }
@@ -6578,7 +6817,7 @@
 
               const icon = document.createElement('span');
               icon.className = 'text-base';
-              icon.textContent = r.icon == null ? '' : String(r.icon);
+              icon.textContent = sanitizeIconText(r.icon, '🍱');
 
               const title = document.createElement('span');
               title.className = 'font-black text-stone-800 text-xs';
@@ -6640,7 +6879,7 @@
               left.className = 'flex items-center gap-2';
 
               const planIcon = document.createElement('span');
-              planIcon.textContent = p.icon == null ? '' : String(p.icon);
+              planIcon.textContent = sanitizeIconText(p.icon, '🍱');
 
               const planTitle = document.createElement('span');
               planTitle.className = 'font-bold text-stone-700';
@@ -6697,9 +6936,9 @@
             categoryField.dataset.valueState = recipe.category == null ? 'empty' :
               Array.from(categoryField.options).some((option) => option.value === recipe.category) ? 'filled' : 'unrepresentable';
           }
-          document.getElementById('formRecipeIcon').value = recipe.icon || '🍳';
+          document.getElementById('formRecipeIcon').value = sanitizeRecipeIconText(recipe.icon, recipe.category);
           const iconPreview = document.getElementById('formRecipeIconPreview');
-          if (iconPreview) iconPreview.innerText = recipe.icon || '🍳';
+          if (iconPreview) iconPreview.innerText = sanitizeRecipeIconText(recipe.icon, recipe.category);
           // 后端 nullable 字段：没有真实值时留空，不写 20/320 这类演示默认冒充用户数据
           document.getElementById('formRecipeTime').value = recipe.cookTimeMinutes ?? '';
           // 热量：后端是 nullable（无值 = 未填写）。后端没有值就留空，绝不用 320 之类演示值冒充用户数据；
@@ -6742,6 +6981,11 @@
 
           document.getElementById('formRecipeCategory').value = '';
           document.getElementById('formRecipeCategory').dataset.valueState = 'empty';
+          // 新建菜谱：标题栏图标与隐藏域强制回到默认 🍳，绝不残留上一次编辑的图标/文件名
+          const newIconPreview = document.getElementById('formRecipeIconPreview');
+          if (newIconPreview) newIconPreview.innerText = '🍳';
+          const newIconField = document.getElementById('formRecipeIcon');
+          if (newIconField) newIconField.value = '🍳';
           document.getElementById('formRecipeTime').value = '';
           document.getElementById('formRecipeTime').dataset.valueState = 'new';
           document.getElementById('formRecipeDifficulty').value = '';
@@ -6772,140 +7016,308 @@
       },
 
       
-      // 9. 🥫 冰箱智能配菜中心
+      // 9. 🥫 冰箱智能配菜中心（真实后端 /kitchen/recommend + 严格本地首屏）
+      //
+      // 首屏立即按「未过期 + 单位可换算 + 量足」严格规则本地核对，保证打开即有如实结果；
+      // 随后真实 POST /api/v1/kitchen/recommend，用后端口径（活批次/过期/结构化配料）覆盖。
+      // 过期、量不足、无结构化配料的菜谱在两条路径下都不会被判为 100%。
       setupPantryRecommend() {
         const container = document.getElementById('pantryRecommendContent');
         if (!container) return;
         const recipes = BentoService.recipes.getAll();
         const pantry = BentoService.pantry.getAll();
 
-        if (pantry.length === 0) {
-          const empty = createDomElement('div', 'p-6 text-center text-stone-400 bg-white rounded-2xl border border-[#F0E8DC]');
-          empty.append(
-            createDomElement('span', 'text-3xl block mb-2', '🥬'),
-            createDomElement('p', 'font-bold text-xs', '冰箱还没有录入生鲜食材哦')
+        const unitDimension = {
+          GRAM: ['mass', 1],
+          KILOGRAM: ['mass', 1000],
+          MILLILITER: ['volume', 1],
+          LITER: ['volume', 1000]
+        };
+        // 同维度换算：克/千克、毫升/升；其它组合不可换算（不猜、不近似）
+        const convert = (quantity, from, to) => {
+          if (from == null || to == null) return null;
+          if (from === to) return Number(quantity);
+          const a = unitDimension[from];
+          const b = unitDimension[to];
+          if (!a || !b || a[0] !== b[0]) return null;
+          return (Number(quantity) * a[1]) / b[1];
+        };
+        const isExpired = (item) => item && item.expireDaysLeft != null && item.expireDaysLeft < 0;
+        // 本地 fixture / 旧缓存可能只有展示单位（'g'）没有 unitKey：统一经后端枚举归一
+        const unitKeyOf = (item) => {
+          const raw = item?.unitKey || item?.unit || null;
+          if (raw == null) return null;
+          const map = { g: 'GRAM', kg: 'KILOGRAM', ml: 'MILLILITER', L: 'LITER', l: 'LITER', 个: 'PIECE', 盒: 'BOX', 袋: 'BAG', 瓶: 'BOTTLE', 罐: 'CAN', 包: 'PACK', 份: 'PORTION' };
+          return map[raw] || (typeof raw === 'string' && /^[A-Z]+$/.test(raw) ? raw : null);
+        };
+        const findStock = (ingredient) => {
+          const name = String(ingredient?.name ?? '');
+          if (!name) return null;
+          const matches = pantry.filter((p) =>
+            p && !isExpired(p) && Number(p.stock) > 0 &&
+            (ingredient.ingredientId ? p.id === ingredient.ingredientId : String(p.name).trim() === name.trim())
           );
-          const entryButton = createDomElement('button', 'neo-btn-primary text-xs py-1.5 px-4 mt-2', '+ 录入第一批食材');
-          entryButton.type = 'button';
-          entryButton.addEventListener('click', () => BentoModal.open('ingredientForm'));
-          empty.append(entryButton);
-          container.replaceChildren(empty);
-          return;
-        }
-
-        const scored = recipes.map(r => {
-          const ings = r.ingredients || [];
-          // 推荐弹窗沿用原版名称弱匹配口径（X4 回退：真实 UI + API 核查确认前后端均无 ingredientId
-          // 自动关联，新建同名菜谱行落库为 null，按 id 精确匹配会把这些行整体判为缺料）。
-          // 详情页徽标仍按 ingredientId 判定（D3 修复保留），两处口径各自独立。
-          const matched = ings.filter(i => 
-            pantry.some(p => (p.name.includes(i.name) || i.name.includes(p.name) || (i.pantryKeyword && p.name.includes(i.pantryKeyword))) && p.stock > 0)
-          );
-          const missing = ings.filter(i => 
-            !pantry.some(p => (p.name.includes(i.name) || i.name.includes(p.name) || (i.pantryKeyword && p.name.includes(i.pantryKeyword))) && p.stock > 0)
-          );
-          const pct = ings.length > 0 ? Math.round((matched.length / ings.length) * 100) : 0;
-          return { recipe: r, pct, matched, missing };
-        }).sort((a, b) => b.pct - a.pct);
-
-        const fullMatches = scored.filter(s => s.pct === 100);
-        const partialMatches = scored.filter(s => s.pct > 0 && s.pct < 100);
-
-        const buildActionButton = (className, label, onClick) => {
-          const button = createDomElement('button', className, label);
-          button.type = 'button';
-          button.addEventListener('click', onClick);
-          return button;
+          return matches.length === 1 ? matches[0] : null;
         };
 
-        const buildSection = (headingClass, headingText, matches, buildCard) => {
-          const section = createDomElement('div', matches === partialMatches && fullMatches.length > 0 ? 'mt-3.5' : '');
-          section.append(createDomElement('div', `flex items-center gap-1.5 mb-2 font-black text-xs ${headingClass}`, headingText));
-          const list = createDomElement('div', 'space-y-2');
-          matches.forEach((m) => list.append(buildCard(m)));
-          section.append(list);
-          return section;
+        // ---- 本地严格核对 ----
+        const localScored = recipes.map((recipe) => {
+          const ings = Array.isArray(recipe.ingredients) ? recipe.ingredients : [];
+          const required = ings.filter((i) => !i.optional);
+          const structuredCount = required.filter((i) => i.quantity != null && i.unit != null).length;
+          const matched = [];
+          const missing = [];
+          required.forEach((ingredient) => {
+            const stock = findStock(ingredient);
+            if (!stock) {
+              missing.push(ingredient);
+              return;
+            }
+            if (ingredient.quantity == null || ingredient.unit == null) {
+              // 无结构化用量：只能确认「有这个食材」，不能声称量足
+              missing.push(ingredient);
+              return;
+            }
+            const available = convert(stock.stock, unitKeyOf(stock), ingredient.unit);
+            if (available == null || available < Number(ingredient.quantity)) {
+              missing.push(ingredient);
+              return;
+            }
+            matched.push(ingredient);
+          });
+          const inventoryCheckable = structuredCount > 0;
+          const completion = !inventoryCheckable
+            ? 0
+            : required.length === 0
+              ? 100
+              : Math.round((matched.length / required.length) * 100);
+          return {
+            recipe,
+            completion,
+            inventoryCheckable,
+            existingIngredients: matched.map((i) => ({ name: i.name })),
+            missingIngredients: missing.map((i) => ({ name: i.name })),
+            completionLabel: !inventoryCheckable
+              ? '未录入配料，无法核对库存'
+              : completion === 100
+                ? '100% 可直接做'
+                : missing.length <= 2
+                  ? '缺少 1–2 项'
+                  : '缺少多项',
+            source: 'local'
+          };
+        });
+
+        const renderCards = (candidates, notice) => {
+          if (!container) return;
+          if (pantry.length === 0) {
+            const empty = createDomElement('div', 'p-6 text-center text-stone-400 bg-white rounded-2xl border border-[#F0E8DC]');
+            empty.append(
+              createDomElement('span', 'text-3xl block mb-2', '🥬'),
+              createDomElement('p', 'font-bold text-xs', '冰箱还没有录入生鲜食材哦')
+            );
+            const entryButton = createDomElement('button', 'neo-btn-primary text-xs py-1.5 px-4 mt-2', '+ 录入第一批食材');
+            entryButton.type = 'button';
+            entryButton.addEventListener('click', () => BentoModal.open('ingredientForm'));
+            empty.append(entryButton);
+            container.replaceChildren(empty);
+            return;
+          }
+
+          const fullMatches = candidates.filter((m) => m.inventoryCheckable && m.completion === 100);
+          const partialMatches = candidates.filter((m) => m.inventoryCheckable && m.completion < 100);
+          const uncheckable = candidates.filter((m) => !m.inventoryCheckable);
+
+          const buildActionButton = (className, label, onClick) => {
+            const button = createDomElement('button', className, label);
+            button.type = 'button';
+            button.addEventListener('click', onClick);
+            return button;
+          };
+
+          const buildSection = (headingClass, headingText, matches, buildCard, marginClass = '') => {
+            const section = createDomElement('div', marginClass);
+            section.append(
+              createDomElement('div', `flex items-center gap-1.5 mb-2 font-black text-xs ${headingClass}`, headingText)
+            );
+            const list = createDomElement('div', 'space-y-2');
+            matches.forEach((m) => list.append(buildCard(m)));
+            section.append(list);
+            return section;
+          };
+
+          const missingText = (m) =>
+            m.missingIngredients.length
+              ? `缺：${m.missingIngredients.map((i) => i.name).join('、')}`
+              : '';
+
+          const buildFullCard = (m) => {
+            const recipeId = m.recipe && m.recipe.id != null ? String(m.recipe.id) : '';
+            const card = createDomElement('div', 'p-3 bg-white border-2 border-[#D8EEDB] rounded-2xl flex items-center justify-between shadow-sm hover:border-[#6ABF69] transition-all');
+            const left = createDomElement('div', 'flex items-center gap-2.5');
+            const fullIconBox = createDomElement('span', 'text-2xl w-10 h-10 rounded-xl bg-[#FFF9F5] border border-[#F0E8DC] flex items-center justify-center overflow-hidden relative flex-shrink-0', sanitizeRecipeIconText(m.recipe.icon, m.recipe.category));
+            appendSafeCoverImage(fullIconBox, recipeCoverSource(m.recipe), { alt: m.recipe.name ?? '' });
+            left.append(fullIconBox);
+            const info = document.createElement('div');
+            const nameRow = createDomElement('div', 'flex items-center gap-2');
+            nameRow.append(
+              createDomElement('h4', 'font-black text-xs text-stone-800 m-0', m.recipe.name ?? ''),
+              createDomElement('span', 'px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700', '可做')
+            );
+            const recipeTimeText = m.recipe.cookTimeMinutes == null ? '' : String(m.recipe.cookTimeMinutes).trim();
+            const recipeDifficultyText = m.recipe.difficulty == null ? '' : String(m.recipe.difficulty).trim();
+            const matchedNames = (m.existingIngredients || []).map((i) => i.name).join('、');
+            const subText = joinMetaParts([
+              recipeTimeText ? `耗时 ${recipeTimeText}分钟` : null,
+              recipeDifficultyText ? `${recipeDifficultyText}难度` : null,
+              matchedNames || null
+            ]);
+            info.append(nameRow, createDomElement('p', 'text-[10px] text-stone-400 m-0 mt-0.5', subText));
+            left.append(info);
+
+            const actions = createDomElement('div', 'flex items-center gap-1.5');
+            actions.append(
+              buildActionButton('pill-btn py-1.5 px-2 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF0ED] hover:bg-[#FF6B57] hover:text-white', '🍱 排入便当', () => {
+                BentoModal.open('planPicker', { targetType: 'recipe', targetId: recipeId });
+              }),
+              buildActionButton('neo-btn-primary text-xs py-1.5 px-3 shadow-sm', '🍳 立即开火', () => {
+                BentoModal.open('recipeDetail', recipeId);
+              })
+            );
+            card.append(left, actions);
+            return card;
+          };
+
+          const buildPartialCard = (m) => {
+            const recipeId = m.recipe && m.recipe.id != null ? String(m.recipe.id) : '';
+            const card = createDomElement('div', 'p-3 bg-white border border-[#FEDBC5] rounded-2xl flex items-center justify-between shadow-sm');
+            const left = createDomElement('div', 'flex items-center gap-2.5');
+            const partialIconBox = createDomElement('span', 'text-2xl w-10 h-10 rounded-xl bg-[#FFF9F5] border border-[#F0E8DC] flex items-center justify-center overflow-hidden relative flex-shrink-0', sanitizeRecipeIconText(m.recipe.icon, m.recipe.category));
+            appendSafeCoverImage(partialIconBox, recipeCoverSource(m.recipe), { alt: m.recipe.name ?? '' });
+            left.append(partialIconBox);
+            const info = document.createElement('div');
+            const nameRow = createDomElement('div', 'flex items-center gap-2');
+            nameRow.append(
+              createDomElement('h4', 'font-black text-xs text-stone-800 m-0', m.recipe.name ?? ''),
+              createDomElement('span', 'px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-700', `原料匹配 ${m.completion}%`)
+            );
+            const subLine = createDomElement('p', 'text-[10px] text-stone-400 m-0 mt-0.5');
+            subLine.append(
+              document.createTextNode(`现有：${(m.existingIngredients || []).map((i) => i.name).join('、') || '无'} · `),
+              createDomElement('span', 'text-red-500 font-bold', missingText(m))
+            );
+            info.append(nameRow, subLine);
+            left.append(info);
+
+            const actions = createDomElement('div', 'flex items-center gap-1.5');
+            actions.append(
+              buildActionButton('py-1 px-2.5 bg-[#FFF0ED] text-[#FF6B57] font-bold text-[10.5px] rounded-xl hover:bg-[#FFE0D9] transition-all', '🛒 补齐缺料', () => {
+                addMissingListToShopping(recipeId);
+              }),
+              buildActionButton('pill-btn py-1 px-2 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF0ED] hover:bg-[#FF6B57] hover:text-white', '🍱 排入便当', () => {
+                BentoModal.open('planPicker', { targetType: 'recipe', targetId: recipeId });
+              }),
+              buildActionButton('neo-btn-secondary text-xs py-1 px-2.5', '查看', () => {
+                BentoModal.open('recipeDetail', recipeId);
+              })
+            );
+            card.append(left, actions);
+            return card;
+          };
+
+          const buildUncheckableCard = (m) => {
+            const recipeId = m.recipe && m.recipe.id != null ? String(m.recipe.id) : '';
+            const card = createDomElement('div', 'p-3 bg-white border border-dashed border-[#F0E8DC] rounded-2xl flex items-center justify-between shadow-sm');
+            const left = createDomElement('div', 'flex items-center gap-2.5');
+            left.append(
+              createDomElement('span', 'text-2xl w-10 h-10 rounded-xl bg-[#FAF7F2] border border-[#F0E8DC] flex items-center justify-center flex-shrink-0', sanitizeRecipeIconText(m.recipe.icon, m.recipe.category))
+            );
+            const info = document.createElement('div');
+            const nameRow = createDomElement('div', 'flex items-center gap-2');
+            nameRow.append(
+              createDomElement('h4', 'font-black text-xs text-stone-800 m-0', m.recipe.name ?? ''),
+              createDomElement('span', 'px-2 py-0.5 rounded-full text-[9px] font-black bg-stone-100 text-stone-500', '无法核对')
+            );
+            info.append(
+              nameRow,
+              createDomElement('p', 'text-[10px] text-stone-400 m-0 mt-0.5', '未录入配料，无法核对库存')
+            );
+            left.append(info);
+            card.append(
+              left,
+              buildActionButton('neo-btn-secondary text-xs py-1 px-2.5', '查看', () => {
+                BentoModal.open('recipeDetail', recipeId);
+              })
+            );
+            return card;
+          };
+
+          const fragment = document.createDocumentFragment();
+          if (notice) fragment.append(createDomElement('div', 'text-[10px] text-stone-400 font-bold mb-2', notice));
+          if (fullMatches.length > 0) {
+            fragment.append(buildSection('text-[#2E7D32]', `🟢 原料 100% 齐全 · 现有食材即可下锅 (${fullMatches.length}道)`, fullMatches, buildFullCard));
+          }
+          if (partialMatches.length > 0) {
+            fragment.append(
+              buildSection(
+                'text-[#D97706]',
+                `🟡 仅缺部分配料 (${partialMatches.length}道)`,
+                partialMatches,
+                buildPartialCard,
+                fullMatches.length > 0 ? 'mt-3.5' : ''
+              )
+            );
+          }
+          if (uncheckable.length > 0) {
+            fragment.append(
+              buildSection(
+                'text-stone-500',
+                `⚪ 未录入配料，无法核对库存 (${uncheckable.length}道)`,
+                uncheckable,
+                buildUncheckableCard,
+                fullMatches.length + partialMatches.length > 0 ? 'mt-3.5' : ''
+              )
+            );
+          }
+          if (fullMatches.length + partialMatches.length + uncheckable.length === 0) {
+            fragment.append(createDomElement('div', 'p-6 text-center text-stone-400 bg-white rounded-2xl', '现有食材还凑不出完整菜谱，快去【我的菜谱】新增更多拿手菜吧！'));
+          }
+          container.replaceChildren(fragment);
         };
 
-        const buildFullCard = (m) => {
-          const recipeId = m.recipe && m.recipe.id != null ? String(m.recipe.id) : '';
-          const card = createDomElement('div', 'p-3 bg-white border-2 border-[#D8EEDB] rounded-2xl flex items-center justify-between shadow-sm hover:border-[#6ABF69] transition-all');
-          const left = createDomElement('div', 'flex items-center gap-2.5');
-          left.append(createDomElement('span', 'text-2xl', m.recipe.icon ?? ''));
-          const info = document.createElement('div');
-          const nameRow = createDomElement('div', 'flex items-center gap-2');
-          nameRow.append(
-            createDomElement('h4', 'font-black text-xs text-stone-800 m-0', m.recipe.name ?? ''),
-            createDomElement('span', 'px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700', '可做')
-          );
-          const subText = [
-            m.recipe.cookTimeMinutes == null ? null : `耗时 ${m.recipe.cookTimeMinutes}分钟`,
-            m.recipe.difficulty == null ? null : `${m.recipe.difficulty}难度`,
-            m.matched.map(i => i.name).join('、')
-          ].filter(Boolean).join(' · ');
-          info.append(nameRow, createDomElement('p', 'text-[10px] text-stone-400 m-0 mt-0.5', subText));
-          left.append(info);
+        renderCards(localScored);
 
-          const actions = createDomElement('div', 'flex items-center gap-1.5');
-          actions.append(
-            buildActionButton('pill-btn py-1.5 px-2 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF0ED] hover:bg-[#FF6B57] hover:text-white', '🍱 排入便当', () => {
-              BentoModal.open('planPicker', { targetType: 'recipe', targetId: recipeId });
-            }),
-            buildActionButton('neo-btn-primary text-xs py-1.5 px-3 shadow-sm', '🍳 立即开火', () => {
-              BentoModal.open('recipeDetail', recipeId);
-            })
-          );
-          card.append(left, actions);
-          return card;
-        };
-
-        const buildPartialCard = (m) => {
-          const recipeId = m.recipe && m.recipe.id != null ? String(m.recipe.id) : '';
-          const card = createDomElement('div', 'p-3 bg-white border border-[#FEDBC5] rounded-2xl flex items-center justify-between shadow-sm');
-          const left = createDomElement('div', 'flex items-center gap-2.5');
-          left.append(createDomElement('span', 'text-2xl', m.recipe.icon ?? ''));
-          const info = document.createElement('div');
-          const nameRow = createDomElement('div', 'flex items-center gap-2');
-          nameRow.append(
-            createDomElement('h4', 'font-black text-xs text-stone-800 m-0', m.recipe.name ?? ''),
-            createDomElement('span', 'px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-700', `原料匹配 ${m.pct}%`)
-          );
-          const subLine = createDomElement('p', 'text-[10px] text-stone-400 m-0 mt-0.5');
-          subLine.append(
-            document.createTextNode(`现有：${m.matched.map(i => i.name).join('、') || '无'} · `),
-            createDomElement('span', 'text-red-500 font-bold', `缺：${m.missing.map(i => i.name).join('、')}`)
-          );
-          info.append(nameRow, subLine);
-          left.append(info);
-
-          const actions = createDomElement('div', 'flex items-center gap-1.5');
-          actions.append(
-            buildActionButton('py-1 px-2.5 bg-[#FFF0ED] text-[#FF6B57] font-bold text-[10.5px] rounded-xl hover:bg-[#FFE0D9] transition-all', '🛒 补齐缺料', () => {
-              addMissingListToShopping(recipeId);
-            }),
-            buildActionButton('pill-btn py-1 px-2 text-[10.5px] border-[#FEDBC5] text-[#FF6B57] bg-[#FFF0ED] hover:bg-[#FF6B57] hover:text-white', '🍱 排入便当', () => {
-              BentoModal.open('planPicker', { targetType: 'recipe', targetId: recipeId });
-            }),
-            buildActionButton('neo-btn-secondary text-xs py-1 px-2.5', '查看', () => {
-              BentoModal.open('recipeDetail', recipeId);
-            })
-          );
-          card.append(left, actions);
-          return card;
-        };
-
-        const fragment = document.createDocumentFragment();
-        if (fullMatches.length > 0) {
-          fragment.append(buildSection('text-[#2E7D32]', `🟢 原料 100% 齐全 · 现有食材即可下锅 (${fullMatches.length}道)`, fullMatches, buildFullCard));
-        }
-        if (partialMatches.length > 0) {
-          fragment.append(buildSection('text-[#D97706]', `🟡 仅缺部分配料 (${partialMatches.length}道)`, partialMatches, buildPartialCard));
-        }
-        if (fullMatches.length === 0 && partialMatches.length === 0) {
-          fragment.append(createDomElement('div', 'p-6 text-center text-stone-400 bg-white rounded-2xl', '暂无直接匹配的菜谱，快去【我的菜谱】新增更多拿手菜吧！'));
-        }
-
-        container.replaceChildren(fragment);
+        // 真实后端推荐：成功则用服务端口径覆盖本地首屏；失败保留严格本地结果并注明
+        const seq = (BentoModal.__pantryRecommendSeq || 0) + 1;
+        BentoModal.__pantryRecommendSeq = seq;
+        const client = window.DafanApiClient;
+        if (!client || typeof client.post !== 'function') return;
+        Promise.resolve(client.post('/kitchen/recommend', { mode: 'ALLOW_PURCHASE', limit: Math.max(recipes.length, 20) }))
+          .then((result) => {
+            if (BentoModal.__pantryRecommendSeq !== seq) return;
+            const items = Array.isArray(result?.items) ? result.items : null;
+            if (!items) return;
+            const mapped = items.map((entry) => ({
+              recipe: {
+                ...(BentoService.recipes.getById?.(entry.recipe?.id) || {}),
+                id: entry.recipe?.id,
+                name: entry.recipe?.name,
+                imagePath: entry.recipe?.imagePath,
+                cookTimeMinutes: entry.recipe?.cookingTimeMinutes
+              },
+              completion: entry.completion,
+              inventoryCheckable: entry.inventoryCheckable !== false,
+              existingIngredients: entry.existingIngredients || [],
+              missingIngredients: entry.missingIngredients || [],
+              completionLabel: entry.completionLabel,
+              source: 'api'
+            }));
+            renderCards(mapped);
+          })
+          .catch(() => {
+            if (BentoModal.__pantryRecommendSeq !== seq) return;
+            // 后端不可用时保留本地严格核对结果，绝不显示 100% 假齐备
+          });
       },
 
       // 10. 🎯 转盘命中高光卡弹窗装配
@@ -6916,7 +7328,7 @@
         const titleEl = document.getElementById('winnerModalTitle');
         const subEl = document.getElementById('winnerModalSub');
 
-        if (iconEl) iconEl.innerText = item.icon || '🍱';
+        if (iconEl) iconEl.innerText = sanitizeIconText(item.icon, '🍱');
         if (titleEl) titleEl.innerText = item.title;
 
         if (item.type === 'store') {
@@ -6949,19 +7361,69 @@
         }
       },
 
+      // 10.5 🛒 采购清单表单装配（新建 / 编辑回填）
+      setupShoppingForm(payload) {
+        const form = document.querySelector('#modalShoppingForm form');
+        if (form) form.reset();
+        const item =
+          typeof payload === 'string'
+            ? BentoService.shopping.getById(payload)
+            : (payload && payload.id ? payload : null);
+        const idField = document.getElementById('formShopId');
+        const titleEl = document.querySelector('#modalShoppingForm h3');
+        if (item) {
+          if (idField) idField.value = item.id || '';
+          if (titleEl) titleEl.innerText = '编辑采购物品';
+          document.getElementById('formShopName').value = item.name || '';
+          const category = String(item.category || '其他').trim();
+          document.getElementById('formShopCategory').value = INGREDIENT_CATEGORIES.includes(category)
+            ? category
+            : '其他';
+          document.getElementById('formShopAmount').value = item.amount || '';
+        } else {
+          if (idField) idField.value = '';
+          if (titleEl) titleEl.innerText = '添加待采购物品';
+          document.getElementById('formShopCategory').value = '蔬菜';
+          document.getElementById('formShopAmount').value = '1份';
+        }
+      },
+
       // 11. 🍳 厨房工具表单装配
-      setupToolForm() {
+      setupToolForm(payload) {
         const form = document.querySelector('#modalToolForm form');
         if (form) form.reset();
-        document.getElementById('formToolIcon').value = '🍲';
-        document.getElementById('formToolCategory').value = '慢炖';
-        document.getElementById('formToolStatus').value = '状态良好';
+        const tool =
+          typeof payload === 'string'
+            ? BentoService.tools.getById(payload)
+            : (payload && payload.id ? payload : null);
+        const idField = document.getElementById('formToolId');
+        const titleEl = document.querySelector('#modalToolForm h3');
+        const submitBtn = document.querySelector('#modalToolForm button[type="submit"]');
+        if (tool) {
+          if (idField) idField.value = tool.id || '';
+          if (titleEl) titleEl.innerText = '编辑厨房工具设备';
+          if (submitBtn) submitBtn.innerText = '💾 保存设备修改';
+          document.getElementById('formToolName').value = tool.name || '';
+          const iconValue = sanitizeIconText(tool.icon, DEFAULT_TOOL_ICON);
+          selectStoredValue('formToolIcon', iconValue);
+          selectStoredValue('formToolCategory', tool.category);
+          selectStoredValue('formToolStatus', tool.status);
+          document.getElementById('formToolNotes').value = tool.notes || '';
+        } else {
+          if (idField) idField.value = '';
+          if (titleEl) titleEl.innerText = '录入厨房工具设备';
+          if (submitBtn) submitBtn.innerText = '🍳 录入设备库';
+          document.getElementById('formToolIcon').value = DEFAULT_TOOL_ICON;
+          document.getElementById('formToolCategory').value = '慢炖';
+          document.getElementById('formToolStatus').value = '状态良好';
+        }
       },
 
       // 12. 📖 饮食日记表单动态装配
       setupRecordForm(payload) {
         const form = document.querySelector('#modalRecordForm form');
         if (form) form.reset();
+        // 日期来源只由 adapter 的 currentDiaryDate 决定：普通入口清空，仅日记弹窗专用入口保留。
 
         const idField = document.getElementById('formRecordId');
         const titleEl = document.querySelector('#modalRecordForm h3');
@@ -7238,47 +7700,96 @@
         showToast(`店铺「${name}」已成功收录！`, '🏪');
       },
 
-      // 8. 生鲜食材表单动态装配
+      // 8. 生鲜食材表单动态装配（新建 / 编辑回填）
       setupIngredientForm(payload) {
         const form = document.querySelector('#modalIngredientForm form');
         if (form) form.reset();
-        document.getElementById('formIngStockNum').value = '500';
-        document.getElementById('formIngStockUnit').value = 'g';
-        document.getElementById('formIngExpireDays').value = '5';
+        const item = typeof payload === 'string' ? BentoService.pantry.getById(payload) : (payload && payload.id ? payload : null);
+        const idField = document.getElementById('formIngId');
+        const titleEl = document.querySelector('#modalIngredientForm h3');
+        const submitBtn = document.getElementById('formIngSubmitBtn');
+        if (item) {
+          if (idField) idField.value = item.id || '';
+          if (titleEl) titleEl.innerText = '编辑冰箱食材档案';
+          if (submitBtn) submitBtn.innerText = '💾 保存食材修改';
+          document.getElementById('formIngName').value = item.name || '';
+          const category = String(item.category || '其他').trim();
+          document.getElementById('formIngCategory').value = INGREDIENT_CATEGORIES.includes(category) ? category : '其他';
+          const iconField = document.getElementById('formIngIcon');
+          iconField.dataset.manual = 'true';
+          const iconValue = sanitizeIconText(
+            item.explicitIcon || item.icon,
+            INGREDIENT_DEFAULT_ICONS[document.getElementById('formIngCategory').value]
+          );
+          if (!Array.from(iconField.options).some((option) => option.value === iconValue)) {
+            const option = document.createElement('option');
+            option.value = iconValue;
+            option.textContent = `当前图标 ${iconValue}`;
+            iconField.append(option);
+          }
+          iconField.value = iconValue;
+          iconField.dataset.initialIcon = iconValue;
+          iconField.dataset.originalImagePath = item.imagePath || '';
+          document.getElementById('formIngStockNum').value = item.stock ?? '';
+          selectStoredValue('formIngStockUnit', item.unit || item.unitKey || 'OTHER');
+          selectStoredValue('formIngLocation', item.storageLocation);
+          document.getElementById('formIngMinStock').value = item.minStock ?? '';
+          document.getElementById('formIngPurchaseDate').value = item.purchaseDate || '';
+          document.getElementById('formIngExpireDate').value = item.expireDate || '';
+          document.getElementById('formIngExpireDays').value = '';
+        } else {
+          if (idField) idField.value = '';
+          if (titleEl) titleEl.innerText = '录入生鲜食材到冰箱';
+          if (submitBtn) submitBtn.innerText = '🥬 放入冰箱';
+          document.getElementById('formIngStockNum').value = '500';
+          document.getElementById('formIngStockUnit').value = 'g';
+          document.getElementById('formIngExpireDays').value = '';
+          const iconField = document.getElementById('formIngIcon');
+          iconField.dataset.manual = '';
+          iconField.dataset.initialIcon = '';
+          iconField.dataset.originalImagePath = '';
+          iconField.value = INGREDIENT_DEFAULT_ICONS['蔬菜'];
+        }
       },
 
+      /** 分类切换：仅当用户未手动改过图标时联动该分类默认图标 */
+      onIngredientCategoryChange(category) {
+        const iconField = document.getElementById('formIngIcon');
+        if (!iconField || iconField.dataset.manual === 'true') return;
+        iconField.value = INGREDIENT_DEFAULT_ICONS[category] || INGREDIENT_DEFAULT_ICONS['其他'];
+      },
+
+      // 真实提交由 adapter 接管（handleIngredientFormSubmit）；这里保留同名方法作为
+      // 「前端脚本先于 adapter 加载」时的兜底：只做字段收集，绝不伪造 id / 固定到期日。
       handleIngredientFormSubmit(e) {
         e.preventDefault();
         const name = document.getElementById('formIngName').value.trim();
         const category = document.getElementById('formIngCategory').value;
         const storageLocation = document.getElementById('formIngLocation').value;
-        const stockNum = parseInt(document.getElementById('formIngStockNum').value) || 1;
+        const stockNum = Number(document.getElementById('formIngStockNum').value);
         const unit = document.getElementById('formIngStockUnit').value || '份';
-        const expireDaysLeft = parseInt(document.getElementById('formIngExpireDays').value) || 5;
+        const expireDaysRaw = String(document.getElementById('formIngExpireDays').value ?? '').trim();
+        const purchaseDate = document.getElementById('formIngPurchaseDate').value;
+        const expireDate = document.getElementById('formIngExpireDate').value;
+        const minStockRaw = String(document.getElementById('formIngMinStock').value ?? '').trim();
+        const id = document.getElementById('formIngId').value.trim();
 
-        const icons = { '蔬菜': '🥬', '肉禽': '🥩', '水产': '🦐', '调味': '🧂', '蛋奶': '🥚', '烘焙': '🍞' };
-
-        // 自动检索关联菜谱
-        const matchedRecipes = BentoService.recipes.getAll().filter(r => 
-          r.ingredients && r.ingredients.some(i => i.name.includes(name) || name.includes(i.name) || (i.pantryKeyword && name.includes(i.pantryKeyword)))
-        ).map(r => r.name);
-
-        BentoService.pantry.save({
-          id: `pantry-${Date.now()}`,
+        const payload = {
           name,
           category,
-          icon: icons[category] || '🥬',
+          icon: document.getElementById('formIngIcon').value,
           storageLocation,
-          stock: stockNum,
+          stock: Number.isFinite(stockNum) ? stockNum : null,
           unit,
-          purchaseDate: new Date().toISOString().slice(0, 10),
-          expireDate: '2026-09-21',
-          expireDaysLeft,
-          relatedRecipes: matchedRecipes
+          purchaseDate: purchaseDate || null,
+          expireDate: expireDate || null,
+          expireDaysLeft: expireDaysRaw === '' ? null : expireDaysRaw,
+          minStock: minStockRaw === '' ? null : minStockRaw
+        };
+        if (id) payload.id = id;
+        Promise.resolve(BentoService.pantry.save(payload)).catch((error) => {
+          showToast(error && error.message ? error.message : '食材保存失败，请稍后重试', 'error');
         });
-
-        BentoModal.close(true);
-        showToast(`「${name}」已放入冰箱${storageLocation}！`, '🥬');
       },
 
       handleRecordFormSubmit(e) {
@@ -7334,23 +7845,50 @@
         BentoModal.close(true);
       },
 
+      // 真实提交由 adapter 接管；兜底实现区分新建与编辑（编辑走 PUT 更新，不新建重复行）
       handleShoppingFormSubmit(e) {
         e.preventDefault();
+        const id = document.getElementById('formShopId')?.value.trim() || '';
         const name = document.getElementById('formShopName').value.trim();
         const category = document.getElementById('formShopCategory').value;
         const amount = document.getElementById('formShopAmount').value.trim() || '1份';
-
-        BentoService.shopping.add({
-          id: `shop-${Date.now()}`,
-          name,
-          amount,
-          category,
-          isChecked: false,
-          source: '手动备忘'
-        });
-
-        BentoModal.close(true);
+        // 规格能无损解析为「数量 + 标准单位」时写结构化字段，否则整段保留自由规格原文
+        const parseAmount = (text) => {
+          const match = String(text || '').trim().match(/^([0-9]+(?:\.[0-9]+)?)\s*(.*)$/);
+          if (!match) return null;
+          const quantity = Number(match[1]);
+          const unitMap = {
+            g: 'GRAM',
+            kg: 'KILOGRAM',
+            ml: 'MILLILITER',
+            L: 'LITER',
+            l: 'LITER',
+            个: 'PIECE',
+            盒: 'BOX',
+            袋: 'BAG',
+            瓶: 'BOTTLE',
+            罐: 'CAN',
+            包: 'PACK',
+            份: 'PORTION'
+          };
+          const labels = { GRAM: 'g', KILOGRAM: 'kg', MILLILITER: 'ml', LITER: 'L', PIECE: '个', BOX: '盒', BAG: '袋', BOTTLE: '瓶', CAN: '罐', PACK: '包', PORTION: '份' };
+          const unit = unitMap[match[2]];
+          if (!Number.isFinite(quantity) || quantity <= 0 || !unit) return null;
+          // 只有原文与标准写法完全一致才视为无损，否则保留原自由文本
+          return match[2] === labels[unit] ? { quantity, unit } : null;
+        };
+        const parsed = parseAmount(amount);
+        const update = parsed
+          ? { ingredientName: name, category, quantity: parsed.quantity, unit: parsed.unit }
+          : { ingredientName: name, category, amountText: amount };
+        const save = id
+          ? BentoService.shopping.updateItem(id, update)
+          : BentoService.shopping.add({ name, amount, category, isChecked: false, source: '手动备忘' });
+        Promise.resolve(save)
+          .then(() => BentoModal.close(true))
+          .catch((error) => showToast(error && error.message ? error.message : '采购项保存失败', 'error'));
       },
+
 
       handleWheelResult() {
         const banner = document.getElementById('resultBanner');
@@ -7377,8 +7915,22 @@
     let currentFavoriteFilter = 'all';
     let currentFavoriteQuery = '';
     let currentInventoryFilter = 'all';
-    let currentCalendarYear = 2026;
-    let currentCalendarMonth = 9;
+    // 厨房工具默认回退图标（所有工具槽位统一引用该常量）
+    const DEFAULT_TOOL_ICON = '🍲';
+    // 冰箱食材统一 7 大分类（与 adapter / 后端 categories.ts 同一口径）
+    const INGREDIENT_CATEGORIES = ['蔬菜', '肉禽', '水产', '蛋奶豆制', '主食粮油', '调味', '其他'];
+    const INGREDIENT_DEFAULT_ICONS = {
+      蔬菜: '🥬',
+      肉禽: '🥩',
+      水产: '🐟',
+      蛋奶豆制: '🥚',
+      主食粮油: '🍚',
+      调味: '🧂',
+      其他: '📦'
+    };
+    // 日历默认初始化到「当前真实本地年月」，绝不在启动阶段先渲染 2026-09 假打卡月历
+    let currentCalendarYear = new Date().getFullYear();
+    let currentCalendarMonth = new Date().getMonth() + 1;
 
     function renderStores() {
       const container = document.getElementById('storeCardGrid');
@@ -7426,7 +7978,7 @@
         const body = document.createElement('div');
         const head = createDomElement('div', 'flex items-start justify-between gap-3 mb-2.5');
         const headLeft = createDomElement('div', 'flex items-center gap-3 min-w-0 flex-1');
-        headLeft.append(createDomElement('div', 'w-11 h-11 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0', store.icon ?? ''));
+        headLeft.append(createDomElement('div', 'w-11 h-11 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0', sanitizeIconText(store.icon, '🍱')));
 
         const titleBox = createDomElement('div', 'min-w-0 flex-1');
         const titleRow = createDomElement('div', 'flex items-center gap-2');
@@ -7538,17 +8090,21 @@
 
         const body = document.createElement('div');
         const cover = createDomElement('div', 'h-28 bg-[#FFF0ED] border border-[#FEDBC5] rounded-2xl mb-2.5 flex items-center justify-center text-4xl shadow-[0_2px_8px_rgba(255,107,87,0.06)] relative overflow-hidden');
-        cover.append(createDomElement('span', '', r.icon ?? ''));
-        if (r.favorite) cover.append(createDomElement('span', 'absolute top-2 right-2 text-sm text-[#FF6B57]', '♥'));
+        cover.append(createDomElement('span', '', sanitizeRecipeIconText(r.icon, r.category)));
+        appendSafeCoverImage(cover, recipeCoverSource(r), { alt: r.name ?? '' });
+        if (r.favorite) cover.append(createDomElement('span', 'absolute top-2 right-2 text-sm text-[#FF6B57] z-10', '♥'));
 
         const titleRow = createDomElement('div', 'flex items-center justify-between mb-1');
-        titleRow.append(
-          createDomElement('h4', 'text-sm font-black m-0', r.name ?? ''),
-          createDomElement('span', 'text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800', r.difficulty ?? '')
-        );
+        titleRow.append(createDomElement('h4', 'text-sm font-black m-0', r.name ?? ''));
+        // 难度为空白时不渲染空胶囊；0 分钟/0 kcal 等真实数值仍照常显示
+        const difficultyText = r.difficulty == null ? '' : String(r.difficulty).trim();
+        if (difficultyText) {
+          titleRow.append(createDomElement('span', 'text-[10px] font-extrabold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800', difficultyText));
+        }
 
         const ingredients = Array.isArray(r.ingredients) ? r.ingredients : [];
-        const summaryText = [ingredients.map(i => i.name).join('、'), r.cookTimeMinutes == null ? null : `⏱ ${r.cookTimeMinutes}分钟`].filter(Boolean).join(' · ');
+        const timeText = r.cookTimeMinutes == null ? '' : String(r.cookTimeMinutes).trim();
+        const summaryText = joinMetaParts([ingredients.map(i => i.name).join('、'), timeText ? `⏱ ${timeText}分钟` : null]);
         const summary = createDomElement('p', 'text-[11px] text-stone-500 mb-2 truncate', summaryText);
         summary.dataset.recipeIngredientSummary = '';
 
@@ -7573,21 +8129,20 @@
       const countTotal = document.getElementById('statInventoryCount');
       if (countTotal) countTotal.innerText = pantry.length;
 
+      // 7 大分类：计数与筛选共用同一归一化结果，「全部 (N)」恒等于各分类之和
       const countAll = document.getElementById('countInv-all');
-      const countVeg = document.getElementById('countInv-veg');
-      const countMeat = document.getElementById('countInv-meat');
-      const countSeafood = document.getElementById('countInv-seafood');
-      const countSeasoning = document.getElementById('countInv-seasoning');
-
       if (countAll) countAll.innerText = pantry.length;
-      if (countVeg) countVeg.innerText = pantry.filter(p => p.category === '蔬菜').length;
-      if (countMeat) countMeat.innerText = pantry.filter(p => p.category === '肉禽').length;
-      if (countSeafood) countSeafood.innerText = pantry.filter(p => p.category === '水产').length;
-      if (countSeasoning) countSeasoning.innerText = pantry.filter(p => p.category === '调味').length;
+      INGREDIENT_CATEGORIES.forEach((category) => {
+        const node = document.getElementById(`countInv-${category}`);
+        if (node) node.innerText = pantry.filter((p) => p.category === category).length;
+      });
 
       if (!container) return;
 
-      const filtered = currentInventoryFilter === 'all' ? pantry : pantry.filter(p => p.category === currentInventoryFilter);
+      const filtered =
+        currentInventoryFilter === 'all'
+          ? pantry
+          : pantry.filter((p) => p.category === currentInventoryFilter);
 
       if (filtered.length === 0) {
         container.replaceChildren(createDomElement('div', 'col-span-2 p-8 text-center text-stone-400 bg-white rounded-3xl border border-stone-100', '该分类下暂无食材'));
@@ -7598,38 +8153,60 @@
       filtered.forEach((item) => {
         const itemId = item && item.id != null ? String(item.id) : '';
         const hasExpiry = item.expireDaysLeft != null;
-        const isUrgent = hasExpiry && item.expireDaysLeft <= 2;
-        const isWarning = hasExpiry && item.expireDaysLeft <= 5;
+        const isExpired = hasExpiry && item.expireDaysLeft < 0;
+        const isToday = hasExpiry && item.expireDaysLeft === 0;
+        const isUrgent = hasExpiry && item.expireDaysLeft > 0 && item.expireDaysLeft <= 2;
+        const isWarning = hasExpiry && item.expireDaysLeft > 2 && item.expireDaysLeft <= 5;
         const badgeClass = !hasExpiry
           ? ''
-          : isUrgent
+          : isExpired || isUrgent
             ? 'px-2 py-0.5 rounded-full text-[9px] font-black bg-red-100 text-red-600 border border-red-200'
-            : (isWarning ? 'px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-700 border border-amber-200' : 'px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200');
-        const badgeText = !hasExpiry ? '' : isUrgent ? '临期预警' : (isWarning ? '建议尽快' : '新鲜');
+            : (isToday || isWarning ? 'px-2 py-0.5 rounded-full text-[9px] font-black bg-amber-100 text-amber-700 border border-amber-200' : 'px-2 py-0.5 rounded-full text-[9px] font-black bg-emerald-100 text-emerald-700 border border-emerald-200');
+        // 已过期绝不显示「临期预警」，今日到期单独文案
+        const badgeText = !hasExpiry
+          ? ''
+          : isExpired
+            ? '已过期'
+            : isToday
+              ? '今日到期'
+              : isUrgent
+                ? '临期预警'
+                : (isWarning ? '建议尽快' : '新鲜');
+        const expiryDayText = !hasExpiry
+          ? '未填写保质期'
+          : isExpired
+            ? `已过期 ${Math.abs(item.expireDaysLeft)} 天`
+            : isToday
+              ? '今日到期'
+              : `余 ${item.expireDaysLeft} 天`;
 
         const card = createDomElement('div', 'neo-card p-3.5 m-0 flex items-center justify-between hover:-translate-y-1 transition-all duration-200 cursor-pointer shadow-[var(--shadow-bento-sm)] hover:border-[#FEDBC5]');
         card.addEventListener('click', () => BentoModal.open('ingredientDetail', itemId));
 
         const left = createDomElement('div', 'flex items-center gap-3 min-w-0');
-        left.append(createDomElement('div', 'w-12 h-12 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0', item.icon ?? ''));
+        left.append(createDomElement('div', 'w-12 h-12 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0', sanitizeIconText(item.icon, '🥬')));
 
         const info = createDomElement('div', 'min-w-0');
         const nameRow = createDomElement('div', 'flex items-center gap-2');
         nameRow.append(createDomElement('span', 'text-xs font-black text-stone-800 truncate', item.name ?? ''));
         if (badgeText) nameRow.append(createDomElement('span', badgeClass, badgeText));
 
+        // 存放位置为空时不渲染前导点：「3 个」而不是「· 3 个」
         const metaRow = createDomElement('div', 'text-[11px] text-stone-400 mt-0.5');
-        metaRow.append(
-          createDomElement('span', '', item.storageLocation ?? ''),
-          document.createTextNode(' · '),
-          createDomElement('span', 'font-bold text-stone-700', `${item.stock ?? ''} ${item.unit ?? ''}`)
-        );
+        const locationText = metaText(item.storageLocation);
+        if (locationText) {
+          metaRow.append(
+            createDomElement('span', '', locationText),
+            document.createTextNode(' · ')
+          );
+        }
+        metaRow.append(createDomElement('span', 'font-bold text-stone-700', `${item.stock ?? ''} ${item.unit ?? ''}`));
 
         info.append(nameRow, metaRow);
         left.append(info);
 
         const right = createDomElement('div', 'text-right flex-shrink-0');
-        right.append(createDomElement('div', `text-[11px] font-extrabold ${isUrgent ? 'text-red-500' : 'text-stone-500'}`, hasExpiry ? `余 ${item.expireDaysLeft} 天` : '未填写保质期'));
+        right.append(createDomElement('div', `text-[11px] font-extrabold ${isExpired || isUrgent || isToday ? 'text-red-500' : 'text-stone-500'}`, expiryDayText));
 
         const archiveButton = createDomElement('button', 'text-[10.5px] font-bold text-[#FF6B57] hover:underline mt-1', '档案 →');
         archiveButton.type = 'button';
@@ -7648,7 +8225,9 @@
     function setInventoryFilter(category) {
       currentInventoryFilter = category;
       document.querySelectorAll('#inventoryFilterGroup button').forEach(btn => btn.classList.remove('active'));
-      const activeBtn = document.getElementById(category === 'all' ? 'tabInv-all' : (category === '蔬菜' ? 'tabInv-veg' : (category === '肉禽' ? 'tabInv-meat' : (category === '水产' ? 'tabInv-seafood' : 'tabInv-seasoning'))));
+      const activeBtn = Array.from(document.querySelectorAll('#inventoryFilterGroup button')).find(
+        (btn) => btn.dataset.category === category
+      );
       if (activeBtn) activeBtn.classList.add('active');
       renderInventory();
     }
@@ -7668,6 +8247,16 @@
       if (className) node.className = className;
       if (text !== null && text !== undefined) node.textContent = String(text);
       return node;
+    }
+
+    // 副标题 meta 列：null / 空串 / 纯空白一律视为缺失，避免拼出孤立分隔符；
+    // 真实的 0 分钟、0 kcal 等数值仍按字符串保留
+    function metaText(value) {
+      return value == null ? '' : String(value).trim();
+    }
+
+    function joinMetaParts(parts, separator = ' · ') {
+      return (Array.isArray(parts) ? parts : []).map(metaText).filter(Boolean).join(separator);
     }
 
     // 关键词高亮：只对纯文本分段，命中片段包 <mark>，绝不把未转义名称写回 innerHTML。
@@ -7704,6 +8293,9 @@
         const path = value.slice('/uploads/'.length);
         if (!path || path.includes('..') || path.includes('\\') || path.includes('//')) return '';
         if (!/^[A-Za-z0-9][A-Za-z0-9._\-\/]*$/.test(path)) return '';
+        // 按路径段拒绝空段与当前目录段（/uploads//a.png、/uploads/./a.png、/uploads/x/./a.png）
+        const segments = path.split('/');
+        if (segments.some((segment) => !segment || segment === '.')) return '';
         return value;
       }
 
@@ -7724,6 +8316,115 @@
         }
       }
       return '';
+    }
+
+    // -------------------------------------------------------------------------
+    // 【菜谱封面安全展示】
+    // 只有受控 /uploads/ 图片路径才生成 <img>；历史裸占位文件名（如 steamed-fish.png）
+    // 与任意注入载荷一律降级为纯文本 Emoji，绝不把原值写进 src 或内联事件属性。
+    // -------------------------------------------------------------------------
+    function isSafeUploadedCoverUrl(value) {
+      if (typeof value !== 'string') return false;
+      if (value.includes('..') || value.includes('\\')) return false;
+      // 与 safeImageSource 保持一致：拒绝协议相对地址（//）与含当前目录段（/./）的路径
+      if (value.includes('//') || value.includes('/./')) return false;
+      return /^\/uploads\/[A-Za-z0-9._/-]+\.(?:jpe?g|png|webp)$/i.test(value);
+    }
+
+    function isLegacyPlaceholderImageFilename(value) {
+      if (typeof value !== 'string') return false;
+      const text = value.trim();
+      if (!text || text.startsWith('/uploads/')) return false;
+      return /^[A-Za-z0-9._/-]+\.(?:jpe?g|png|webp|gif|svg|bmp|ico)$/i.test(text);
+    }
+
+    // 分类兜底 Emoji：未匹配时菜谱默认 🥘
+    function recipeCategoryFallbackIcon(category) {
+      const icons = {
+        '快手家常': '🍳',
+        '暖胃炖菜': '🥘',
+        '清爽时蔬': '🥦',
+        '鲜美水产': '🐟',
+        '肉禽鲜香': '🥩',
+        '减脂轻食': '🥗',
+        '滋补靓汤': '🍲'
+      };
+      return icons[String(category == null ? '' : category).trim()] || '🥘';
+    }
+
+    // 纯文本图标槽位只接受干净短文本（无空白/HTML 特殊字符）；
+    // 上传路径、历史裸文件名与任意注入载荷一律按分类降级为 Emoji
+    function isCleanIconText(value) {
+      const text = value == null ? '' : String(value).trim();
+      if (!text || text.length > 16) return false;
+      return !/[\s<>"'`&]/.test(text);
+    }
+
+    function sanitizeRecipeIconText(icon, category) {
+      const text = icon == null ? '' : String(icon).trim();
+      if (!text) return recipeCategoryFallbackIcon(category);
+      if (isSafeUploadedCoverUrl(text) || isLegacyPlaceholderImageFilename(text)) {
+        return recipeCategoryFallbackIcon(category);
+      }
+      return isCleanIconText(text) ? text : recipeCategoryFallbackIcon(category);
+    }
+
+    // 菜谱封面来源：优先映射后的 coverUrl，其次校验原始 imagePath
+    function recipeCoverSource(recipe) {
+      if (!recipe || typeof recipe !== 'object') return null;
+      if (isSafeUploadedCoverUrl(recipe.coverUrl)) return recipe.coverUrl;
+      if (isSafeUploadedCoverUrl(recipe.imagePath)) return recipe.imagePath;
+      return null;
+    }
+
+    // 通用纯文本图标槽位（计划/记录/胶囊等）：路径与历史裸文件名一律降级为给定 Emoji
+    function sanitizeIconText(icon, fallback) {
+      const text = icon == null ? '' : String(icon).trim();
+      const safeFallback = fallback == null ? '🍱' : String(fallback);
+      if (!text) return safeFallback;
+      if (isSafeUploadedCoverUrl(text) || isLegacyPlaceholderImageFilename(text)) return safeFallback;
+      return isCleanIconText(text) ? text : safeFallback;
+    }
+
+    // 只创建受控 <img>：加载失败时移除自身，露出同容器内的 Emoji 兜底文本
+    function createSafeCoverImage(coverUrl, options = {}) {
+      if (!isSafeUploadedCoverUrl(coverUrl)) return null;
+      const img = document.createElement('img');
+      img.src = coverUrl;
+      img.alt = options.alt == null ? '' : String(options.alt);
+      img.loading = 'lazy';
+      img.decoding = 'async';
+      img.className = options.imgClass || 'w-full h-full object-cover';
+      if (options.absolute) img.classList.add('absolute', 'inset-0');
+      img.addEventListener('error', () => {
+        img.remove();
+      });
+      if (typeof options.onClick === 'function') {
+        img.style.cursor = 'zoom-in';
+        img.addEventListener('click', (event) => {
+          if (event && typeof event.stopPropagation === 'function') event.stopPropagation();
+          options.onClick();
+        });
+      }
+      return img;
+    }
+
+    // 清空容器后渲染封面：无合法封面时只保留 Emoji 文本
+    function renderSafeCover(container, coverUrl, iconText, options = {}) {
+      if (!container) return null;
+      const fallback = createDomElement('span', options.fallbackClass || '', sanitizeRecipeIconText(iconText, options.category));
+      container.replaceChildren(fallback);
+      const img = createSafeCoverImage(coverUrl, { ...options, absolute: true });
+      if (img) container.append(img);
+      return img;
+    }
+
+    // 在已有 Emoji 槽位上方叠一层封面图（失败自动移除，保留 Emoji 与角标）
+    function appendSafeCoverImage(container, coverUrl, options = {}) {
+      if (!container) return null;
+      const img = createSafeCoverImage(coverUrl, { ...options, absolute: true });
+      if (img) container.append(img);
+      return img;
     }
 
     // 旧内联入口（编辑/删除/打卡）统一走这里：异常只提示，不产生未处理的 promise 拒绝。
@@ -7894,7 +8595,7 @@
         icon.className = isOverdue
           ? 'w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-stone-200 border border-stone-300 flex items-center justify-center text-xl sm:text-2xl flex-shrink-0 plan-card-icon-wrap'
           : 'w-9 h-9 sm:w-11 sm:h-11 rounded-2xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center text-xl sm:text-2xl flex-shrink-0';
-        icon.textContent = plan.icon == null ? '' : String(plan.icon);
+        icon.textContent = sanitizeIconText(plan.icon, '🍱');
 
         const info = document.createElement('div');
         info.className = 'min-w-0 flex-1 flex flex-col justify-center gap-1';
@@ -8080,7 +8781,7 @@
 
         const icon = document.createElement('span');
         icon.className = 'text-xl';
-        icon.textContent = rec.icon == null ? '' : String(rec.icon);
+        icon.textContent = sanitizeIconText(rec.icon, '🍱');
 
         const title = document.createElement('span');
         title.className = 'record-card-title text-xs font-black text-stone-800';
@@ -8241,10 +8942,21 @@
         checkbox.className = 'w-4 h-4 rounded text-[#FF6B57] accent-[#FF6B57] cursor-pointer';
         checkbox.checked = checked;
         checkbox.addEventListener('change', () => {
+          // 先乐观切换，请求失败必须回滚 DOM checked，避免界面显示“已购”但服务端未写入
+          const next = checkbox.checked;
+          const rollback = () => {
+            checkbox.checked = !next;
+          };
           try {
             const result = BentoService.shopping.toggle(itemId);
-            if (result && typeof result.catch === 'function') result.catch(shoppingWriteActionError);
+            if (result && typeof result.catch === 'function') {
+              result.catch((error) => {
+                rollback();
+                shoppingWriteActionError(error);
+              });
+            }
           } catch (error) {
+            rollback();
             shoppingWriteActionError(error);
           }
         });
@@ -8277,13 +8989,20 @@
           actions.append(badge);
         }
 
+        const editBtn = document.createElement('button');
+        editBtn.type = 'button';
+        editBtn.className = 'text-stone-400 hover:text-[#FF6B57] text-xs font-black px-1';
+        editBtn.textContent = '✏️';
+        editBtn.title = '编辑该采购项';
+        editBtn.addEventListener('click', () => BentoModal.open('shoppingForm', item.id));
+
         const delBtn = document.createElement('button');
         delBtn.type = 'button';
         delBtn.className = 'text-stone-300 hover:text-red-500 text-xs font-black px-1';
         delBtn.textContent = '✕';
         delBtn.addEventListener('click', () => confirmDeleteShoppingItem(itemId));
 
-        actions.append(delBtn);
+        actions.append(editBtn, delBtn);
         card.append(main, actions);
         fragment.append(card);
       });
@@ -8575,8 +9294,15 @@
       const grid = document.getElementById('calendarDaysGrid');
       if (!grid) return;
 
-      const daysInMonth = (currentCalendarMonth === 2) ? 28 : ([4, 6, 9, 11].includes(currentCalendarMonth) ? 30 : 31);
-      const firstDayOffset = 2;
+      const daysInMonth = new Date(currentCalendarYear, currentCalendarMonth, 0).getDate();
+      const firstDayOffset = new Date(currentCalendarYear, currentCalendarMonth - 1, 1).getDay();
+      const todayParts = (() => {
+        const now = new Date();
+        return { year: now.getFullYear(), month: now.getMonth() + 1, day: now.getDate() };
+      })();
+      const activeRecords = (BentoService.records.getAll() || []).filter(
+        (r) => r && isRecordActive(r) && r.status !== 'DRAFT' && typeof r.date === 'string'
+      );
 
       const fragment = document.createDocumentFragment();
       for (let i = 0; i < firstDayOffset; i++) {
@@ -8584,8 +9310,11 @@
       }
 
       for (let day = 1; day <= daysInMonth; day++) {
-        const isToday = (currentCalendarYear === 2026 && currentCalendarMonth === 9 && day === 11);
-        const hasRecord = (day === 9 || day === 10 || day === 11);
+        const dateKey = `${currentCalendarYear}-${String(currentCalendarMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        // 今日高亮按真实本地日期匹配，绝不写死 2026-09-11
+        const isToday =
+          currentCalendarYear === todayParts.year && currentCalendarMonth === todayParts.month && day === todayParts.day;
+        const hasRecord = activeRecords.some((r) => r.date === dateKey);
         // 年月日恒为模块内整数，点击参数只进闭包，不拼内联事件
         const cell = createDomElement(
           'div',
@@ -8641,9 +9370,15 @@
           id: r.id,
           name: r.name,
           categoryBadge: '🍳 自己做的菜',
-          subtext: [r.cookTimeMinutes == null ? null : `耗时 ${r.cookTimeMinutes} 分钟`, r.difficulty == null ? null : `${r.difficulty}难度`, r.calories == null ? null : `${r.calories} kcal`].filter(Boolean).join(' · '),
+          subtext: joinMetaParts([
+            metaText(r.cookTimeMinutes) ? `耗时 ${metaText(r.cookTimeMinutes)} 分钟` : null,
+            metaText(r.difficulty) ? `${metaText(r.difficulty)}难度` : null,
+            metaText(r.calories) ? `${metaText(r.calories)} kcal` : null
+          ]),
           detail: (Array.isArray(r.ingredients) ? r.ingredients : []).map(i => i.name).join('、'),
-          icon: r.icon
+          icon: sanitizeRecipeIconText(r.icon, r.category),
+          category: r.category,
+          coverUrl: recipeCoverSource(r)
         }));
       }
       if (currentFavoriteFilter === 'all' || currentFavoriteFilter === 'takeout' || currentFavoriteFilter === 'dinein') {
@@ -8657,7 +9392,8 @@
             categoryBadge: s.supportsDineIn && s.supportsTakeout ? '🛵 外卖 / 堂食好味' : (s.supportsDineIn ? '🍽️ 堂食名店' : '🛵 品质外卖'),
             subtext: [s.category || null, s.price == null || s.price === '' ? null : `人均 ¥${s.price}`, s.rating == null || s.rating === '' ? null : `★ ${s.rating}`].filter(Boolean).join(' · '),
             detail: [`招牌：${s.dishes || '未填写'}`, s.address ? `(${s.address})` : null].filter(Boolean).join(' '),
-            icon: s.icon
+            icon: sanitizeIconText(s.icon, '🍱'),
+            category: s.category
           });
         });
       }
@@ -8685,7 +9421,9 @@
         const body = document.createElement('div');
         const head = createDomElement('div', 'flex items-start justify-between gap-3 mb-2.5');
         const headLeft = createDomElement('div', 'flex items-center gap-3 min-w-0 flex-1');
-        headLeft.append(createDomElement('div', 'fav-card-icon w-11 h-11 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0', item.icon ?? ''));
+        const favIconBox = createDomElement('div', 'fav-card-icon w-11 h-11 rounded-2xl bg-[#FFF9F5] border border-[#FEDBC5] flex items-center justify-center text-2xl flex-shrink-0 overflow-hidden relative', isCook ? sanitizeRecipeIconText(item.icon, item.category) : sanitizeIconText(item.icon, '🍱'));
+        appendSafeCoverImage(favIconBox, isCook ? recipeCoverSource(item) : null, { alt: item.name ?? '' });
+        headLeft.append(favIconBox);
 
         const textBox = createDomElement('div', 'min-w-0 flex-1');
         textBox.append(
@@ -8930,7 +9668,7 @@
           title: r.name,
           type: 'recipe',
           sub: recipeSub(r),
-          icon: r.icon || '🍱'
+          icon: sanitizeRecipeIconText(r.icon, r.category)
         }));
       } else if (wheelCandidateMode === 'dinein') {
         candidates = allStores.filter(s => !!s.supportsDineIn).map(s => ({
@@ -8938,7 +9676,7 @@
           title: s.name,
           type: 'store',
           sub: storeSub(s),
-          icon: s.icon || '🍜',
+          icon: sanitizeIconText(s.icon, '🍜'),
           supportsDineIn: !!s.supportsDineIn,
           supportsTakeout: !!s.supportsTakeout
         }));
@@ -8948,7 +9686,7 @@
           title: s.name,
           type: 'store',
           sub: storeSub(s),
-          icon: s.icon || '🍜',
+          icon: sanitizeIconText(s.icon, '🍜'),
           supportsDineIn: !!s.supportsDineIn,
           supportsTakeout: !!s.supportsTakeout
         }));
@@ -8966,14 +9704,14 @@
           title: r.name,
           type: 'recipe',
           sub: recipeSub(r),
-          icon: r.icon || '🍱'
+          icon: sanitizeRecipeIconText(r.icon, r.category)
         }));
         const sPart = uniqueStores.slice(0, 4).map(s => ({
           id: s.id,
           title: s.name,
           type: 'store',
           sub: storeSub(s),
-          icon: s.icon || '🍜',
+          icon: sanitizeIconText(s.icon, '🍜'),
           supportsDineIn: !!s.supportsDineIn,
           supportsTakeout: !!s.supportsTakeout
         }));
@@ -9600,7 +10338,7 @@
 
           const head = createDomElement('div', 'flex items-center justify-between gap-2');
           const headLeft = createDomElement('div', 'flex items-center gap-2.5 min-w-0 flex-1');
-          headLeft.append(createDomElement('span', 'text-xl w-9 h-9 rounded-xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center flex-shrink-0', plan.icon ?? ''));
+          headLeft.append(createDomElement('span', 'text-xl w-9 h-9 rounded-xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center flex-shrink-0', sanitizeIconText(plan.icon, '🍱')));
 
           const info = createDomElement('div', 'min-w-0');
           info.append(createDomElement('div', 'text-xs font-black text-stone-800 truncate', plan.title ?? ''));
@@ -10184,11 +10922,16 @@
       document.getElementById('capsuleTime').innerText = formatSeconds(firstTimer.remainingSec);
     }
 
+    // 计时器表对外暴露同一引用；测试/自动化可替换 window.activeStepTimers 注入状态。
+    window.activeStepTimers = activeStepTimers;
     function restoreActiveCookingModal() {
-      const keys = Object.keys(activeStepTimers);
-      if (keys.length > 0) {
-        BentoModal.open('recipeDetail');
-      }
+      const timers = window.activeStepTimers || activeStepTimers;
+      const keys = Object.keys(timers);
+      if (keys.length === 0) return;
+      // 精确恢复该计时器所属菜谱详情（A-26）：绝不打开空详情再猜当前页
+      const timer = timers[keys[0]];
+      const recipeId = timer && timer.recipeId != null ? String(timer.recipeId) : '';
+      if (recipeId) BentoModal.open('recipeDetail', recipeId);
     }
 
     // -------------------------------------------------------------------------
@@ -10333,7 +11076,7 @@
             targetType: isStore ? 'store' : 'recipe',
             targetId: item.id,
             suggestedTitle: item.title,
-            suggestedIcon: item.icon || '🍱'
+            suggestedIcon: sanitizeIconText(item.icon, '🍱')
           });
           showToast('今天所有餐次时间已过，请显式指定排餐日期与餐次', 'info');
         }, 80);
@@ -10353,26 +11096,29 @@
         }
       }
 
-      const success = BentoService.plans.add({
-        id: `plan-${Date.now()}`,
-        date: todayKey,
-        time: availableSlot.time,
-        slot: availableSlot.slot,
-        targetType: targetType,
-        channel: channel,
-        type: channel,
-        targetId: item.id || '',
-        title: item.title,
-        subtext: isStore ? (item.sub || '精选外卖') : (item.sub || '自烹营养餐'),
-        icon: item.icon || '🍱',
-        linkedRecordId: null,
-        isCompleted: false
-      });
-
-      if (success) {
-        BentoModal.close();
-        showToast(`「${item.title}」已锁定并排入今日【${availableSlot.slot}】！`, '🍱');
-      }
+      // 真实写入是异步的：必须 await 结果后再关窗提示，失败时保留当前弹窗并如实报错
+      Promise.resolve(
+        BentoService.plans.add({
+          date: todayKey,
+          time: availableSlot.time,
+          slot: availableSlot.slot,
+          targetType: targetType,
+          channel: channel,
+          type: channel,
+          targetId: item.id || '',
+          title: item.title,
+          subtext: isStore ? (item.sub || '精选外卖') : (item.sub || '自烹营养餐'),
+          icon: sanitizeIconText(item.icon, '🍱')
+        })
+      )
+        .then((success) => {
+          if (success === false) return;
+          BentoModal.close();
+          showToast(`「${item.title}」已锁定并排入今日【${availableSlot.slot}】！`, '🍱');
+        })
+        .catch((error) => {
+          showToast(error && error.message ? error.message : '排入今日计划失败，请稍后重试', 'error');
+        });
     }
 
     function spinAgain() {
@@ -10457,8 +11203,13 @@
           runSilentAction(() => deleteTool(toolId, toolName));
         });
 
+        const editButton = createDomElement('button', 'w-5 h-5 rounded-full bg-stone-100 hover:bg-[#FFF0ED] hover:text-[#FF6B57] text-stone-400 text-[10px] font-black absolute top-2.5 right-9 flex items-center justify-center transition-all', '✏️');
+        editButton.type = 'button';
+        editButton.title = '编辑该工具';
+        editButton.addEventListener('click', () => BentoModal.open('toolForm', t));
+
         const row = createDomElement('div', 'flex items-start gap-3');
-        row.append(createDomElement('span', 'text-3xl p-1 bg-[#FAF7F2] rounded-xl border border-[#F0E8DC]', t.icon ?? ''));
+        row.append(createDomElement('span', 'text-3xl p-1 bg-[#FAF7F2] rounded-xl border border-[#F0E8DC]', sanitizeIconText(t.icon, DEFAULT_TOOL_ICON)));
 
         const info = document.createElement('div');
         info.append(createDomElement('h4', 'text-xs font-black text-stone-800 m-0', toolName));
@@ -10469,7 +11220,7 @@
         info.append(badgeRow);
         row.append(info);
 
-        card.append(deleteButton, row);
+        card.append(deleteButton, editButton, row);
         if (t.notes) {
           card.append(createDomElement('p', 'text-[10px] text-stone-500 mt-2 m-0 bg-[#FAF7F2] p-1.5 rounded-lg border border-[#F0E8DC] line-clamp-2', t.notes));
         }
@@ -10478,25 +11229,22 @@
       grid.replaceChildren(fragment);
     }
 
+    // 真实提交由 adapter 接管（window.handleToolFormSubmit）；这里只做兜底字段收集，
+    // 编辑时沿用真实 id，不再用 Date.now() 伪造新工具。
     function handleToolFormSubmit(e) {
       e.preventDefault();
-      const name = document.getElementById('formToolName').value.trim();
-      const icon = document.getElementById('formToolIcon').value || '🍲';
-      const category = document.getElementById('formToolCategory').value || '慢炖';
-      const status = document.getElementById('formToolStatus').value || '状态良好';
-      const notes = document.getElementById('formToolNotes').value.trim();
-
-      BentoService.tools.save({
-        id: `tool-${Date.now()}`,
-        name,
-        icon,
-        category,
-        status,
-        notes
+      const id = document.getElementById('formToolId')?.value.trim() || '';
+      const payload = {
+        name: document.getElementById('formToolName').value.trim(),
+        icon: document.getElementById('formToolIcon').value || DEFAULT_TOOL_ICON,
+        category: document.getElementById('formToolCategory').value || '慢炖',
+        status: document.getElementById('formToolStatus').value || '状态良好',
+        notes: document.getElementById('formToolNotes').value.trim()
+      };
+      if (id) payload.id = id;
+      Promise.resolve(BentoService.tools.save(payload)).catch((error) => {
+        showToast(error && error.message ? error.message : '设备保存失败，请稍后重试', 'error');
       });
-
-      BentoModal.close(true);
-      showToast(`设备「${name}」已成功收录！`, '🍳');
     }
 
     async function deleteTool(id, name) {
@@ -10618,6 +11366,22 @@
     function closeImageLightbox() {
       const modal = document.getElementById('modalImageLightbox');
       if (modal) modal.classList.add('hidden');
+    }
+
+    // 编辑旧数据时保留当前值；新增的选项只作为纯文本，不改已有选项语义。
+    function selectStoredValue(id, value) {
+      const select = document.getElementById(id);
+      if (!select) return;
+      select.querySelectorAll('option[data-stored-value]').forEach(option => option.remove());
+      const stored = value == null ? '' : String(value);
+      if (!Array.from(select.options).some(option => option.value === stored)) {
+        const option = document.createElement('option');
+        option.dataset.storedValue = 'true';
+        option.value = stored;
+        option.textContent = stored || '未填写';
+        select.append(option);
+      }
+      select.value = stored;
     }
 
     // 回填 select 的正式选项：优先精确匹配，其次按选项文本前缀匹配（如选项「下午茶/夜宵」对应后端「下午茶」）。
@@ -10748,18 +11512,27 @@
       let dineInExpense = 0;
       let totalExpense = 0;
 
+      // 只统计真实金额（cost != null）：未填金额不得按渠道编造 36/88 元
+      let takeoutPriced = 0;
+      let dineInPriced = 0;
       records.forEach(r => {
-        const cost = r.cost || (r.type === '外卖' ? 36 : (r.type === '堂食' ? 88 : 0));
+        const cost = r.cost == null ? null : Number(r.cost);
         if (r.type === '自烹') {
           cookCount++;
         } else if (r.type === '外卖') {
           takeoutCount++;
-          takeoutExpense += cost;
-          totalExpense += cost;
+          if (cost != null && Number.isFinite(cost)) {
+            takeoutPriced++;
+            takeoutExpense += cost;
+            totalExpense += cost;
+          }
         } else if (r.type === '堂食') {
           dineInCount++;
-          dineInExpense += cost;
-          totalExpense += cost;
+          if (cost != null && Number.isFinite(cost)) {
+            dineInPriced++;
+            dineInExpense += cost;
+            totalExpense += cost;
+          }
         }
       });
 
@@ -10769,9 +11542,15 @@
       const setEl = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
       setEl('statTotalExpense', `¥ ${totalExpense}`);
       setEl('statTakeoutExpense', `¥ ${takeoutExpense}`);
-      setEl('statTakeoutCount', `共 ${takeoutCount} 顿外卖 (均¥${takeoutCount ? Math.round(takeoutExpense/takeoutCount) : 0})`);
+      setEl(
+        'statTakeoutCount',
+        `共 ${takeoutCount} 顿外卖${takeoutPriced ? ` (均¥${Math.round(takeoutExpense / takeoutPriced)})` : ''}`
+      );
       setEl('statDineInExpense', `¥ ${dineInExpense}`);
-      setEl('statDineInCount', `共 ${dineInCount} 次堂食 (均¥${dineInCount ? Math.round(dineInExpense/dineInCount) : 0})`);
+      setEl(
+        'statDineInCount',
+        `共 ${dineInCount} 次堂食${dineInPriced ? ` (均¥${Math.round(dineInExpense / dineInPriced)})` : ''}`
+      );
       setEl('statSavedExpense', `¥ ${savedExpense}`);
       setEl('statCookCount', `自烹 ${cookCount} 顿 (对比外卖)`);
 
@@ -10795,9 +11574,22 @@
       const wrap = document.getElementById('chartCalorieTrendWrap');
       if (!wrap) return;
 
-      const days = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
-      const calories = [1780, 2050, 1890, 2200, 1650, 2350, 1920];
-      const maxCal = 2600;
+      // 真实近 7 天摄入：未记录热量（null）的日期画 0 高度，绝不用演示数值冒充
+      const recent = [];
+      for (let offset = 6; offset >= 0; offset -= 1) {
+        const date = new Date();
+        date.setDate(date.getDate() - offset);
+        const key = getLocalDateKey(date);
+        const dayRecords = records.filter((r) => r && r.date === key && r.calories != null);
+        recent.push({
+          label: ['周日', '周一', '周二', '周三', '周四', '周五', '周六'][date.getDay()],
+          calories: dayRecords.reduce((sum, r) => sum + Number(r.calories || 0), 0),
+          recorded: dayRecords.length > 0
+        });
+      }
+      const calories = recent.map((entry) => entry.calories);
+      const days = recent.map((entry) => entry.label);
+      const maxCal = Math.max(2000, ...calories.map((value) => value * 1.1), 1);
 
       const w = 480;
       const h = 150;
@@ -10823,13 +11615,14 @@
         const barH = (cal / maxCal) * (h - 45);
         const y = h - barH - 22;
         const isOver = cal > 2000;
+        const recordedLabel = recent[idx]?.recorded ? '' : '（未记录）';
 
         const rect = createSvgElement('rect', {
           x, y, width: barWidth, height: barH, rx: 6,
           fill: isOver ? '#FF8575' : '#6ABF69', opacity: 0.85
         });
         const title = createSvgElement('title', {});
-        title.textContent = `${days[idx]}: ${cal} kcal`;
+        title.textContent = `${days[idx]}: ${cal} kcal${recordedLabel}`;
         rect.append(title);
 
         const valueLabel = createSvgElement('text', {
@@ -10948,6 +11741,18 @@
     window.removeRecordPhoto = removeRecordPhoto;
     window.openImageLightbox = openImageLightbox;
     window.closeImageLightbox = closeImageLightbox;
+    // 菜谱封面安全展示 helper（供页面与测试复用）
+    window.isSafeUploadedCoverUrl = isSafeUploadedCoverUrl;
+    window.isLegacyPlaceholderImageFilename = isLegacyPlaceholderImageFilename;
+    window.recipeCategoryFallbackIcon = recipeCategoryFallbackIcon;
+    window.sanitizeRecipeIconText = sanitizeRecipeIconText;
+    window.isCleanIconText = isCleanIconText;
+    window.sanitizeIconText = sanitizeIconText;
+    window.createSafeCoverImage = createSafeCoverImage;
+    window.renderSafeCover = renderSafeCover;
+    window.appendSafeCoverImage = appendSafeCoverImage;
+    window.metaText = metaText;
+    window.joinMetaParts = joinMetaParts;
     window.onRecordTypeChange = onRecordTypeChange;
     window.switchStatsRange = switchStatsRange;
     window.renderStatistics = renderStatistics;

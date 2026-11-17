@@ -40,17 +40,54 @@ const ingredientBatchSchema = {
   }
 };
 
+/**
+ * 食材分类：统一 7 类；同时接受历史旧名（蛋奶/烘焙/水果/肉类…），
+ * 由 service 归一化后落库，避免旧前端或旧调用方直接被 400 打断。
+ */
+const ingredientCategorySchema = {
+  type: 'string',
+  enum: [
+    '蔬菜',
+    '肉禽',
+    '水产',
+    '蛋奶豆制',
+    '主食粮油',
+    '调味',
+    '其他',
+    '蛋奶',
+    '烘焙',
+    '水果',
+    '日常',
+    '肉类',
+    '禽类',
+    '海鲜',
+    '蛋类',
+    '豆制品',
+    '主食',
+    '粮油',
+    '调料',
+    '调味品'
+  ]
+};
+
 const ingredientBodySchema = {
   type: 'object',
   required: ['name', 'unit'],
   properties: {
     name: stringSchema,
     imagePath: nullableStringSchema,
-    category: nullableStringSchema,
+    category: { anyOf: [ingredientCategorySchema, { type: 'null' }] },
     unit: quantityUnitSchema,
     minStock: { type: ['number', 'null'], minimum: 0 },
     maxStock: { type: ['number', 'null'], minimum: 0 },
     notes: nullableStringSchema,
+    // 食材级编辑（详情「✏️ 编辑」）：数量与批次元数据，由 service 同步进批次
+    quantity: { type: ['number', 'null'], minimum: 0 },
+    purchaseDate: nullableStringSchema,
+    expiryDate: nullableStringSchema,
+    location: nullableStringSchema,
+    storageLocation: nullableStringSchema,
+    opened: booleanSchema,
     batches: { type: 'array', items: ingredientBatchSchema }
   }
 };
@@ -156,7 +193,13 @@ export async function registerIngredientRoutes(app: FastifyInstance, database: P
     { schema: { body: ingredientUpdateBodySchema } },
     async (request) => {
       const { version, ...input } = request.body;
-      return success(await updateIngredient(database, request.params.id, version, input));
+      // 前端历史字段名 storageLocation 与 location 等价，二者取其一。
+      const { storageLocation, ...rest } = input as IngredientWriteInput & { storageLocation?: string | null };
+      const merged: IngredientWriteInput = {
+        ...rest,
+        ...(rest.location === undefined && storageLocation !== undefined ? { location: storageLocation } : {})
+      };
+      return success(await updateIngredient(database, request.params.id, version, merged));
     }
   );
   app.delete<{ Params: { id: string }; Querystring: { version: number } }>(

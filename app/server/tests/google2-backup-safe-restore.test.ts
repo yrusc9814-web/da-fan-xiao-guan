@@ -423,7 +423,7 @@ describe('备份安全恢复集成', () => {
       await restoreSnapshot(snapshot);
       await rm(work, { recursive: true, force: true });
     }
-  });
+  }, 30_000); // 包含两次真实 Prisma 迁移进程，需独立于普通内存用例的 5s 超时。
 
   describe('AC3 迁移异常预检 422 且不消费高风险 token', () => {
     // message 断言把 422 锁定到对应的迁移预检分支，避免被 INVALID_FILE 等其他 422 拦截冒充。

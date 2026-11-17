@@ -57,6 +57,19 @@ afterEach(() => {
 });
 
 describe('Google2 date/dashboard evidence chains', () => {
+  it('日记弹窗补记按钮携带专用日期入口，记录页入口不携带日期', () => {
+    boot(async () => response([]));
+    const diaryButton = [...document.querySelectorAll('#modalDailyDiary button')].find((button) =>
+      (button.getAttribute('onclick') || '').includes("open('recordForm'")
+    );
+    expect(diaryButton).toBeTruthy();
+    expect(diaryButton?.getAttribute('onclick')).toContain("'__dailyDiaryEntry__'");
+    const pageButton = [...document.querySelectorAll('#page-records button')].find((button) =>
+      (button.getAttribute('onclick') || '').includes("open('recordForm'")
+    );
+    expect(pageButton?.getAttribute('onclick')).not.toContain('__dailyDiaryEntry__');
+  });
+
   it('uses selected diary date for a new record POST and preserves an old record date on PUT', async () => {
     let records = [dto()];
     const requests: Array<[string, RequestInit | undefined]> = [];
@@ -141,8 +154,9 @@ describe('Google2 date/dashboard evidence chains', () => {
 
   it.each([
     ['2026-10-03', '1天后到期'],
-    ['2026-10-02', '0天后到期'],
-    ['2026-10-01', '-1天后到期']
+    // C1：当天到期显示「今日到期」，已过期显示「已过期 X 天」，绝不出现负天数
+    ['2026-10-02', '今日到期'],
+    ['2026-10-01', '已过期 1 天']
   ])('derives expiry copy from local expiryDate (%s)', (expiryDate, expected) => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date(2026, 9, 2, 12, 0, 0));

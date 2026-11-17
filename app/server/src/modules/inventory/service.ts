@@ -2,6 +2,7 @@ import type { PrismaClient, QuantityUnit } from '@prisma/client';
 
 import { convertQuantity } from '../../database/units.js';
 import { forbidden, loadForbiddenWords } from '../../shared/diner-rules.js';
+import { withImplicitBatch, type AggregatableBatch } from '../ingredients/batches.js';
 
 export type InventoryRecommendationMode = 'ONLY_INVENTORY' | 'ALLOW_PURCHASE' | 'MUST_CONSUME';
 
@@ -44,7 +45,7 @@ export async function recommendFromInventory(database: PrismaClient, input: Inve
       tools: { include: { tool: true } }
     }
   });
-  const batches = await database.inventoryBatch.findMany({
+  const batchRows = await database.inventoryBatch.findMany({
     where: {
       deletedAt: null,
       quantity: { gt: 0 },
@@ -53,6 +54,51 @@ export async function recommendFromInventory(database: PrismaClient, input: Inve
     },
     include: { ingredient: true }
   });
+  // 存量自愈：quantity > 0 却没有活批次的旧食材，按汇总派生等效批次参与齐备度计算
+  // （只计算不落库，避免推荐这种读操作产生写副作用）。
+  const storedIngredients = await database.ingredient.findMany({ where: { deletedAt: null } });
+  // 只要该食材还存在任何数量的批次行（哪怕已过期），就说明它并非「从未建过批次」的历史存量：
+  // 绝不能把过期/不合格批次再派生一份等效库存来“自愈”，否则会把已过期食材误判为齐备。
+  const stockedIngredientIds = new Set(
+    (
+      await database.inventoryBatch.findMany({
+        where: { deletedAt: null, quantity: { gt: 0 } },
+        select: { ingredientId: true }
+      })
+    ).map((batch) => batch.ingredientId)
+  );
+  type StockRow = AggregatableBatch & { ingredient: (typeof storedIngredients)[number] };
+  const batchesByIngredient = new Map<string, StockRow[]>();
+  for (const batch of batchRows) {
+    const group = batchesByIngredient.get(batch.ingredientId) ?? [];
+    group.push(batch as StockRow);
+    batchesByIngredient.set(batch.ingredientId, group);
+  }
+  const batches: StockRow[] = batchRows.map((batch) => batch as StockRow);
+  for (const ingredient of storedIngredients) {
+    const existing = batchesByIngredient.get(ingredient.id) ?? [];
+    if (existing.some((batch) => batch.quantity > 0) || !(ingredient.quantity > 0)) continue;
+    // 已存在（可能过期）批次行的食材不参与等效自愈，避免旧过期批次被当成新库存。
+    if (stockedIngredientIds.has(ingredient.id)) continue;
+    // 过期存量不算可用：与活批次过滤口径一致
+    if (ingredient.expiryDate && ingredient.expiryDate < localDate()) continue;
+    const implicit = withImplicitBatch(
+      {
+        ingredientId: ingredient.id,
+        quantity: ingredient.quantity,
+        unit: ingredient.unit,
+        purchaseDate: ingredient.purchaseDate,
+        expiryDate: ingredient.expiryDate,
+        location: ingredient.location,
+        opened: ingredient.opened
+      },
+      [] as StockRow[]
+    )[0] as StockRow | undefined;
+    if (!implicit) continue;
+    const row = { ...implicit, ingredient };
+    batchesByIngredient.set(ingredient.id, [row]);
+    batches.push(row);
+  }
   const forbiddenWords = await loadForbiddenWords(database, input.dinerIds);
   const blockedRecipeIds = new Set<string>();
   if (forbiddenWords.length) {
@@ -67,12 +113,6 @@ export async function recommendFromInventory(database: PrismaClient, input: Inve
         .join(' ');
       if (forbidden(haystack, forbiddenWords)) blockedRecipeIds.add(recipe.id);
     }
-  }
-  const batchesByIngredient = new Map<string, typeof batches>();
-  for (const batch of batches) {
-    const group = batchesByIngredient.get(batch.ingredientId) ?? [];
-    group.push(batch);
-    batchesByIngredient.set(batch.ingredientId, group);
   }
   const requested = new Set(input.ingredientIds ?? []);
   const today = localDate();
@@ -109,10 +149,13 @@ export async function recommendFromInventory(database: PrismaClient, input: Inve
       let requiredCount = 0;
       let satisfiedCount = 0;
       let wasteScore = 0;
+      // 只有「数量 + 单位」都录入的配料才可核对库存；「盐少许」这类自由用量不计入齐备度。
+      let structuredCount = 0;
       for (const item of recipe.ingredients) {
         if (item.optional) continue;
         requiredCount += 1;
         const stock = item.ingredientId ? (batchesByIngredient.get(item.ingredientId) ?? []) : [];
+        if (item.quantity != null && item.unit != null) structuredCount += 1;
         if (!item.ingredientId || item.quantity == null || item.unit == null) {
           missing.push({
             ingredientId: item.ingredientId,
@@ -162,7 +205,13 @@ export async function recommendFromInventory(database: PrismaClient, input: Inve
               ['BROKEN', 'MISSING', 'UNAVAILABLE'].includes((link.tool.status ?? '').toUpperCase()))
         )
         .map((link) => link.toolNameSnapshot);
-      const completion = requiredCount === 0 ? 100 : Math.round((satisfiedCount / requiredCount) * 100);
+      // 没有结构化配料的菜谱无法核对库存：按 0% 呈现，绝不混入「100% 可直接做」。
+      const inventoryCheckable = structuredCount > 0;
+      const completion = !inventoryCheckable
+        ? 0
+        : requiredCount === 0
+          ? 100
+          : Math.round((satisfiedCount / requiredCount) * 100);
       const consumesRequested =
         requested.size === 0 ||
         recipe.ingredients.some((item) => item.ingredientId && requested.has(item.ingredientId));
@@ -177,11 +226,19 @@ export async function recommendFromInventory(database: PrismaClient, input: Inve
         missingIngredients: missing,
         missingTools,
         completion,
-        completionLabel: completion === 100 ? '100% 可直接做' : missing.length <= 2 ? '缺少 1–2 项' : '缺少多项',
+        inventoryCheckable,
+        completionLabel: !inventoryCheckable
+          ? '未录入配料，无法核对库存'
+          : completion === 100
+            ? '100% 可直接做'
+            : missing.length <= 2
+              ? '缺少 1–2 项'
+              : '缺少多项',
         wasteScore,
         consumesRequested,
-        reason:
-          completion === 100
+        reason: !inventoryCheckable
+          ? '菜谱没有可核对的结构化配料，无法判断库存是否齐备'
+          : completion === 100
             ? wasteScore > 0
               ? '现有库存可完成，并可优先消耗临期或已开封食材'
               : '现有库存可直接完成'
@@ -190,7 +247,10 @@ export async function recommendFromInventory(database: PrismaClient, input: Inve
     })
     .filter((candidate) => !blockedRecipeIds.has(candidate.recipe.id))
     .filter((candidate) => candidate.missingTools.length === 0)
-    .filter((candidate) => input.mode !== 'ONLY_INVENTORY' || candidate.missingIngredients.length === 0)
+    .filter(
+      (candidate) =>
+        input.mode !== 'ONLY_INVENTORY' || (candidate.inventoryCheckable && candidate.missingIngredients.length === 0)
+    )
     .filter(
       (candidate) =>
         input.mode !== 'MUST_CONSUME' || (requested.size > 0 ? candidate.consumesRequested : candidate.wasteScore > 0)

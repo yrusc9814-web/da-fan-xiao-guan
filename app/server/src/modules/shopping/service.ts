@@ -4,6 +4,8 @@ import type { Prisma, PrismaClient, QuantityUnit, ShoppingListStatus, ShoppingSo
 import { VersionConflictError } from '../../database/optimistic-lock.js';
 import { recordDeletedItem } from '../../database/deleted-items.js';
 import { canConvertUnit, convertQuantity } from '../../database/units.js';
+import { normalizeIngredientCategory } from '../ingredients/categories.js';
+import { summarizeBatchMeta, summarizeQuantity } from '../ingredients/batches.js';
 
 export interface ShoppingCheckinInput {
   version: number;
@@ -91,8 +93,7 @@ function validateItem(item: ShoppingItemInput, statusCode = 400): NormalizedItem
   if (!ingredientName) throw httpError(statusCode, '食材名称不能为空');
   const quantity = item.quantity ?? null;
   const unit = item.unit ?? null;
-  if ((quantity === null) !== (unit === null))
-    throw httpError(statusCode, '购物数量与单位必须同时提供或同时为空');
+  if ((quantity === null) !== (unit === null)) throw httpError(statusCode, '购物数量与单位必须同时提供或同时为空');
   if (quantity !== null && (!Number.isFinite(quantity) || quantity <= 0))
     throw httpError(statusCode, '购物数量必须大于 0');
   const amountText = normalizeAmountText(item.amountText);
@@ -364,8 +365,7 @@ export async function replenishRecipeItems(database: PrismaClient, listId: strin
         ingredientId !== null
           ? existing.ingredientId === ingredientId
           : existing.ingredientId === null &&
-            existing.ingredientNameSnapshot.trim().toLocaleLowerCase() ===
-              normalized.ingredientName.toLocaleLowerCase()
+            existing.ingredientNameSnapshot.trim().toLocaleLowerCase() === normalized.ingredientName.toLocaleLowerCase()
       );
       const notesUpdate =
         raw.notes !== undefined && raw.notes !== null && raw.notes.trim() !== '' ? raw.notes.trim() : undefined;
@@ -468,6 +468,38 @@ export async function checkInShoppingList(database: PrismaClient, listId: string
         const ingredient = await tx.ingredient.findFirstOrThrow({ where: { id: item.ingredientId, deletedAt: null } });
         const added = convertQuantity(item.quantity, item.unit, ingredient.unit);
         if (added === null) throw httpError(409, '库存单位无法换算');
+        // 历史存量无活批次时先补建等效批次，后续汇总才与真实批次一致。
+        const activeBatches = await tx.inventoryBatch.findMany({
+          where: { ingredientId: ingredient.id, deletedAt: null },
+          orderBy: [{ consumePriority: 'desc' }, { expiryDate: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }]
+        });
+        if (!activeBatches.some((batch) => batch.quantity > 0) && ingredient.quantity > 0) {
+          const healed = await tx.inventoryBatch.create({
+            data: {
+              ingredientId: ingredient.id,
+              quantity: ingredient.quantity,
+              unit: ingredient.unit,
+              purchaseDate: ingredient.purchaseDate,
+              expiryDate: ingredient.expiryDate,
+              location: ingredient.location,
+              opened: ingredient.opened,
+              notes: '历史存量自动补建等效批次'
+            }
+          });
+          await tx.inventoryLog.create({
+            data: {
+              ingredientId: ingredient.id,
+              ingredientNameSnapshot: ingredient.name,
+              inventoryBatchId: healed.id,
+              beforeQuantity: 0,
+              changeQuantity: ingredient.quantity,
+              afterQuantity: ingredient.quantity,
+              unit: ingredient.unit,
+              changeType: 'ADJUST',
+              notes: '历史存量自动补建等效批次'
+            }
+          });
+        }
         const batch = await tx.inventoryBatch.create({
           data: { ingredientId: ingredient.id, quantity: item.quantity, unit: item.unit, purchaseDate: today() }
         });
@@ -483,14 +515,26 @@ export async function checkInShoppingList(database: PrismaClient, listId: string
             changeType: 'PURCHASE'
           }
         });
+        // 入库后按真实活批次重算汇总数量、到期日与存放位置；分类仅在新值非空时对齐。
+        const refreshed = await tx.inventoryBatch.findMany({
+          where: { ingredientId: ingredient.id, deletedAt: null }
+        });
+        const summary = summarizeBatchMeta(refreshed);
         await tx.ingredient.update({
           where: { id: ingredient.id },
-          data: { quantity: { increment: added }, version: { increment: 1 } }
+          data: {
+            quantity: summarizeQuantity(refreshed, ingredient.unit),
+            expiryDate: summary.expiryDate ?? ingredient.expiryDate,
+            location: summary.location ?? ingredient.location,
+            ...(item.category ? { category: normalizeIngredientCategory(item.category, ingredient.name) } : {}),
+            version: { increment: 1 }
+          }
         });
       } else {
         const ingredient = await tx.ingredient.create({
           data: {
             name: item.ingredientNameSnapshot.trim(),
+            category: normalizeIngredientCategory(item.category, item.ingredientNameSnapshot),
             quantity: item.quantity,
             unit: item.unit,
             purchaseDate: today(),

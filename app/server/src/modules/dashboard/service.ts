@@ -2,6 +2,15 @@ import type { PrismaClient } from '@prisma/client';
 
 import type { DashboardCalendarDay, DashboardDto, DashboardMealSlot } from '../../../../shared/types/dashboard.js';
 
+/**
+ * 首页推荐的局部返回扩展：shared 契约不能改，但前端需要用菜谱真实 category 派生分类图标
+ * （无封面时不再恒为 🥘）。这里只增加字段，不改既有字段语义。
+ */
+type DashboardRecipeWithCategory = DashboardDto['recommendedRecipes'][number] & { category: string | null };
+type DashboardDtoWithRecipeCategory = Omit<DashboardDto, 'recommendedRecipes'> & {
+  recommendedRecipes: DashboardRecipeWithCategory[];
+};
+
 const mealSlots: Array<{ mealType: DashboardMealSlot['mealType']; label: string }> = [
   { mealType: 'BREAKFAST', label: '早餐' },
   { mealType: 'LUNCH', label: '午餐' },
@@ -106,7 +115,7 @@ function toCalendarDays(
   });
 }
 
-export async function getDashboard(database: PrismaClient): Promise<DashboardDto> {
+export async function getDashboard(database: PrismaClient): Promise<DashboardDtoWithRecipeCategory> {
   const now = new Date();
   const currentDate = toBusinessDate(now);
   const period = getGreetingPeriod(now.getHours());
@@ -173,20 +182,18 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
   const expiringLimit = new Date(now);
   expiringLimit.setDate(expiringLimit.getDate() + 3);
   const expiringLimitDate = toBusinessDate(expiringLimit);
-  const expiringIngredients = ingredients
-    .filter((ingredient) =>
-      Boolean(
-        ingredient.expiryDate && ingredient.expiryDate >= currentDate && ingredient.expiryDate <= expiringLimitDate
-      )
-    )
-    .slice(0, 5)
-    .map((ingredient) => ({
-      id: ingredient.id,
-      name: ingredient.name,
-      expiryDate: ingredient.expiryDate,
-      quantity: ingredient.quantity,
-      unit: ingredient.unit
-    }));
+  // 计数口径 = 全量匹配集合；预览列表单独截断 5 条。
+  // 之前两者共用 slice(0,5) 后的数组，导致库存预警少报（M-001）。
+  const expiringMatched = ingredients.filter((ingredient) =>
+    Boolean(ingredient.expiryDate && ingredient.expiryDate >= currentDate && ingredient.expiryDate <= expiringLimitDate)
+  );
+  const expiringIngredients = expiringMatched.slice(0, 5).map((ingredient) => ({
+    id: ingredient.id,
+    name: ingredient.name,
+    expiryDate: ingredient.expiryDate,
+    quantity: ingredient.quantity,
+    unit: ingredient.unit
+  }));
   const insufficient = ingredients.filter(
     (ingredient) => ingredient.minStock !== null && ingredient.quantity < ingredient.minStock
   ).length;
@@ -250,13 +257,15 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
         imagePath: recipe.imagePath,
         cookingTimeMinutes: recipe.cookingTimeMinutes,
         tags: recipe.tags.map(({ tag }) => tag.name),
-        rating
+        rating,
+        // 真实分类：无封面时前端据此派生差异化图标，不再一律 🥘（D-007）。
+        category: recipe.category ?? null
       };
     }),
     todayRecords: dashboardRecords,
     inventory: {
       totalIngredients: ingredients.length,
-      expiringSoon: expiringIngredients.length,
+      expiringSoon: expiringMatched.length,
       insufficient,
       expiringIngredients
     },
@@ -269,7 +278,7 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
     },
     calendarDays: toCalendarDays(now, recordedDates, plannedDateSet),
     tip:
-      expiringIngredients.length > 0
+      expiringMatched.length > 0
         ? '优先消耗即将到期的食材，让每一份新鲜都不被浪费。'
         : '记得记录今天吃过的每一餐，慢慢找到适合自己的节奏。'
   };
