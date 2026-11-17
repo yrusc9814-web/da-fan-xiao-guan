@@ -8,6 +8,9 @@ import { createTestPrismaClient } from '../src/database/test-database.js';
 function createDashboardDatabase(overrides: Record<string, unknown> = {}): PrismaClient {
   const database = {
     settings: { findUnique: vi.fn().mockResolvedValue(null) },
+    // 首页推荐硬过滤需要读取活跃食用者（active:true）的忌口/过敏/不喜欢文本；
+    // 空库默认无食用者，因此不得命中任何过滤词。
+    diner: { findMany: vi.fn().mockResolvedValue([]) },
     recipe: { findMany: vi.fn().mockResolvedValue([]) },
     // 首页会调用 mealRecord.findMany 三次：今天记录、本周记录、跨周全部有效记录日期（streak 用）；
     // 未显式排队的调用都落到这里的默认空数组，避免 mock 缺省值与真实调用次数不符。
@@ -52,6 +55,14 @@ describe('Dashboard 首页只读接口', () => {
     expect(streakQuery.where).toEqual({ status: 'CONFIRMED', deletedAt: null });
     expect(streakQuery.select).toEqual({ recordDate: true });
     expect((database.mealRecord.findMany as unknown as ReturnType<typeof vi.fn>).mock.calls).toHaveLength(3);
+    // 忌口硬过滤只读取活跃食用者；推荐查询不得在过滤前 take 6（否则过滤后可能不足 6 条）
+    expect((database.diner.findMany as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toEqual({
+      where: { active: true },
+      select: { id: true }
+    });
+    expect((database.recipe.findMany as unknown as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).not.toHaveProperty(
+      'take'
+    );
     expect(payload.data).toMatchObject({
       branding: { appName: '搭饭小馆', subtitle: '让每一餐都更美好' },
       userNickname: null,
@@ -81,6 +92,7 @@ describe('Dashboard 首页只读接口', () => {
             imagePath: 'tomato-eggs.svg',
             cookingTimeMinutes: 15,
             tags: [{ tag: { name: '家常菜' } }],
+            ingredients: [{ ingredientNameSnapshot: '番茄' }],
             recordItems: [{ mealRecord: { rating: 4.6, deletedAt: null } }]
           }
         ])

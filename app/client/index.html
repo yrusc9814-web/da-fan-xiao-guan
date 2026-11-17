@@ -946,6 +946,13 @@
       position: relative;
     }
 
+    #modalTabooSettings textarea::placeholder {
+      color: var(--color-text-subtle);
+      opacity: 1;
+    }
+    #modalTabooSettings button { min-height: 44px; }
+    #modalTabooSettings select { min-height: 44px; }
+
     .neo-btn-primary {
       background: linear-gradient(135deg, #C4442F 0%, #B33A28 100%);
       color: #FFFFFF;
@@ -3248,12 +3255,12 @@
               <button type="button" class="pill-btn py-1 px-2.5 text-xs" id="btnThemeSystem" aria-pressed="false" onclick="setAppTheme('system')">💻 系统</button>
             </div>
           </div>
-          <div class="flex items-center justify-between pb-3 border-b border-stone-100">
-            <div>
+          <div class="flex items-center justify-between gap-3 pb-3 border-b border-stone-100">
+            <div class="min-w-0">
               <h4 class="text-xs font-black m-0">食用者忌口偏好</h4>
-              <p class="text-[11px] text-stone-400 m-0" id="google2TabooDescription">当前版本暂未开放编辑</p>
+              <p class="text-[11px] text-stone-400 m-0 break-words" id="google2TabooDescription" aria-live="polite">正在读取忌口偏好…</p>
             </div>
-            <button class="text-xs font-bold text-stone-500 hover:text-[#FF6B57] hover:underline" type="button">当前版本暂未开放</button>
+            <button id="google2TabooEdit" class="text-xs font-bold text-[#FF6B57] hover:underline shrink-0" type="button">编辑忌口 →</button>
           </div>
           <div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 pb-3 border-b border-stone-100">
             <div class="min-w-0">
@@ -4429,6 +4436,30 @@
           <div class="flex items-center justify-end gap-2 flex-shrink-0 pt-3 mt-2 border-t border-[#F0E8DC] bg-[#FCFAF7]">
             <button id="google2PinSettingsCancel" type="button" class="neo-btn-secondary text-xs py-2 px-4">取消</button>
             <button id="google2PinSettingsSubmit" type="submit" class="neo-btn-primary text-xs py-2 px-5">保存</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- 食用者偏好只通过 Diner CRUD 保存；每次编辑明确选中的一位成员。 -->
+    <div id="modalTabooSettings" class="hidden fixed inset-0 z-[255] flex items-center justify-center p-3 sm:p-4 bg-[#2D2621]/45 backdrop-blur-sm" role="dialog" aria-modal="true" aria-labelledby="google2TabooTitle">
+      <div class="modal-dialog relative w-full max-w-md bg-[#FCFAF7] border-2 border-[#FEDBC5] rounded-3xl shadow-2xl p-4 sm:p-5 flex flex-col overflow-hidden" style="max-height:calc(100dvh - 24px)">
+        <div class="flex items-start justify-between gap-3 mb-3 flex-shrink-0">
+          <div><h3 id="google2TabooTitle" class="text-base font-black text-[#2D2621] m-0">食用者忌口偏好</h3><p class="text-[11px] text-stone-500 mt-1 mb-0">一起吃饭，也照顾每个人的口味</p></div>
+          <button id="google2TabooClose" type="button" class="neo-btn-secondary w-8 h-8 shrink-0" aria-label="关闭忌口设置">✕</button>
+        </div>
+        <form id="google2TabooForm" class="flex flex-col flex-1 min-h-0 overflow-hidden text-xs">
+          <div class="overflow-y-auto flex-1 min-h-0 space-y-3 pr-1">
+            <div><label for="google2TabooDiner" class="block font-black text-stone-700 mb-1">正在编辑的食用者</label><select id="google2TabooDiner" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-stone-800"></select></div>
+            <p id="google2TabooHint" class="text-[11px] text-stone-500 m-0">支持顿号、逗号或空格分隔多个词；所有活跃成员的以下词条都会用于推荐排除。</p>
+            <div><label for="google2TabooText" class="block font-black text-stone-700 mb-1">忌口食材</label><textarea id="google2TabooText" rows="2" aria-describedby="google2TabooHint" placeholder="例如：鲈鱼、香菜" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-stone-800"></textarea></div>
+            <div><label for="google2AllergyText" class="block font-black text-stone-700 mb-1">过敏原</label><textarea id="google2AllergyText" rows="2" placeholder="例如：花生、虾" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-stone-800"></textarea></div>
+            <div><label for="google2DislikesText" class="block font-black text-stone-700 mb-1">不偏好 / 少放</label><textarea id="google2DislikesText" rows="2" placeholder="例如：蒜、辣椒" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-stone-800"></textarea></div>
+          </div>
+          <p id="google2TabooError" class="min-h-4 text-[11px] text-red-500 font-bold my-2 shrink-0" role="status" aria-live="polite"></p>
+          <div class="flex items-center justify-between gap-2 shrink-0 pt-3 border-t border-[#F0E8DC]">
+            <button id="google2TabooClear" type="button" class="text-xs font-bold text-[#FF6B57]">一键清空</button>
+            <div class="flex gap-2"><button id="google2TabooCancel" type="button" class="neo-btn-secondary text-xs py-2 px-3">取消</button><button id="google2TabooSubmit" type="submit" class="neo-btn-primary text-xs py-2 px-4">保存偏好</button></div>
           </div>
         </form>
       </div>
@@ -7198,7 +7229,7 @@
       setupPantryRecommend() {
         const container = document.getElementById('pantryRecommendContent');
         if (!container) return;
-        const recipes = BentoService.recipes.getAll();
+        const recipes = BentoService.recipes.getAll().filter((recipe) => !window.DafanDinerAdapter || window.DafanDinerAdapter.allows(recipe));
         const pantry = BentoService.pantry.getAll();
 
         const unitDimension = {
@@ -7466,7 +7497,18 @@
         BentoModal.__pantryRecommendSeq = seq;
         const client = window.DafanApiClient;
         if (!client || typeof client.post !== 'function') return;
-        Promise.resolve(client.post('/kitchen/recommend', { mode: 'ALLOW_PURCHASE', limit: Math.max(recipes.length, 20) }))
+        const dinerAdapter = window.DafanDinerAdapter;
+        if (dinerAdapter && !dinerAdapter.isReady()) {
+          container.textContent = '正在读取忌口偏好…';
+          dinerAdapter.loadActiveDiners().then(() => {
+            // open() 可能在装配完成后才移除 hidden；按请求代次续载，不依赖旧的可见性判断。
+            if (BentoModal.__pantryRecommendSeq === seq) BentoModal.setupPantryRecommend();
+          }).catch(() => {
+            if (BentoModal.__pantryRecommendSeq === seq) container.textContent = '无法核对忌口偏好，请稍后重试';
+          });
+          return;
+        }
+        Promise.resolve(client.post('/kitchen/recommend', { mode: 'ALLOW_PURCHASE', limit: Math.max(recipes.length, 20), dinerIds: dinerAdapter?.dinerIds() || [] }))
           .then((result) => {
             if (BentoModal.__pantryRecommendSeq !== seq) return;
             const items = Array.isArray(result?.items) ? result.items : null;
@@ -7486,7 +7528,7 @@
               completionLabel: entry.completionLabel,
               source: 'api'
             }));
-            renderCards(mapped);
+            renderCards(mapped.filter((candidate) => !window.DafanDinerAdapter || window.DafanDinerAdapter.allows(candidate.recipe)));
           })
           .catch(() => {
             if (BentoModal.__pantryRecommendSeq !== seq) return;
@@ -9961,12 +10003,12 @@
     }
 
     function updateWheelCandidates() {
-      const allRecipes = (typeof BentoService !== 'undefined' && BentoService.recipes && BentoService.recipes.getAll)
+      const allRecipes = ((typeof BentoService !== 'undefined' && BentoService.recipes && BentoService.recipes.getAll)
         ? (BentoService.recipes.getAll() || [])
-        : [];
-      const allStores = (typeof BentoService !== 'undefined' && BentoService.stores && BentoService.stores.getAll)
+        : []).filter((recipe) => !window.DafanDinerAdapter || window.DafanDinerAdapter.allows(recipe));
+      const allStores = ((typeof BentoService !== 'undefined' && BentoService.stores && BentoService.stores.getAll)
         ? (BentoService.stores.getAll() || [])
-        : [];
+        : []).filter((store) => !window.DafanDinerAdapter || window.DafanDinerAdapter.allows(store));
 
       const recipeSub = (r) => {
         const minutes = r.cookTimeMinutes ?? r.cookTime;
@@ -12548,6 +12590,7 @@
     window.isWheelItemExcluded = (item) => wheelExcludedKeys.has(wheelItemKey(item));
     window.clearWheelExclusions = clearWheelExclusions;
     window.updateWheelCandidates = updateWheelCandidates;
+    window.cleanupActiveSpin = cleanupActiveSpin;
     window.renderWheelSlices = renderWheelSlices;
     window.triggerSpin = triggerSpin;
     window.changeCalendarMonth = changeCalendarMonth;

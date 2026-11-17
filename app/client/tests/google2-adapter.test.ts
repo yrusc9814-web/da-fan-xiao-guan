@@ -516,6 +516,19 @@ describe('Google2 legacy entry adapter', () => {
     expect(open).toHaveBeenCalledTimes(1);
   });
 
+  // 忌口成员读取是推荐请求的前置输入：diners 走真实分页响应，random 按用例给固定结果
+  const dinersPage = {
+    items: [{ id: 'd1', name: '小夏', active: true, version: 1, tabooText: null, allergyText: null, dislikesText: null }],
+    page: 1,
+    pageSize: 100,
+    total: 1,
+    totalPages: 1
+  };
+  const routeRecommendations = (fetchMock: ReturnType<typeof vi.fn>, random: () => unknown) =>
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(String(url).includes('/diners') ? jsonOk(dinersPage) : jsonOk(random()))
+    );
+
   it('正式入口转盘落点由 recommendation API 驱动：命中当前扇区返回真实索引', async () => {
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
@@ -532,17 +545,20 @@ describe('Google2 legacy entry adapter', () => {
     window.eval(adapter);
     await new Promise((resolve) => setTimeout(resolve, 0));
     fetchMock.mockReset();
-    fetchMock.mockResolvedValueOnce(
-      arrayJson({ historyId: 'h1', type: 'SINGLE', results: [{ resultType: 'RECIPE', resultId: 'r2', title: '菜二' }] })
-    );
+    routeRecommendations(fetchMock, () => ({
+      historyId: 'h1',
+      type: 'SINGLE',
+      results: [{ resultType: 'RECIPE', resultId: 'r2', title: '菜二' }]
+    }));
     const randomSpy = vi.spyOn(Math, 'random');
     const index = await (window as any).DafanWheelAdapter.resolveTargetIndex('all');
     expect(index).toBe(2);
     expect(randomSpy).not.toHaveBeenCalled();
-    expect(fetchMock).toHaveBeenCalledTimes(1);
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/recommendations/random');
-    expect(fetchMock.mock.calls[0][1].method).toBe('POST');
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({});
+    const randomCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/recommendations/random'));
+    expect(randomCalls).toHaveLength(1);
+    expect(randomCalls[0][0]).toBe('/api/v1/recommendations/random');
+    expect(randomCalls[0][1].method).toBe('POST');
+    expect(JSON.parse(randomCalls[0][1].body)).toEqual({ dinerIds: ['d1'] });
     expect(renderWheelSlices).not.toHaveBeenCalled();
     randomSpy.mockRestore();
   });
@@ -565,16 +581,17 @@ describe('Google2 legacy entry adapter', () => {
       { id: 's9', name: '推荐新店', category: '轻食', price: 28, supportsDineIn: true }
     ];
     fetchMock.mockReset();
-    fetchMock.mockResolvedValueOnce(
-      arrayJson({
-        historyId: 'h2',
-        type: 'SINGLE',
-        results: [{ resultType: 'STORE', resultId: 's9', title: '推荐新店' }]
-      })
-    );
+    routeRecommendations(fetchMock, () => ({
+      historyId: 'h2',
+      type: 'SINGLE',
+      results: [{ resultType: 'STORE', resultId: 's9', title: '推荐新店' }]
+    }));
     const index = await (window as any).DafanWheelAdapter.resolveTargetIndex('takeout');
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/recommendations/random');
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({
+    const randomCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/recommendations/random'));
+    expect(randomCalls).toHaveLength(1);
+    expect(randomCalls[0][0]).toBe('/api/v1/recommendations/random');
+    expect(JSON.parse(randomCalls[0][1].body)).toEqual({
+      dinerIds: ['d1'],
       sourceTypes: ['STORE'],
       acquisitionModes: ['TAKEOUT']
     });
@@ -592,17 +609,29 @@ describe('Google2 legacy entry adapter', () => {
     window.eval(adapter);
     await new Promise((resolve) => setTimeout(resolve, 0));
     fetchMock.mockReset();
-    fetchMock.mockResolvedValueOnce(arrayJson({ historyId: 'h3', type: 'SINGLE', results: [] }));
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        String(url).includes('/diners')
+          ? jsonOk(dinersPage)
+          : jsonOk({ historyId: 'h3', type: 'SINGLE', results: [] })
+      )
+    );
     const emptyIndex = await (window as any).DafanWheelAdapter.resolveTargetIndex('cook');
     expect(emptyIndex).toBeNull();
-    expect(fetchMock.mock.calls[0][0]).toBe('/api/v1/recommendations/random');
-    expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({ sourceTypes: ['RECIPE'] });
+    const emptyCalls = fetchMock.mock.calls.filter(([url]) => String(url).includes('/recommendations/random'));
+    expect(emptyCalls).toHaveLength(1);
+    expect(emptyCalls[0][0]).toBe('/api/v1/recommendations/random');
+    expect(JSON.parse(emptyCalls[0][1].body)).toEqual({ dinerIds: ['d1'], sourceTypes: ['RECIPE'] });
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('暂无符合条件'), 'info');
-    fetchMock.mockResolvedValueOnce({
+    const unavailable = {
       ok: false,
       status: 503,
+      headers: new Headers(),
       text: async () => JSON.stringify({ success: false, error: { code: 'UNAVAILABLE' } })
-    });
+    };
+    fetchMock.mockImplementation((url: string) =>
+      Promise.resolve(String(url).includes('/diners') ? jsonOk(dinersPage) : unavailable)
+    );
     const failIndex = await (window as any).DafanWheelAdapter.resolveTargetIndex('cook');
     expect(failIndex).toBeNull();
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('503'), 'error');
@@ -661,15 +690,17 @@ describe('Google2 legacy entry adapter', () => {
     expect(toast).toHaveBeenCalledWith(expect.stringContaining('403'), 'error');
     expect(backupButton?.disabled).toBe(false);
 
-    // 忌口按钮：不宣称已修改、不发任何写请求、导出不被触发
+    // 忌口按钮：真实弹窗入口，不再宣称「暂未开放」；此 fixture 未挂弹窗 DOM，
+    // 因此只允许保持静默（不发写请求、不触发导出、不弹误导提示）
     fetchMock.mockClear();
     toast.mockClear();
     tabooButton?.click();
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(fetchMock).not.toHaveBeenCalled();
-    expect(toast).toHaveBeenCalledTimes(1);
-    // T-006C：忌口行不再宣称「暂无可用数据」，提示改为「当前版本暂未开放编辑」
-    expect(toast).toHaveBeenCalledWith('当前版本暂未开放编辑', 'warning');
+    const writes = fetchMock.mock.calls.filter(([, init]) => ['POST', 'PUT', 'DELETE'].includes(String(init?.method)));
+    expect(writes).toHaveLength(0);
+    expect(fetchMock.mock.calls.filter(([url]) => String(url).includes('/backups/export'))).toHaveLength(0);
+    expect(toast).not.toHaveBeenCalled();
+    expect(document.getElementById('page-settings')?.textContent || '').not.toContain('暂未开放编辑');
   });
 
   it('【VAN-35】boot 之后再调用 wireSettings 不会重复绑定备份入口', async () => {

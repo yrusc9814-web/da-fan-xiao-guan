@@ -3231,11 +3231,15 @@
     });
     return data;
   }
+  let dashboardLoadSequence = 0;
   async function loadDashboard() {
+    const sequence = ++dashboardLoadSequence;
     try {
-      return mapDashboard(await ApiClient.get('/dashboard'));
+      const data = await ApiClient.get('/dashboard');
+      // 忌口保存触发的新概览优先；旧请求晚到不得重新显示已排除的菜谱。
+      return sequence === dashboardLoadSequence ? mapDashboard(data) : data;
     } catch (error) {
-      sanitizeStaticBusinessState();
+      if (sequence === dashboardLoadSequence) sanitizeStaticBusinessState();
       throw error;
     }
   }
@@ -3339,6 +3343,7 @@
   }
   async function loadSettings() {
     const settings = await ApiClient.get('/settings');
+    userNickname = settings?.userNickname || null;
     applyPinSettingsState(settings);
     return settings;
   }
@@ -3722,8 +3727,201 @@
     }
   }
   const SETTINGS_ROW_TITLES = { backup: '数据备份与导出', taboo: '食用者忌口偏好' };
-  const TABOO_BLOCKED_MESSAGE = '当前版本暂未开放编辑';
-  const TABOO_ROW_NOTE = '当前版本暂未开放编辑';
+  let activeDiners = [];
+  let dinersReady = false;
+  let dinersLoading = null;
+  let tabooSelected = null;
+  let tabooLastDinerId = null;
+  let tabooPending = false;
+  let tabooDialogGeneration = 0;
+  let userNickname = null;
+  const tabooFields = { tabooText: 'google2TabooText', allergyText: 'google2AllergyText', dislikesText: 'google2DislikesText' };
+  // 与 shared/diner-rules.ts 保持同一分词和大小写匹配口径。
+  const tabooTokens = (value) => value?.split(/[、,，;；\s]+/).map((word) => word.trim().toLocaleLowerCase()).filter(Boolean) || [];
+  const forbiddenWords = () => activeDiners.flatMap((diner) =>
+    [...tabooTokens(diner.tabooText), ...tabooTokens(diner.allergyText), ...tabooTokens(diner.dislikesText)]
+  );
+  function allowsDinerCandidate(item) {
+    if (!dinersReady) return false;
+    const text = [item?.name, item?.title, item?.ingredientsText, item?.notes, item?.cuisine, item?.category,
+      item?.recommendedDishes, item?.dishes, item?.signatureDishes, item?.avoidDishes, item?.tagsText,
+      ...(item?.ingredients || []).flatMap((ingredient) => [ingredient.ingredientNameSnapshot, ingredient.name, ingredient.ingredientName]),
+      ...(item?.menuItems || []).flatMap((dish) => [dish.name, dish.desc])
+    ].filter(Boolean).join(' ').toLocaleLowerCase();
+    return !forbiddenWords().some((word) => text.includes(word));
+  }
+  function renderTabooSummary() {
+    const summary = document.getElementById('google2TabooDescription');
+    if (!summary) return;
+    const labels = { tabooText: '忌口', allergyText: '过敏', dislikesText: '不偏好' };
+    const descriptions = activeDiners.map((diner) => {
+      const values = Object.entries(labels).filter(([field]) => tabooTokens(diner[field]).length)
+        .map(([field, label]) => `${label}：${diner[field]}`);
+      return values.length ? `${diner.name}（${values.join('；')}）` : '';
+    }).filter(Boolean);
+    summary.textContent = descriptions.join('；') || '未设置忌口或过敏原';
+  }
+  function refreshDinerCandidates() {
+    window.updateWheelCandidates?.();
+    const pantry = document.getElementById('modalPantryRecommend');
+    if (pantry && !pantry.classList.contains('hidden')) window.BentoModal?.setupPantryRecommend?.();
+  }
+  function loadActiveDiners() {
+    if (dinersLoading) return dinersLoading;
+    dinersLoading = (async () => {
+      try {
+        const first = await ApiClient.get('/diners?active=true&page=1&pageSize=100');
+        const values = pageItems(first).slice();
+        const pages = Number(first?.totalPages || (first?.total ? Math.ceil(first.total / 100) : 1));
+        for (let page = 2; page <= pages; page += 1) {
+          values.push(...pageItems(await ApiClient.get(`/diners?active=true&page=${page}&pageSize=100`)));
+        }
+        activeDiners = values.filter((diner) => diner.active !== false);
+        dinersReady = true;
+        renderTabooSummary();
+        refreshDinerCandidates();
+        return activeDiners;
+      } catch (error) {
+        dinersReady = false;
+        const summary = document.getElementById('google2TabooDescription');
+        if (summary) summary.textContent = '忌口偏好读取失败，请点击编辑重试';
+        refreshDinerCandidates();
+        throw error;
+      } finally {
+        dinersLoading = null;
+      }
+    })();
+    return dinersLoading;
+  }
+  function setTabooError(message = '') {
+    const error = document.getElementById('google2TabooError');
+    if (error) error.textContent = message;
+  }
+  function fillTabooDiner(id) {
+    tabooSelected = activeDiners.find((diner) => diner.id === id) || null;
+    if (tabooSelected) tabooLastDinerId = tabooSelected.id;
+    Object.entries(tabooFields).forEach(([field, inputId]) => {
+      const input = document.getElementById(inputId);
+      if (input) input.value = tabooSelected?.[field] || '';
+    });
+    setTabooError();
+  }
+  function setTabooBusy(busy) {
+    tabooPending = busy;
+    document.querySelectorAll('#google2TabooForm button, #google2TabooForm select, #google2TabooForm textarea, #google2TabooClose')
+      .forEach((control) => { control.disabled = busy; });
+  }
+  async function openTabooSettings() {
+    if (tabooPending) return;
+    const root = document.getElementById('modalTabooSettings');
+    if (!root) return;
+    const generation = ++tabooDialogGeneration;
+    root.classList.remove('hidden');
+    fillTabooDiner(null);
+    setTabooBusy(true);
+    setTabooError('正在读取食用者…');
+    try {
+      await loadActiveDiners();
+      if (!activeDiners.length) await loadSettings();
+      if (generation !== tabooDialogGeneration) return;
+      const selectedId = activeDiners.find((diner) => diner.id === tabooLastDinerId)?.id || activeDiners[0]?.id;
+      const select = document.getElementById('google2TabooDiner');
+      if (select) {
+        select.replaceChildren();
+        const options = activeDiners.length ? activeDiners : [{ id: '', name: userNickname || '默认食用者' }];
+        options.forEach((diner) => {
+          const option = document.createElement('option');
+          option.value = diner.id;
+          option.textContent = diner.name;
+          select.append(option);
+        });
+        if (selectedId) select.value = selectedId;
+      }
+      fillTabooDiner(selectedId);
+      setTabooBusy(false);
+      document.getElementById('google2TabooText')?.focus();
+    } catch (error) {
+      setTabooBusy(false);
+      // 读取失败时不可根据空缓存创建另一个成员；关闭后可重试。
+      const submit = document.getElementById('google2TabooSubmit');
+      if (submit) submit.disabled = true;
+      setTabooError(error?.message || '食用者读取失败，请关闭后重试');
+    }
+  }
+  function closeTabooSettings() {
+    if (tabooPending) return;
+    tabooDialogGeneration += 1;
+    document.getElementById('modalTabooSettings')?.classList.add('hidden');
+    fillTabooDiner(null);
+    document.getElementById('google2TabooEdit')?.focus();
+  }
+  async function submitTabooSettings() {
+    if (tabooPending || !dinersReady) return false;
+    const body = Object.fromEntries(Object.entries(tabooFields).map(([field, id]) =>
+      [field, document.getElementById(id)?.value.trim() || null]
+    ));
+    if (!tabooSelected && Object.values(body).every((value) => value === null)) {
+      closeTabooSettings();
+      return true;
+    }
+    const selected = tabooSelected;
+    setTabooBusy(true);
+    setTabooError();
+    try {
+      const saved = selected
+        ? await ApiClient.put(`/diners/${selected.id}`, { ...body, version: selected.version })
+        : await ApiClient.post('/diners', { ...body, name: userNickname || '默认食用者' });
+      activeDiners = selected ? activeDiners.map((diner) => diner.id === selected.id ? saved : diner) : [...activeDiners, saved];
+      cancelWheelPending();
+      window.cleanupActiveSpin?.('preferences');
+      renderTabooSummary();
+      refreshDinerCandidates();
+      setTabooBusy(false);
+      closeTabooSettings();
+      toast('忌口偏好已保存', 'success');
+      const results = await Promise.allSettled([loadActiveDiners(), loadDashboard()]);
+      if (results.some((result) => result.status === 'rejected')) toast('偏好已保存，部分推荐刷新失败，请稍后重试', 'warning');
+      return true;
+    } catch (error) {
+      if (error?.status === 409) {
+        // 保留用户输入；重新打开获取最新版本，绝不以旧 version 静默覆盖。
+        setTabooError('该食用者已在其他页面修改。请取消并重新打开，核对最新偏好后保存。');
+      } else setTabooError(error?.message || '保存失败，请稍后重试');
+      setTabooBusy(false);
+      return false;
+    }
+  }
+  function wireTabooSettings() {
+    const button = settingsRowButton(SETTINGS_ROW_TITLES.taboo);
+    if (button && !button.dataset.tabooBound) {
+      button.dataset.tabooBound = 'true';
+      button.removeAttribute('onclick');
+      button.removeAttribute('aria-disabled');
+      button.addEventListener('click', () => void openTabooSettings());
+    }
+    const form = document.getElementById('google2TabooForm');
+    if (!form || form.dataset.tabooBound) return;
+    form.dataset.tabooBound = 'true';
+    form.addEventListener('submit', (event) => { event.preventDefault(); void submitTabooSettings(); });
+    ['google2TabooClose', 'google2TabooCancel'].forEach((id) => document.getElementById(id)?.addEventListener('click', closeTabooSettings));
+    document.getElementById('google2TabooDiner')?.addEventListener('change', (event) => fillTabooDiner(event.target.value));
+    document.getElementById('google2TabooClear')?.addEventListener('click', () => {
+      Object.values(tabooFields).forEach((id) => { document.getElementById(id).value = ''; });
+      setTabooError('已清空当前成员的输入，保存后生效。');
+    });
+    const root = document.getElementById('modalTabooSettings');
+    root?.addEventListener('click', (event) => { if (event.target === root) closeTabooSettings(); });
+    root?.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape') { event.stopPropagation(); closeTabooSettings(); }
+      if (event.key === 'Tab') {
+        const controls = [...root.querySelectorAll('button, select, textarea')].filter((control) => !control.disabled);
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    });
+  }
   // h4 标题保持精确匹配（不依赖按钮/整卡文案），只按标题定位到整行再取行内控件
   const settingsRow = (title) => {
     const row = Array.from(document.querySelectorAll('#page-settings h4')).find(
@@ -3732,27 +3930,9 @@
     return row || null;
   };
   const settingsRowButton = (title) => settingsRow(title)?.querySelector('button') || null;
-  /**
-   * 忌口行：正式 settings 契约无忌口编辑能力，这里只把「提示 + 按钮」收敛成诚实的未开放态，
-   * 不发任何写请求、不使用“修改 →”这类诱导性可编辑文案。
-   */
-  function markTabooRowUnavailable(row) {
-    if (!row) return;
-    const note = row.querySelector('p');
-    if (note && note.textContent !== TABOO_ROW_NOTE) note.textContent = TABOO_ROW_NOTE;
-    const button = row.querySelector('button');
-    if (!button) return;
-    // 仅清理诱导性文案；页面若已给出诚实的未开放文案则保持原样
-    if (/修改|→/.test(button.textContent)) button.textContent = '暂未开放';
-    button.classList.remove('hover:underline');
-    button.classList.add('cursor-not-allowed');
-    button.setAttribute('aria-disabled', 'true');
-    button.title = TABOO_ROW_NOTE;
-  }
   async function wireSettings() {
-    await loadSettings();
-    // 已知正式 settings 契约只有 GET /settings（DTO 无忌口字段；忌口 text 只存在于 Diner，Settings 无目标 id 可取），
-    // 所以只按自身 h4 标题精确定位两行，绝不按整卡文本或按钮文案模糊匹配
+    wireTabooSettings();
+    await Promise.all([loadSettings(), loadActiveDiners().catch(fail)]);
     const backupButton = settingsRowButton(SETTINGS_ROW_TITLES.backup);
     if (backupButton && !backupButton.dataset.backupBound) {
       backupButton.dataset.backupBound = 'true';
@@ -3782,17 +3962,6 @@
         button.addEventListener('click', closeRestoreDialog);
       }
     });
-    // 忌口行：无论按钮是否已绑定，都先把行内文案收敛为「当前版本暂未开放编辑」，
-    // 避免 HTML 旧文案（暂无可用数据 / 修改 →）在任一路径重新露出。
-    const tabooRow = settingsRow(SETTINGS_ROW_TITLES.taboo);
-    markTabooRowUnavailable(tabooRow);
-    const tabooButton = settingsRowButton(SETTINGS_ROW_TITLES.taboo);
-    if (tabooButton && !tabooButton.dataset.tabooBound) {
-      tabooButton.dataset.tabooBound = 'true';
-      tabooButton.removeAttribute('onclick');
-      // 无正式忌口编辑能力：不发任何写请求、不宣称已修改，提示与本行状态文案一致
-      tabooButton.addEventListener('click', () => toast(TABOO_BLOCKED_MESSAGE, 'warning'));
-    }
     wirePinSettingsDialog();
   }
   function wirePinSettingsDialog() {
@@ -5248,7 +5417,7 @@
     wireSettings().catch(fail);
   }
   function wheelRecommendationBody(mode) {
-    const body = {};
+    const body = { dinerIds: activeDiners.map((diner) => diner.id) };
     if (mode === 'cook') body.sourceTypes = ['RECIPE'];
     else if (mode === 'dinein') {
       body.sourceTypes = ['STORE'];
@@ -5312,6 +5481,9 @@
     const notify = (message, type) => {
       if (!cancelled()) toast(message, type);
     };
+    if (!dinersReady) {
+      try { await loadActiveDiners(); } catch (error) { if (!cancelled()) fail(error); return null; }
+    }
     const items = window.getDynamicWheelItems ? window.getDynamicWheelItems() : [];
     if (!items.length) {
       notify(WHEEL_EMPTY_GUIDE[mode] || WHEEL_EMPTY_GUIDE_FALLBACK, 'info');
@@ -5329,12 +5501,15 @@
     // 本轮已排除项不得通过远程推荐重新进入结果：按排除集合过滤后取第一个有效结果
     const isExcluded = (item) => (window.isWheelItemExcluded ? window.isWheelItemExcluded(item) : false);
     const pick = results.find(
-      (result) =>
-        !isExcluded({
+      (result) => {
+        const service = result.resultType === 'STORE' ? window.BentoService?.stores : window.BentoService?.recipes;
+        const cached = service?.getById?.(result.resultId);
+        return allowsDinerCandidate(cached || { name: result.title || result.name }) && !isExcluded({
           type: result.resultType === 'STORE' ? 'store' : 'recipe',
           id: result.resultId,
           title: result.title || result.name || ''
-        })
+        });
+      }
     );
     if (!pick) {
       notify(
@@ -5434,6 +5609,12 @@
     installDashboardRefresh
   };
   window.DafanSettingsAdapter = { loadSettings, wireSettings, openPinSettings, closePinSettings, submitPinSettings };
+  window.DafanDinerAdapter = {
+    loadActiveDiners, openTabooSettings, closeTabooSettings, submitTabooSettings,
+    tokens: tabooTokens, allows: allowsDinerCandidate,
+    isReady: () => dinersReady,
+    dinerIds: () => activeDiners.map((diner) => diner.id)
+  };
   window.DafanWheelAdapter = {
     resolveTargetIndex: resolveWheelTargetIndex,
     cancelPending: cancelWheelPending,

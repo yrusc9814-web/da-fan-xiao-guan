@@ -1,6 +1,7 @@
 import type { PrismaClient } from '@prisma/client';
 
 import type { DashboardCalendarDay, DashboardDto, DashboardMealSlot } from '../../../../shared/types/dashboard.js';
+import { forbidden, loadForbiddenWords } from '../../shared/diner-rules.js';
 
 /**
  * 首页推荐的局部返回扩展：shared 契约不能改，但前端需要用菜谱真实 category 派生分类图标
@@ -115,6 +116,32 @@ function toCalendarDays(
   });
 }
 
+/**
+ * 首页推荐硬过滤词表：与推荐/库存同口径（tokens 分词 + forbidden 子串命中），
+ * 来源是全部 active 食用者的 tabooText/allergyText/dislikesText（loadForbiddenWords 同一实现）。
+ * 只有 active:true 的食用者参与；停用/清空后不再过滤。
+ */
+async function loadActiveForbiddenWords(database: PrismaClient): Promise<string[]> {
+  // 先取全部 active 食用者 id，再交给 loadForbiddenWords 做分词与字段合并：
+  // 保持与推荐/库存完全同一实现（含停用过滤），不复制一份字段清单以免口径漂移。
+  const activeDiners = await database.diner.findMany({ where: { active: true }, select: { id: true } });
+  return loadForbiddenWords(
+    database,
+    activeDiners.map((diner) => diner.id)
+  );
+}
+
+function recipeHaystack(recipe: {
+  name: string;
+  ingredientsText: string | null;
+  notes: string | null;
+  ingredients: Array<{ ingredientNameSnapshot: string }>;
+}): string {
+  return [recipe.name, recipe.ingredientsText, recipe.notes, ...recipe.ingredients.map((x) => x.ingredientNameSnapshot)]
+    .filter(Boolean)
+    .join(' ');
+}
+
 export async function getDashboard(database: PrismaClient): Promise<DashboardDtoWithRecipeCategory> {
   const now = new Date();
   const currentDate = toBusinessDate(now);
@@ -126,58 +153,70 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
   weekEnd.setHours(23, 59, 59, 999);
   const weekEndDate = toBusinessDate(weekEnd);
 
-  const [settings, recipes, todayRecords, weekRecords, allRecordDates, plannedDays, ingredients, consumedLogs] =
-    await Promise.all([
-      database.settings.findUnique({ where: { id: 1 } }),
-      database.recipe.findMany({
-        where: { deletedAt: null, enabledForRecommendation: true },
-        orderBy: { createdAt: 'asc' },
-        take: 6,
-        include: {
-          tags: { include: { tag: true } },
-          recordItems: {
-            where: { mealRecord: { status: 'CONFIRMED', deletedAt: null } },
-            include: {
-              mealRecord: { select: { rating: true, deletedAt: true } }
-            }
+  const [
+    settings,
+    recipes,
+    forbiddenWords,
+    todayRecords,
+    weekRecords,
+    allRecordDates,
+    plannedDays,
+    ingredients,
+    consumedLogs
+  ] = await Promise.all([
+    database.settings.findUnique({ where: { id: 1 } }),
+    // 不能先 take 6：必须先按忌口硬过滤，再从剩余里取 6 条，否则被过滤掉的前 6 条会让首页不足。
+    // 取全量候选（仅启用且未删除）后在内存过滤，食材快照/文本/名称都参与命中判定。
+    database.recipe.findMany({
+      where: { deletedAt: null, enabledForRecommendation: true },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        tags: { include: { tag: true } },
+        ingredients: { select: { ingredientNameSnapshot: true } },
+        recordItems: {
+          where: { mealRecord: { status: 'CONFIRMED', deletedAt: null } },
+          include: {
+            mealRecord: { select: { rating: true, deletedAt: true } }
           }
         }
-      }),
-      database.mealRecord.findMany({
-        where: { recordDate: currentDate, status: 'CONFIRMED', deletedAt: null },
-        orderBy: { mealType: 'asc' },
-        include: {
-          items: {
-            orderBy: { sortOrder: 'asc' },
-            take: 1,
-            include: { recipe: true, store: true }
-          }
+      }
+    }),
+    loadActiveForbiddenWords(database),
+    database.mealRecord.findMany({
+      where: { recordDate: currentDate, status: 'CONFIRMED', deletedAt: null },
+      orderBy: { mealType: 'asc' },
+      include: {
+        items: {
+          orderBy: { sortOrder: 'asc' },
+          take: 1,
+          include: { recipe: true, store: true }
         }
-      }),
-      database.mealRecord.findMany({
-        where: { recordDate: { gte: weekStartDate, lte: weekEndDate }, status: 'CONFIRMED', deletedAt: null },
-        select: { recordDate: true, rating: true }
-      }),
-      // 连续记录天数需要跨周的全部有效记录日期，因此不按本周窗口过滤
-      database.mealRecord.findMany({
-        where: { status: 'CONFIRMED', deletedAt: null },
-        select: { recordDate: true },
-        distinct: ['recordDate']
-      }),
-      database.mealPlan.findMany({
-        where: {
-          planDate: { gte: weekStartDate, lte: weekEndDate },
-          status: { in: ['PLANNED', 'COMPLETED'] },
-          deletedAt: null
-        },
-        select: { planDate: true }
-      }),
-      database.ingredient.findMany({ where: { deletedAt: null }, orderBy: { expiryDate: 'asc' } }),
-      database.inventoryLog.findMany({
-        where: { createdAt: { gte: weekStart, lte: weekEnd }, changeType: 'COOK_DEDUCT' },
-        select: { ingredientId: true, ingredientNameSnapshot: true }
-      })
-    ]);
+      }
+    }),
+    database.mealRecord.findMany({
+      where: { recordDate: { gte: weekStartDate, lte: weekEndDate }, status: 'CONFIRMED', deletedAt: null },
+      select: { recordDate: true, rating: true }
+    }),
+    // 连续记录天数需要跨周的全部有效记录日期，因此不按本周窗口过滤
+    database.mealRecord.findMany({
+      where: { status: 'CONFIRMED', deletedAt: null },
+      select: { recordDate: true },
+      distinct: ['recordDate']
+    }),
+    database.mealPlan.findMany({
+      where: {
+        planDate: { gte: weekStartDate, lte: weekEndDate },
+        status: { in: ['PLANNED', 'COMPLETED'] },
+        deletedAt: null
+      },
+      select: { planDate: true }
+    }),
+    database.ingredient.findMany({ where: { deletedAt: null }, orderBy: { expiryDate: 'asc' } }),
+    database.inventoryLog.findMany({
+      where: { createdAt: { gte: weekStart, lte: weekEnd }, changeType: 'COOK_DEDUCT' },
+      select: { ingredientId: true, ingredientNameSnapshot: true }
+    })
+  ]);
 
   const expiringLimit = new Date(now);
   expiringLimit.setDate(expiringLimit.getDate() + 3);
@@ -241,27 +280,31 @@ export async function getDashboard(database: PrismaClient): Promise<DashboardDto
     greetingPeriod: period,
     greetingTitle: getGreetingTitle(period, settings?.userNickname ?? null),
     greetingText: getGreetingText(period),
-    recommendedRecipes: recipes.map((recipe) => {
-      const ratings = recipe.recordItems
-        .filter((item) => item.mealRecord.deletedAt === null)
-        .map((item) => item.mealRecord.rating)
-        .filter((rating): rating is number => rating !== null);
-      const rating =
-        ratings.length > 0
-          ? Number((ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1))
-          : null;
+    // 先按忌口词表硬过滤，再取最早创建的 6 条（与原 orderBy createdAt asc + take 6 的顺序口径一致）
+    recommendedRecipes: recipes
+      .filter((recipe) => !forbidden(recipeHaystack(recipe), forbiddenWords))
+      .slice(0, 6)
+      .map((recipe) => {
+        const ratings = recipe.recordItems
+          .filter((item) => item.mealRecord.deletedAt === null)
+          .map((item) => item.mealRecord.rating)
+          .filter((rating): rating is number => rating !== null);
+        const rating =
+          ratings.length > 0
+            ? Number((ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(1))
+            : null;
 
-      return {
-        id: recipe.id,
-        name: recipe.name,
-        imagePath: recipe.imagePath,
-        cookingTimeMinutes: recipe.cookingTimeMinutes,
-        tags: recipe.tags.map(({ tag }) => tag.name),
-        rating,
-        // 真实分类：无封面时前端据此派生差异化图标，不再一律 🥘（D-007）。
-        category: recipe.category ?? null
-      };
-    }),
+        return {
+          id: recipe.id,
+          name: recipe.name,
+          imagePath: recipe.imagePath,
+          cookingTimeMinutes: recipe.cookingTimeMinutes,
+          tags: recipe.tags.map(({ tag }) => tag.name),
+          rating,
+          // 真实分类：无封面时前端据此派生差异化图标，不再一律 🥘（D-007）。
+          category: recipe.category ?? null
+        };
+      }),
     todayRecords: dashboardRecords,
     inventory: {
       totalIngredients: ingredients.length,
