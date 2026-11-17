@@ -5,8 +5,8 @@
 ## 当前架构
 
 - **生产界面**：`app/client/index.html` 是 Google2 V1 的实际入口，包含页面结构、交互与主题；`app/client/public/google2-adapter.js` 将界面接入真实的 `/api/v1` API。它不依赖 `src/main.ts` 挂载 Vue。
-- **兼容代码与测试**：`app/client/src/` 保留 Vue 3、Vue Router、Pinia、TypeScript 页面、组件、业务客户端、测试及本地素材；仍纳入类型检查和回归测试。Vue 路由不能直接当作 Google2 页面导航使用。
-- **构建**：Vite 以 `index.html` 为入口，复制 `public/` 下的适配脚本、离线 Tailwind 浏览器脚本及三个 `.m4a` 音效。默认图片来自 `src/assets/`，由种子写入隔离后的上传目录；页面运行不需要 Tailwind CDN。
+- **兼容代码与测试**：`app/client/src/` 保留 Vue 3、Vue Router、Pinia、TypeScript 页面、组件、业务客户端与本地素材，前端回归测试位于 `app/client/tests/`；两者仍纳入类型检查和回归测试。Vue 路由不能直接当作 Google2 页面导航使用。
+- **构建**：Vite 以 `index.html` 为入口，复制 `public/` 下的适配脚本、离线 Tailwind 浏览器脚本及三个 `.m4a` 音效；构建产物不含图片，页面运行不需要 Tailwind CDN。Google2 只显示 `/uploads/` 下的受控上传图片，缺少图片时回退为 Emoji。
 - **后端**：Node.js、Fastify、TypeScript；Prisma 6 管理 SQLite 与版本化 Migration。生产模式由同一个 Fastify 服务提供页面、静态文件、上传图片和 API。
 - **验证**：Vitest、Fastify inject、Vue Test Utils、ESLint、Prettier 与 GitHub Actions。
 
@@ -18,7 +18,8 @@
 | ----------------------------------- | --------------------------------------------- |
 | `app/client/index.html`             | Google2 V1 生产界面                           |
 | `app/client/public/`                | Google2 适配层、音效、离线 Tailwind 脚本      |
-| `app/client/src/`                   | Vue 兼容源码、测试、图标、小羊与菜谱图片      |
+| `app/client/src/`                   | Vue 兼容源码、图标、小羊与菜谱素材            |
+| `app/client/tests/`                 | 前端回归测试（Vitest）                        |
 | `app/server/src/`                   | API、业务规则、存储与安全实现                 |
 | `app/server/prisma/`                | Schema、全部 Migration 与迁移锁文件           |
 | `app/shared/`                       | 前后端共享类型                                |
@@ -94,13 +95,13 @@ npm run prisma:migrate:deploy
 
 ### 初始化示例数据
 
-空数据库可以直接启动并进行首次引导。需要演示菜谱、店铺、库存等数据时，在应用数据库配置下执行：
+空数据库可以直接启动使用；Google2 界面不含引导流程，引导只存在于 Vue 兼容界面。需要演示菜谱、店铺、库存等数据时，在应用数据库配置下执行：
 
 ```powershell
 npm run seed:dev
 ```
 
-此命令先准备数据库、部署 Migration，再运行幂等开发种子。它会写入示例数据，应只用于新建的开发或验收库；生产用户数据不需要种子。默认图片和音效随仓库提供，不需要另行下载素材。
+此命令先准备数据库、部署 Migration，再运行幂等开发种子。它会写入示例数据，应只用于新建的开发或验收库；生产用户数据不需要种子。种子菜谱的 `imagePath` 只写入裸文件名（如 `tomato-eggs.png`），不会复制图片文件；Google2 只渲染 `/uploads/` 下的受控上传图片，因此这些示例菜谱以 Emoji 回退，需要封面时通过上传接口生成受控图片。原始图片素材位于 `app/client/src/assets/` 并已纳入版本跟踪，但不会直接复制到 Google2 构建或发行目录。音效随仓库提供，不需要另行下载。
 
 ## 开发启动
 
@@ -127,7 +128,9 @@ npm test
 
 `npm test` 会生成 Prisma Client、重建独立测试库，依次执行完整前端与后端测试；默认不会修改 `data/app.db`，并校验应用库指纹。不要把测试库指向需要保留的数据。迁移验证必须使用 `npm run prisma:migrate:deploy`，已有数据库也通过该命令升级。
 
-前端构建输出到 `app/client/dist/`，后端输出到 `dist-server/`，生产构建不生成 sourcemap。只需格式化 README 时使用 `npx --no-install prettier --write README.md`，避免改动其他文件。
+前端构建输出到 `app/client/dist/`，后端输出到 `dist-server/`，生产构建不生成 sourcemap。
+
+质量门禁注意：`npm run format:check` 在干净克隆上仍有 6 个已跟踪文件未通过 Prettier 检查（已复核）：`app/client/public/google2-adapter.js`、`app/client/src/pages/ShoppingPage.vue`、`app/client/tests/google2-adapter.test.ts`、`app/client/tests/google2-t007-taboo.test.ts`、`app/server/src/modules/backup/service.ts`、`app/server/tests/google2-shopping-d5.test.ts`。这是既有基线，会使 GitHub CI 在格式门禁处失败，并阻止自动发行流程继续；本次发布仅格式化 README，保留这些代码文件原样。若在开发工作区执行，未跟踪的验收工件（如 `closeout-browser-sol1/`）也会被 `prettier --check .` 计入，失败清单因此可能多于上述 6 个文件。只需格式化 README 时使用 `npx --no-install prettier --write README.md`，避免改动其他文件。
 
 ## 生产构建与运行
 
@@ -151,7 +154,7 @@ NODE_ENV=production HOST=127.0.0.1 PORT=8787 npm run start:prod
 
 隔离演练可把端口改为未使用的 `18988`，并将数据库、上传和备份全部指向新克隆下的临时目录。停止时在该服务终端使用 Ctrl+C；不要按进程名称批量结束 Node 服务。
 
-首次验收应覆盖首页、菜谱、推荐、计划、日记、库存、购物清单与设置，并在浏览器网络面板确认 `/api/v1/health`、业务 API、`/google2-adapter.js`、`/assets/tailwind/tailwindcss-3.4.17.browser.min.js`、本地图片和 `/assets/audio/*.m4a` 正常返回。音效通常需用户手势后播放，媒体范围请求可能返回 206。
+首次验收应覆盖首页、菜谱、推荐、计划、日记、库存、购物清单与设置，并在浏览器网络面板确认 `/api/v1/health`、业务 API、`/google2-adapter.js`、`/assets/tailwind/tailwindcss-3.4.17.browser.min.js` 与 `/assets/audio/*.m4a` 正常返回。静态构建产物不含图片：需先用 `POST /api/v1/uploads/images` 上传一张图片生成受控图片，再确认 `/uploads/*` 返回并在页面显示；`app/client/src/assets/` 的原始素材只用于 Vue 兼容界面，不会直接复制到 Google2 构建或发行目录。音效通常需用户手势后播放，媒体范围请求可能返回 206。
 
 ## Windows 打包与分发
 
@@ -190,4 +193,4 @@ GitHub 的 **Windows Release Artifact** workflow 在 `main` 的 **CI** 成功后
 
 设置页可导出包含 SQLite、配置快照和上传文件的 ZIP；恢复会验证路径、文件集合、大小、SHA-256、SQLite 完整性与 Migration，并要求一次性高风险授权，替换失败会回滚。PIN 以加盐 scrypt 哈希保存；普通会话不能直接执行恢复。
 
-手机与电脑连接同一可信 Wi-Fi，服务监听 `0.0.0.0` 后使用电脑局域网地址访问；设置页可生成地址二维码。Windows 防火墙仅允许可信专用网络，生产模式校验浏览器 Origin。此应用不提供云同步或远程账户体系，跨设备访问使用同一台电脑上的服务和数据。
+手机与电脑连接同一可信 Wi-Fi，服务监听 `0.0.0.0` 后使用电脑局域网地址访问；设置页可生成地址二维码。Windows 防火墙弹窗时建议仅允许家庭/专用网络；这是用户侧配置建议，应用不自动配置防火墙。生产模式校验浏览器 Origin。此应用不提供云同步或远程账户体系，跨设备访问使用同一台电脑上的服务和数据。
