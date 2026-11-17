@@ -169,7 +169,9 @@ describe('Google2 店铺 Modal 回填与空态', () => {
       "document.getElementById('formStoreName').value = '真实新店'; BentoModal.handleStoreFormSubmit({ preventDefault() {} })"
     );
     expect(save).toHaveBeenCalledTimes(1);
-    expect(stores.data[0]).toMatchObject({ name: '真实新店', price: 35 });
+    // T-006C：新建店铺不再预填演示人均价（input 只保留 placeholder），未填写即 null
+    expect((modal.querySelector('#formStorePrice') as HTMLInputElement).value).toBe('');
+    expect(stores.data[0]).toMatchObject({ name: '真实新店', price: null });
   });
 
   it('不存在 id 的表单隐藏后强制提交不产生 save/create（范围仅为真实 UI 隐藏阻止用户操作）', () => {

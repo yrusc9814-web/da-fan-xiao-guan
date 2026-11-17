@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>搭饭小馆 · 麻薯便当 (Mochi Bento) 全景交互展厅</title>
+  <title>搭饭小馆</title>
   <script src="/assets/tailwind/tailwindcss-3.4.17.browser.min.js"></script>
   <style>
     /* 【高定暖调夜茶色 (Warm Mocha) 4级深色模式规范】 */
@@ -11,13 +11,16 @@
       --color-charcoal: #F2EAE0;
       --color-text-main: #F2EAE0;
       --color-text-muted: #B5A89A;
+      --color-text-subtle: #C4B6A7;
       --color-border: #423930;
       --color-border-subtle: #332B25;
+      --color-input-border: #8B8178;
       --color-bg-page: #1C1916;
       --color-bg-app: #24201C;
       --color-card: #2C2723;
       --color-primary: #FF7663;
       --color-primary-hover: #FA5E48;
+      --color-on-primary: #2D2621;
       --shadow-bento: 0 4px 20px -2px rgba(0, 0, 0, 0.45);
       --shadow-bento-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
       --shadow-bento-lg: 0 12px 36px -4px rgba(0, 0, 0, 0.6);
@@ -26,19 +29,6 @@
 
     html[data-theme="dark"], html[data-theme="dark"] body {
       background-color: #1C1916 !important;
-      color: #F2EAE0 !important;
-    }
-
-    /* 顶栏控制台 */
-    html[data-theme="dark"] .top-toolbar {
-      background-color: #24201C !important;
-      border-color: #423930 !important;
-      color: #F2EAE0 !important;
-      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4) !important;
-    }
-    html[data-theme="dark"] .top-toolbar span,
-    html[data-theme="dark"] .top-toolbar h1,
-    html[data-theme="dark"] .top-toolbar h2 {
       color: #F2EAE0 !important;
     }
 
@@ -52,18 +42,19 @@
       color: #F2EAE0 !important;
     }
     html[data-theme="dark"] .desktop-sidebar-pane .nav-group-title {
-      color: #8E8276 !important;
+      color: #C4B6A7 !important;
     }
     html[data-theme="dark"] .desktop-sidebar-pane .sidebar-link {
-      color: #B5A89A !important;
+      color: #C4B6A7 !important;
     }
     html[data-theme="dark"] .desktop-sidebar-pane .sidebar-link:hover {
       background-color: #2C2723 !important;
-      color: #FF7663 !important;
+      color: #FF8A7A !important;
     }
     html[data-theme="dark"] .desktop-sidebar-pane .sidebar-link.active {
-      background: linear-gradient(135deg, #FF6B57 0%, #FF8575 100%) !important;
-      color: #FFFFFF !important;
+      background: #3A2A25 !important;
+      border-color: #7A4A3C !important;
+      color: #FFB3A6 !important;
     }
 
     /* 卡片体系 (.neo-card) - 注入顶部 1px 拟物漫反射微光与黑曜浮雕 */
@@ -87,24 +78,35 @@
     html[data-theme="dark"] .compact-action-card .compact-action-title {
       color: #F2EAE0 !important;
     }
-    html[data-theme="dark"] .compact-action-card .compact-action-desc {
-      color: #8E8276 !important;
-    }
 
-    /* 移动端专属悬浮导航与刘海 */
-    html[data-theme="dark"] .mobile-notch-bar {
-      background-color: #24201C !important;
-      color: #B5A89A !important;
-    }
+    /* 移动端专属悬浮导航 */
     html[data-theme="dark"] .mobile-floating-dock {
       background-color: #24201C !important;
       border-color: #423930 !important;
     }
     html[data-theme="dark"] .mobile-floating-dock .dock-tab {
-      color: #B5A89A !important;
+      color: #C4B6A7 !important;
     }
     html[data-theme="dark"] .mobile-floating-dock .dock-tab.active {
-      color: #FF7663 !important;
+      background-color: rgba(255, 107, 87, 0.22) !important;
+      border-color: rgba(255, 107, 87, 0.5) !important;
+      color: #FFB3A6 !important;
+    }
+
+    /* 移动端删除确认框：彻底告别 dark: 变体（与 data-theme 双轨），统一按 data-theme 收口 */
+    html[data-theme="dark"] #mobileConfirmModalBox {
+      background-color: #2C2723 !important;
+      border-color: #4A4036 !important;
+    }
+    html[data-theme="dark"] #mobileConfirmTitle {
+      color: #F2EAE0 !important;
+    }
+    html[data-theme="dark"] #mobileConfirmMessage {
+      color: #C4B6A7 !important;
+    }
+    html[data-theme="dark"] #mobileConfirmModalBox > div:first-child {
+      background-color: #3A2A25 !important;
+      border-color: #8A5142 !important;
     }
 
     /* 模态弹窗 */
@@ -117,13 +119,16 @@
     html[data-theme="dark"] .bg-white {
       background-color: #26211D !important;
     }
-    /* 所有浅色背景在深色模式下统一置换为暗夜语义槽板 (彻底根治图1及子卡片白底问题) */
-    html[data-theme="dark"] .bg-\[\#F4FAF6\] {
+    /* 所有浅色背景在深色模式下统一置换为暗夜语义槽板 (彻底根治浅色块残留) */
+    html[data-theme="dark"] .bg-\[\#F4FAF6\],
+    html[data-theme="dark"] .bg-\[\#F0FDF4\],
+    html[data-theme="dark"] .bg-emerald-50 {
       background-color: rgba(46, 125, 50, 0.16) !important;
       border-color: rgba(76, 175, 80, 0.32) !important;
     }
     html[data-theme="dark"] .bg-\[\#FFFDF8\],
     html[data-theme="dark"] .bg-\[\#FFF8F5\],
+    html[data-theme="dark"] .bg-\[\#FFF8F6\],
     html[data-theme="dark"] .bg-\[\#FAF7F2\],
     html[data-theme="dark"] .bg-\[\#FCFAF7\],
     html[data-theme="dark"] .bg-\[\#FFF9F6\],
@@ -134,13 +139,73 @@
       background-color: #201B17 !important;
       border-color: #423930 !important;
     }
+    /* 首页推荐卡封面与彩色标签：进入低亮度品牌槽板，杜绝浅色块 */
+    html[data-theme="dark"] .bg-\[\#FAF5FF\],
+    html[data-theme="dark"] .bg-\[\#F5F0FF\],
+    html[data-theme="dark"] .bg-\[\#FCE7F3\],
+    html[data-theme="dark"] .bg-\[\#FBCFE8\],
+    html[data-theme="dark"] .bg-\[\#E9DDFC\] {
+      background-color: rgba(124, 58, 237, 0.18) !important;
+      border-color: rgba(167, 139, 250, 0.42) !important;
+    }
+    html[data-theme="dark"] .bg-\[\#FFF5F7\],
+    html[data-theme="dark"] .bg-\[\#FFF0F0\],
+    html[data-theme="dark"] .bg-\[\#FFF0F4\] {
+      background-color: rgba(219, 39, 119, 0.16) !important;
+      border-color: rgba(244, 114, 182, 0.4) !important;
+    }
+    html[data-theme="dark"] .bg-\[\#FFF8E6\],
+    html[data-theme="dark"] .bg-\[\#FFF9EC\],
+    html[data-theme="dark"] .bg-\[\#FFFDF5\],
+    html[data-theme="dark"] .bg-\[\#FFF7ED\],
+    html[data-theme="dark"] .bg-orange-50,
+    html[data-theme="dark"] .bg-amber-50 {
+      background-color: rgba(245, 158, 11, 0.16) !important;
+      border-color: rgba(245, 158, 11, 0.4) !important;
+    }
+    html[data-theme="dark"] .bg-\[\#E0F2FE\],
+    html[data-theme="dark"] .bg-\[\#BAE6FD\],
+    html[data-theme="dark"] .bg-sky-50,
+    html[data-theme="dark"] .bg-sky-100 {
+      background-color: rgba(2, 132, 199, 0.18) !important;
+      border-color: rgba(56, 189, 248, 0.4) !important;
+    }
+    html[data-theme="dark"] .bg-\[\#FFEBE6\],
+    html[data-theme="dark"] .bg-\[\#FFF5F2\] {
+      background-color: rgba(255, 107, 87, 0.16) !important;
+      border-color: rgba(255, 107, 87, 0.36) !important;
+    }
+    /* hover 态浅色块：深色下同样进入槽板，避免悬停瞬间闪白 */
+    html[data-theme="dark"] .bg-\[\#FFE0D9\],
+    html[data-theme="dark"] .bg-\[\#FFF7F4\],
+    html[data-theme="dark"] .bg-\[\#FFF2F0\],
+    html[data-theme="dark"] .bg-\[\#FFFBF8\],
+    html[data-theme="dark"] .bg-\[\#FFECE8\],
+    html[data-theme="dark"] .bg-\[\#F0E8DC\] {
+      background-color: #3A322C !important;
+      border-color: #6B5B4C !important;
+    }
+    html[data-theme="dark"] .hover\:bg-\[\#FFECE8\]:hover,
+    html[data-theme="dark"] .hover\:bg-\[\#FFE0D9\]:hover,
+    html[data-theme="dark"] .hover\:bg-\[\#F0E8DC\]:hover,
+    html[data-theme="dark"] .hover\:bg-\[\#FFF5F2\]:hover,
+    html[data-theme="dark"] .hover\:bg-\[\#FFF0ED\]:hover,
+    html[data-theme="dark"] .hover\:bg-\[\#FFF7F5\]:hover,
+    html[data-theme="dark"] .hover\:bg-\[\#FFFDF5\]:hover,
+    html[data-theme="dark"] .hover\:bg-\[\#F4FAF6\]:hover,
+    html[data-theme="dark"] .hover\:bg-\[\#FAF7FE\]:hover {
+      background-color: #3A322C !important;
+    }
+    html[data-theme="dark"] .bg-\[\#FFF2E8\] {
+      background-color: rgba(249, 115, 22, 0.16) !important;
+      border-color: rgba(249, 115, 22, 0.38) !important;
+    }
     html[data-theme="dark"] .text-\[\#2E7D32\],
     html[data-theme="dark"] .text-emerald-600,
     html[data-theme="dark"] .text-emerald-700 {
       color: #81C784 !important;
     }
     html[data-theme="dark"] .bg-\[\#EDF7EE\],
-    html[data-theme="dark"] .bg-emerald-50,
     html[data-theme="dark"] .bg-emerald-100 {
       background-color: rgba(46, 125, 50, 0.25) !important;
       color: #81C784 !important;
@@ -148,24 +213,31 @@
     html[data-theme="dark"] .bg-\[\#FFF0ED\] {
       background-color: rgba(255, 107, 87, 0.18) !important;
       border-color: rgba(255, 107, 87, 0.35) !important;
+      color: #FFB3A6 !important;
     }
     html[data-theme="dark"] .border-\[\#D8EEDB\] {
       border-color: rgba(76, 175, 80, 0.32) !important;
     }
 
     /* 食材库与记录微标深色适配 */
-    html[data-theme="dark"] .bg-red-100 {
+    html[data-theme="dark"] .bg-red-100,
+    html[data-theme="dark"] .bg-red-50 {
       background-color: rgba(239, 68, 68, 0.22) !important;
       border-color: rgba(239, 68, 68, 0.45) !important;
     }
+    html[data-theme="dark"] .text-red-500,
     html[data-theme="dark"] .text-red-600,
     html[data-theme="dark"] .text-red-700 {
+      color: #FCA5A5 !important;
+    }
+    html[data-theme="dark"] .text-\[\#DC2626\] {
       color: #FCA5A5 !important;
     }
     html[data-theme="dark"] .bg-amber-100 {
       background-color: rgba(245, 158, 11, 0.22) !important;
       border-color: rgba(245, 158, 11, 0.45) !important;
     }
+    html[data-theme="dark"] .text-amber-600,
     html[data-theme="dark"] .text-amber-700,
     html[data-theme="dark"] .text-amber-800 {
       color: #FDE68A !important;
@@ -180,6 +252,34 @@
     html[data-theme="dark"] .bg-\[\#EBF7EE\] {
       background-color: rgba(46, 125, 50, 0.2) !important;
       border-color: rgba(76, 175, 80, 0.35) !important;
+    }
+    html[data-theme="dark"] .text-\[\#0284C7\] {
+      color: #7DD3FC !important;
+    }
+    html[data-theme="dark"] .text-\[\#DB2777\] {
+      color: #F9A8D4 !important;
+    }
+    html[data-theme="dark"] .text-\[\#B26A00\] {
+      color: #FDE68A !important;
+    }
+    html[data-theme="dark"] .text-\[\#7C3AED\] {
+      color: #C4B5FD !important;
+    }
+    /* 推荐卡标签的深色档：与浅色压深值一一对应，暗槽板底色上 >= 7:1 */
+    html[data-theme="dark"] .text-\[\#92400E\] {
+      color: #FDE68A !important;
+    }
+    html[data-theme="dark"] .text-\[\#0369A1\] {
+      color: #7DD3FC !important;
+    }
+    html[data-theme="dark"] .text-\[\#9D174D\] {
+      color: #F9A8D4 !important;
+    }
+    html[data-theme="dark"] .text-orange-600 {
+      color: #FDBA74 !important;
+    }
+    html[data-theme="dark"] .border-orange-200 {
+      border-color: rgba(249, 115, 22, 0.42) !important;
     }
 
     /* 深色全域文字对比度阶梯大幅提档 (WCAG AAA 级覆盖，告别灰字暗淡) */
@@ -237,17 +337,54 @@
     html[data-theme="dark"] textarea {
       background-color: #201B17 !important;
       color: #F2EAE0 !important;
-      border-color: #423930 !important;
+      border-color: #8B8178 !important;
     }
     html[data-theme="dark"] .pill-btn {
       background-color: #332B25 !important;
-      border-color: #4E4237 !important;
+      border-color: #6B5B4C !important;
       color: #E2D9CD !important;
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3) !important;
     }
-    html[data-theme="dark"] .pill-btn.active {
-      background: linear-gradient(135deg, #FF6B57 0%, #FF8575 100%) !important;
-      color: #FFFFFF !important;
+    html[data-theme="dark"] .pill-btn.active,
+    html[data-theme="dark"] .pill-btn:active {
+      background: #3A2A25 !important;
+      border-color: #8A5142 !important;
+      color: #FFB3A6 !important;
+    }
+    /* 转盘底盘深色收口：彻底清除亮米白圆盘 */
+    html[data-theme="dark"] .wheel-chassis {
+      background-color: #2C2723 !important;
+      border-color: #4A4036 !important;
+      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.5) !important;
+    }
+    html[data-theme="dark"] .wheel-go-btn {
+      background: radial-gradient(circle at 35% 35%, #3A322C 0%, #332B25 70%, #2C2723 100%) !important;
+      border-color: #8A5142 !important;
+      color: #FFB3A6 !important;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5) !important;
+    }
+    /* 主按钮禁用态：明确灰度与不可点击语义 */
+    .neo-btn-primary:disabled,
+    .neo-btn-primary[aria-disabled="true"],
+    .neo-btn-secondary:disabled {
+      background: #E7DFD6 !important;
+      border-color: #CFC4B8 !important;
+      color: #57534E !important;
+      box-shadow: none !important;
+      cursor: not-allowed !important;
+      opacity: 1 !important;
+    }
+    html[data-theme="dark"] .neo-btn-primary:disabled,
+    html[data-theme="dark"] .neo-btn-primary[aria-disabled="true"],
+    html[data-theme="dark"] .neo-btn-secondary:disabled {
+      background: #332B25 !important;
+      border-color: #6B5B4C !important;
+      color: #C4B6A7 !important;
+    }
+    .wheel-go-btn:disabled,
+    .wheel-go-btn[aria-busy="true"] {
+      cursor: progress;
+      opacity: 0.92;
     }
     html[data-theme="dark"] #globalTimerCapsule {
       background-color: #2C2723 !important;
@@ -255,17 +392,40 @@
       color: #F2EAE0 !important;
     }
 
-    /* 首页深色模式三项指标高对比度适配 (记录天数、即将过期、库存不足) */
+    /* 首页深色模式指标卡高对比度适配：本周统计四宫格 + 库存三指标统一暗槽板 (B01/B02) */
     html[data-theme="dark"] .stat-card-record-days,
+    html[data-theme="dark"] .stat-card-total-meals,
+    html[data-theme="dark"] .stat-card-average-rating,
+    html[data-theme="dark"] .stat-card-consumed,
     html[data-theme="dark"] .stat-card-expiring,
     html[data-theme="dark"] .stat-card-low-stock {
       background-color: var(--color-card) !important;
-      border-color: #423930 !important;
+      border-color: #4A4036 !important;
+      box-shadow: none !important;
     }
     html[data-theme="dark"] .stat-card-record-days .stat-label,
+    html[data-theme="dark"] .stat-card-total-meals .stat-label,
+    html[data-theme="dark"] .stat-card-average-rating .stat-label,
+    html[data-theme="dark"] .stat-card-consumed .stat-label,
     html[data-theme="dark"] .stat-card-expiring .stat-label,
     html[data-theme="dark"] .stat-card-low-stock .stat-label {
-      color: var(--color-text-muted) !important;
+      color: var(--color-text-subtle) !important;
+    }
+    /* 数值色在深色暗槽板上同档提亮 */
+    html[data-theme="dark"] .stat-card-record-days [data-binding^="weeklyStat-"],
+    html[data-theme="dark"] .stat-card-total-meals [data-binding^="weeklyStat-"],
+    html[data-theme="dark"] .stat-card-average-rating [data-binding^="weeklyStat-"] {
+      color: #FFB3A6 !important;
+    }
+    html[data-theme="dark"] .stat-card-consumed [data-binding^="weeklyStat-"] {
+      color: #C4B5FD !important;
+    }
+    html[data-theme="dark"] .stat-card-expiring .stat-label + span,
+    html[data-theme="dark"] .stat-card-expiring [data-binding="inventory-expiringSoon"] {
+      color: #FCA5A5 !important;
+    }
+    html[data-theme="dark"] .stat-card-low-stock [data-binding="inventory-insufficient"] {
+      color: #FBBF24 !important;
     }
 
     /* -------------------------------------------------------------------------
@@ -305,12 +465,16 @@
       --color-charcoal: #2A2421;
       --color-text-main: #2A2421;
       --color-text-muted: #7C7267;
+      --color-text-subtle: #6F655C;
       --color-border: #DFD4C7;
       --color-border-subtle: #ECE3D7;
+      --color-input-border: #A08C77;
       --color-bg-page: #F6F2EC;
       --color-bg-app: #FCFAF7;
       --color-card: #FFFFFF;
       --color-primary: #FF6B57;
+      --color-primary-text: #B3402F;
+      --color-on-primary: #2D2621;
       --color-primary-hover: #F25843;
       --color-mustard: #FFC53D;
       --color-mint: #6ABF69;
@@ -335,10 +499,6 @@
     .desktop-sidebar-pane {
       border-right: 1.5px solid var(--color-border) !important;
     }
-    .top-toolbar {
-      border: 1.5px solid var(--color-border) !important;
-      box-shadow: var(--shadow-bento-sm) !important;
-    }
     .pill-btn {
       border: 1.5px solid #DACAB8 !important;
       background: #F4ECE3 !important;
@@ -347,14 +507,111 @@
     }
     .pill-btn:hover {
       background: #FFF0ED !important;
-      border-color: #FEDBC5 !important;
-      color: var(--color-primary) !important;
+      border-color: #DACAB8 !important;
+      color: #B3402F !important;
     }
     .pill-btn:active, .pill-btn.active {
-      background: linear-gradient(135deg, var(--color-primary) 0%, #FF8575 100%) !important;
+      background: #C4442F !important;
       color: #FFFFFF !important;
       border-color: transparent !important;
-      box-shadow: 0 3px 10px rgba(255, 107, 87, 0.35) !important;
+      box-shadow: 0 3px 10px rgba(196, 68, 47, 0.32) !important;
+    }
+
+    /* 品牌红仅作填充、文字改深色，或把填充压深以承载白字（正文 >= 4.5:1） */
+    .bg-\[\#FF6B57\] {
+      background-color: #C4442F !important;
+    }
+    .hover\:bg-\[\#FF6B57\]:hover {
+      background-color: #C4442F !important;
+    }
+    /* 主强调文字：品牌红在白/米底上 2.8:1，正文级统一压深到 >= 5.1:1 */
+    .text-\[\#FF6B57\],
+    a.text-\[\#FF6B57\],
+    button.text-\[\#FF6B57\],
+    .hover\:text-\[\#FF6B57\]:hover {
+      color: var(--color-primary-text, #B3402F) !important;
+    }
+    /* 深色底上强调文字改用高亮珊瑚色（>= 6.4:1） */
+    html[data-theme="dark"] .text-\[\#FF6B57\] {
+      color: #FF8A7A !important;
+    }
+    /* 小字号弱化说明：stone-400/500 在浅底不足 4.5，统一提到可达标色阶 */
+    .text-stone-400 {
+      color: #6F655C !important;
+    }
+    .text-stone-500 {
+      color: #5F574F !important;
+    }
+    .text-stone-300 {
+      color: #6F655C !important;
+    }
+    html[data-theme="dark"] .text-stone-300 {
+      color: #C4B6A7 !important;
+    }
+    /* 橙色/琥珀/蓝色/粉色数据色在浅底上 2.1-4.2:1，小字号统一压深 */
+    .text-\[\#D97706\],
+    .text-amber-500 {
+      color: #B45309 !important;
+    }
+    /* 日历「已打卡」徽标用 text-amber-600（原 #D97706），白底 3.19 / 今日浅粉 2.87，压深到 >= 4.8 */
+    .text-amber-600 {
+      color: #A5560A !important;
+    }
+    html[data-theme="dark"] .text-\[\#D97706\],
+    html[data-theme="dark"] .text-amber-500 {
+      color: #FBBF24 !important;
+    }
+    .text-\[\#B26A00\] {
+      color: #92400E !important;
+    }
+    .text-\[\#0284C7\] {
+      color: #0369A1 !important;
+    }
+    .text-\[\#DB2777\] {
+      color: #9D174D !important;
+    }
+    .text-\[\#DC2626\] {
+      color: #B42318 !important;
+    }
+    .text-\[\#2E7D32\],
+    .text-emerald-600,
+    .text-emerald-700 {
+      color: #25702A !important;
+    }
+    .text-orange-600 {
+      color: #9A3412 !important;
+    }
+    .text-red-600,
+    .text-red-700 {
+      color: #991B1B !important;
+    }
+    .text-\[\#7C3AED\] {
+      color: #5B21B6 !important;
+    }
+    .text-red-500 {
+      color: #B42318 !important;
+    }
+    /* 搜索框等控件自带 bg-[#FCFAF7] / border-[#F0E8DC] 等类，同时被深色底槽规则以
+       「html[data-theme] .bg-[#…]」(0,3,1) 压回 #423930（对 #201B17 仅 1.5:1）。
+       这里用 [class] + [class*="border-"] 提到 (0,3,2) 才能胜出；聚焦态给珊瑚色。 */
+    html[data-theme="dark"] input[class][class*="border-"],
+    html[data-theme="dark"] select[class][class*="border-"],
+    html[data-theme="dark"] textarea[class][class*="border-"] {
+      border-color: #8B8178 !important;
+    }
+    html[data-theme="dark"] input[class][class*="border-"]:focus,
+    html[data-theme="dark"] select[class][class*="border-"]:focus,
+    html[data-theme="dark"] textarea[class][class*="border-"]:focus {
+      border-color: #FF8A7A !important;
+    }
+    /* 表单控件边框：浅色需与白/米底 >= 3:1（类选择器优先于通用边界规则，故用属性选择器提权） */
+    input,
+    select,
+    textarea,
+    input[class*="border-"],
+    select[class*="border-"],
+    textarea[class*="border-"] {
+      border-color: var(--color-input-border, #A08C77) !important;
     }
 
     * {
@@ -374,24 +631,7 @@
       align-items: center;
     }
 
-    /* 顶部视口与音效控制台 */
-    .top-toolbar {
-      width: 100%;
-      max-width: 1200px;
-      background: #FFFFFF;
-      border: 1px solid var(--color-border);
-      box-shadow: var(--shadow-bento-sm);
-      border-radius: 20px;
-      padding: 12px 20px;
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      justify-content: space-between;
-      gap: 12px;
-      margin-bottom: 16px;
-      z-index: 60;
-    }
-
+    /* 桌面端主滚动区：移除展厅顶栏后，视口顶部内边距自然承接内容 */
     .pill-btn {
       padding: 7px 16px;
       border-radius: 9999px;
@@ -419,10 +659,10 @@
 
     .pill-btn:active, .pill-btn.active {
       transform: scale(0.96);
-      background: linear-gradient(135deg, var(--color-primary) 0%, #FF8575 100%);
+      background: #C4442F;
       color: #FFFFFF;
       border-color: transparent;
-      box-shadow: var(--shadow-primary);
+      box-shadow: 0 2px 8px rgba(196, 68, 47, 0.28);
     }
 
     /* 主舞台外框 */
@@ -447,23 +687,6 @@
       flex-direction: column;
     }
 
-    /* 手机顶部刘海条 */
-    .mobile-notch-bar {
-      display: none;
-      height: 28px;
-      align-items: center;
-      justify-content: space-between;
-      padding: 6px 20px 0;
-      font-size: 11px;
-      font-weight: 800;
-      color: var(--color-text-muted);
-      z-index: 50;
-    }
-
-    .mobile-mode .mobile-notch-bar {
-      display: flex;
-    }
-
     /* 桌面端侧边栏 */
     .desktop-sidebar-pane {
       width: 230px;
@@ -485,17 +708,12 @@
 
     /* =========================================================================
        真实移动设备视口（≤640px）：自动进入移动外壳后的布局铺满。
-       该块只与 .mobile-mode（JS 按真机宽度自动维护）组合生效；桌面展厅手动
-       切换的手机框（宽屏 .mobile-mode）不受影响，保持原有 420px 演示形态。
+       该块只与 .mobile-mode（JS 按真机宽度自动维护）组合生效；宽屏下若以
+       移动外壳展示（420px 演示形态）则不受影响。
        ========================================================================= */
     @media (max-width: 640px) {
       body:has(.viewport-frame.mobile-mode) {
         padding: 0;
-      }
-
-      /* 展厅工具栏是真机视口内不存在的桌面概念：隐藏而非压缩 */
-      body:has(.viewport-frame.mobile-mode) .top-toolbar {
-        display: none;
       }
 
       .viewport-frame.mobile-mode {
@@ -544,7 +762,7 @@
     .nav-group-title {
       font-size: 11px;
       font-weight: 900;
-      color: #A8A29E;
+      color: #6F655C;
       letter-spacing: 0.05em;
       padding: 0 8px;
       margin-bottom: 6px;
@@ -568,7 +786,7 @@
 
     .sidebar-link:hover {
       background: #FFF7F5;
-      color: var(--color-primary);
+      color: #B3402F;
       transform: translateX(2px);
     }
 
@@ -576,7 +794,7 @@
       background: #FFF2EE;
       border-color: #FEDBC5;
       box-shadow: 0 2px 8px rgba(255, 107, 87, 0.12);
-      color: var(--color-primary);
+      color: #B3402F;
     }
 
     /* 移动端悬浮 Dock 导航条 */
@@ -697,7 +915,7 @@
     }
 
     .dock-tab.active {
-      color: var(--color-primary);
+      color: #B3402F;
       background: #FFF0ED;
       border: 1px solid #FEDBC5;
       transform: translateY(-2px) scale(1.04);
@@ -729,7 +947,7 @@
     }
 
     .neo-btn-primary {
-      background: linear-gradient(135deg, var(--color-primary) 0%, #FF8575 100%);
+      background: linear-gradient(135deg, #C4442F 0%, #B33A28 100%);
       color: #FFFFFF;
       border: none;
       box-shadow: var(--shadow-primary);
@@ -745,7 +963,7 @@
     }
 
     .neo-btn-primary:hover {
-      background: linear-gradient(135deg, var(--color-primary-hover) 0%, #FF6B57 100%);
+      background: linear-gradient(135deg, #B33A28 0%, #A83422 100%);
       transform: translateY(-1px);
       box-shadow: 0 6px 18px rgba(255, 107, 87, 0.35);
     }
@@ -753,6 +971,15 @@
     .neo-btn-primary:active {
       transform: scale(0.96);
       box-shadow: 0 2px 6px rgba(255, 107, 87, 0.2);
+    }
+
+    /* 打卡按钮沿用绿色语义，渐变两端均保证白字对比度。 */
+    .neo-btn-primary.from-emerald-500:not(:disabled):not([aria-disabled="true"]) {
+      background: linear-gradient(to right, #047857, #0F766E) !important;
+      color: #FFFFFF !important;
+    }
+    .neo-btn-primary.from-emerald-500:not(:disabled):not([aria-disabled="true"]):hover {
+      background: linear-gradient(to right, #065F46, #115E59) !important;
     }
 
     .neo-btn-secondary {
@@ -770,7 +997,7 @@
     .neo-btn-secondary:hover {
       background: #FFF8F0;
       border-color: #FEDBC5;
-      color: var(--color-primary);
+      color: #B3402F;
       transform: translateY(-1px);
     }
 
@@ -848,9 +1075,9 @@
       height: 64px;
       border-radius: 50%;
       background: radial-gradient(circle at 35% 35%, #FFFFFF 0%, #FFF5F2 70%, #FFEBE6 100%);
-      border: 3px solid #FFE4DE;
+      border: 3px solid #F3B7AC;
       box-shadow: 0 4px 16px rgba(255, 107, 87, 0.28);
-      color: var(--color-primary);
+      color: #B3402F;
       font-weight: 900;
       font-size: 18px;
       display: grid;
@@ -870,6 +1097,26 @@
       box-shadow: 0 2px 8px rgba(255, 107, 87, 0.2);
     }
 
+    /* 转盘 SVG 衬底/分隔线：随主题切换，避免深色下残留亮米白与亮描边 */
+    .wheel-svg-base-fill { fill: #FAF7F2; }
+    .wheel-svg-base-ring { stroke: #EFE6DA; }
+    .wheel-svg-base-dash { stroke: #FEDBC5; }
+    .wheel-svg-separator { stroke: #FAF7F2; }
+    .wheel-svg-center-fill { fill: #FAF7F2; stroke: #EFE6DA; }
+    .wheel-svg-empty-fill { fill: #F3EDE2; }
+    .wheel-svg-empty-icon { fill: #6F655C; }
+    .wheel-svg-empty-title { fill: #57534E; }
+    .wheel-svg-empty-hint { fill: #6F655C; }
+    html[data-theme="dark"] .wheel-svg-base-fill { fill: #2C2723; }
+    html[data-theme="dark"] .wheel-svg-base-ring { stroke: #4A4036; }
+    html[data-theme="dark"] .wheel-svg-base-dash { stroke: #6B5B4C; }
+    html[data-theme="dark"] .wheel-svg-separator { stroke: #2C2723; }
+    html[data-theme="dark"] .wheel-svg-center-fill { fill: #2C2723; stroke: #4A4036; }
+    html[data-theme="dark"] .wheel-svg-empty-fill { fill: #201B17; }
+    html[data-theme="dark"] .wheel-svg-empty-icon { fill: #C4B6A7; }
+    html[data-theme="dark"] .wheel-svg-empty-title { fill: #F2EAE0; }
+    html[data-theme="dark"] .wheel-svg-empty-hint { fill: #C4B6A7; }
+
     /* 撒花 Canvas 画布 */
     #confettiCanvas {
       position: absolute;
@@ -881,24 +1128,7 @@
       z-index: 35;
     }
 
-    /* 命中结果弹跳卡片 */
-    .result-banner {
-      background: linear-gradient(135deg, #FFFDF8 0%, #FFF5E8 100%);
-      border: 1px solid #FEE8B8;
-      box-shadow: 0 6px 20px rgba(255, 197, 61, 0.25);
-      border-radius: 18px;
-      padding: 14px 18px;
-      text-align: center;
-      width: 100%;
-      margin: 8px 0;
-      display: none;
-      animation: pop-bounce 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
-    }
-
-    .result-banner.show {
-      display: block;
-    }
-
+    /* 命中结果弹跳卡片 (HTML 已移除旧 result-banner 结构，样式一并清理) */
     @keyframes pop-bounce {
       0% { transform: scale(0.88); opacity: 0; }
       100% { transform: scale(1); opacity: 1; }
@@ -988,6 +1218,21 @@
       border-color: #E9DDFC;
       background: #FAF7FE;
     }
+    html[data-theme="dark"] .compact-action-card--pink:hover,
+    html[data-theme="dark"] .compact-action-card--yellow:hover,
+    html[data-theme="dark"] .compact-action-card--green:hover,
+    html[data-theme="dark"] .compact-action-card--purple:hover {
+      background: #3A322C !important;
+      border-color: #6B5B4C !important;
+    }
+    html[data-theme="dark"] .drawer-item:hover,
+    html[data-theme="dark"] .drawer-item:active {
+      background: #3A2A25 !important;
+      color: #FFB3A6 !important;
+    }
+    html[data-theme="dark"] .mobile-floating-dock .dock-tab:hover {
+      background: #3A322C !important;
+    }
     .compact-action-icon {
       width: 38px;
       height: 38px;
@@ -1018,22 +1263,18 @@
     .compact-action-arrow {
       font-size: 13px;
       font-weight: 900;
-      color: #A8A29E;
+      color: #6F655C;
       transition: transform 0.15s ease, color 0.15s ease;
+    }
+    html[data-theme="dark"] .compact-action-arrow {
+      color: #C4B6A7;
+    }
+    html[data-theme="dark"] .compact-action-card:hover .compact-action-arrow {
+      color: #FFB3A6;
     }
     .compact-action-card:hover .compact-action-arrow {
       transform: translateX(3px);
-      color: var(--color-primary);
-    }
-    .compact-action-desc {
-      font-size: 11px;
-      font-weight: 600;
-      color: var(--color-text-muted);
-      margin: 0;
-      line-height: 1.2;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      color: var(--color-primary-text, #B3402F);
     }
 
     .dashboard-info-grid-responsive {
@@ -1118,6 +1359,66 @@
       overflow-x: hidden !important;
       max-width: 100% !important;
       box-sizing: border-box !important;
+    }
+
+    /* 首页周历 7 格状态样式：今日高亮 / 已打卡 / 有计划 / 普通日
+       由 applyHomeWeekCellStyles() 依 adapter 写入的 data-status 与 is-today-week-cell 统一维护，
+       模板不再写死任何一格的黄边或今日底色。 */
+    .week-cell,
+    .mobile-week-calendar-list > [data-binding^="mobileCalendarDay-"] {
+      background: #FFFFFF;
+      border-color: var(--color-border);
+      color: var(--color-text-main);
+      box-shadow: 0 2px 6px rgba(180, 140, 120, 0.04);
+    }
+    .week-cell.week-cell-recorded,
+    .mobile-week-calendar-list > .week-cell-recorded {
+      border-color: #BCE3C1 !important;
+      border-bottom-width: 4px !important;
+      border-bottom-style: solid !important;
+      border-bottom-color: #2E7D32 !important;
+      background-color: #FFFFFF !important;
+    }
+    .week-cell.week-cell-planned,
+    .mobile-week-calendar-list > .week-cell-planned {
+      border-color: #FEE8B8 !important;
+      border-bottom-width: 4px !important;
+      border-bottom-style: solid !important;
+      border-bottom-color: #B45309 !important;
+      background-color: #FFFFFF !important;
+    }
+    .week-cell.week-cell-today,
+    .mobile-week-calendar-list > .week-cell-today {
+      border-width: 2px !important;
+      border-style: solid !important;
+      border-color: #C2412F !important;
+      background-color: #FFF8F5 !important;
+      box-shadow: 0 4px 12px rgba(194, 65, 47, 0.18) !important;
+    }
+    html[data-theme="dark"] .week-cell,
+    html[data-theme="dark"] .mobile-week-calendar-list > [data-binding^="mobileCalendarDay-"] {
+      background-color: #2C2723 !important;
+      border-color: #4A4036 !important;
+      color: #F2EAE0 !important;
+      box-shadow: none !important;
+    }
+    html[data-theme="dark"] .week-cell.week-cell-recorded,
+    html[data-theme="dark"] .mobile-week-calendar-list > .week-cell-recorded {
+      border-color: rgba(76, 175, 80, 0.45) !important;
+      border-bottom-color: #81C784 !important;
+      background-color: rgba(46, 125, 50, 0.16) !important;
+    }
+    html[data-theme="dark"] .week-cell.week-cell-planned,
+    html[data-theme="dark"] .mobile-week-calendar-list > .week-cell-planned {
+      border-color: rgba(245, 158, 11, 0.45) !important;
+      border-bottom-color: #FBBF24 !important;
+      background-color: rgba(245, 158, 11, 0.16) !important;
+    }
+    html[data-theme="dark"] .week-cell.week-cell-today,
+    html[data-theme="dark"] .mobile-week-calendar-list > .week-cell-today {
+      border-color: #FF8A7A !important;
+      background-color: rgba(255, 107, 87, 0.18) !important;
+      box-shadow: none !important;
     }
 
     /* 移动端周打卡日程流响应式切换 (默认桌面7列网格，移动端单列便当列表一个一排) */
@@ -1601,15 +1902,6 @@
       max-width: calc(100vw - 44px) !important;
       margin: 4px auto 2px !important;
     }
-    .mobile-mode #page-wheel .result-banner {
-      padding: 8px 12px !important;
-      margin: 4px 0 !important;
-      border-radius: 14px !important;
-    }
-    .mobile-mode #page-wheel #resultDishText {
-      font-size: 1.05rem !important;
-      margin: 4px 0 !important;
-    }
     .mobile-mode #page-wheel .wheel-stage > div:last-child {
       margin-top: 6px !important;
       margin-bottom: 0 !important;
@@ -1653,15 +1945,6 @@
         height: 332px !important;
         max-width: calc(100vw - 44px) !important;
         margin: 4px auto 2px !important;
-      }
-      #page-wheel .result-banner {
-        padding: 8px 12px !important;
-        margin: 4px 0 !important;
-        border-radius: 14px !important;
-      }
-      #page-wheel #resultDishText {
-        font-size: 1.05rem !important;
-        margin: 4px 0 !important;
       }
       #page-wheel .wheel-stage > div:last-child {
         margin-top: 6px !important;
@@ -1798,11 +2081,9 @@
   /* ========================================================================= */
   body,
   .viewport-frame,
-  .top-toolbar,
   .desktop-sidebar-pane,
   .mobile-header-bar,
   .mobile-floating-dock,
-  .mobile-notch-bar,
   .neo-card,
   .compact-action-card,
   .modal-dialog,
@@ -1869,47 +2150,11 @@
 </head>
 <body>
 
-  <!-- 顶部控制台 -->
-  <header class="top-toolbar">
-    <div class="flex items-center gap-2.5">
-      <span class="text-xs font-black bg-[#FF6B57] text-white px-3 py-1 rounded-full shadow-[0_2px_8px_rgba(255,107,87,0.3)]">
-        🍱 麻薯便当 Mochi Bento
-      </span>
-      <span class="text-sm font-black text-[#2D2621]">搭饭小馆 · 全景体验展厅</span>
-    </div>
-
-    <!-- 视角切换 -->
-    <div class="flex flex-wrap items-center gap-2">
-      <span class="text-xs font-bold text-stone-500">双重视角：</span>
-      <button class="pill-btn active" id="btnDesktopMode" onclick="setDeviceMode('desktop')">💻 桌面端全览 (含完整侧边栏)</button>
-      <button class="pill-btn" id="btnMobileMode" onclick="setDeviceMode('mobile')">📱 手机端 (含 Floating Dock)</button>
-    </div>
-
-    <!-- 主题三模态切换 (浅色 / 深色 / 系统) -->
-    <div class="flex items-center gap-1 bg-[#FAF7F2] p-1 rounded-full border border-[#F0E8DC] dark:bg-[#1D1815] dark:border-[#3A322A]">
-      <button class="pill-btn active py-1 px-2.5 text-xs" id="btnThemeLight" onclick="setAppTheme('light')">☀️ 浅色</button>
-      <button class="pill-btn py-1 px-2.5 text-xs" id="btnThemeDark" onclick="setAppTheme('dark')">🌙 深色</button>
-      <button class="pill-btn py-1 px-2.5 text-xs" id="btnThemeSystem" onclick="setAppTheme('system')">💻 系统</button>
-    </div>
-
-    <!-- 音效开关 -->
-    <div class="flex items-center gap-2">
-      <button class="pill-btn" id="btnAudioToggle"  onclick="toggleAudio()">🔊 音效：开启</button>
-    </div>
-  </header>
-
   <!-- 主舞台视口容器 -->
   <div class="viewport-frame" id="appViewport">
     
     <!-- 全屏撒花 Canvas -->
     <canvas id="confettiCanvas"></canvas>
-
-    <!-- 手机端顶部状态栏 -->
-    <div class="mobile-notch-bar">
-      <span>12:30</span>
-      <div class="w-16 h-3 bg-[#E5DCD0] rounded-full mx-auto"></div>
-      <span>5G 100%</span>
-    </div>
 
     <!-- 📱 移动端顶部应用条 (集成抽屉触发) -->
     <div class="mobile-header-bar">
@@ -1942,7 +2187,7 @@
             <div class="text-[9.5px] font-black uppercase text-stone-400 px-1 mb-0.5">今日食光</div>
             <div class="space-y-0.5">
               <div class="drawer-item" onclick="switchPage('home'); toggleDrawer(false);"><span>🏠</span> 首页概览</div>
-              <div class="drawer-item" onclick="switchPage('wheel'); toggleDrawer(false);"><span>🎯</span> 菜谱推荐 (转盘)</div>
+              <div class="drawer-item" onclick="switchPage('wheel'); toggleDrawer(false);"><span>🎯</span> 菜谱推荐</div>
               <div class="drawer-item" onclick="switchPage('recipes'); toggleDrawer(false);"><span>📖</span> 我的菜谱</div>
               <div class="drawer-item" onclick="switchPage('discovery'); toggleDrawer(false);"><span>🍱</span> 觅食小馆</div>
               <div class="drawer-item" onclick="switchPage('plans'); toggleDrawer(false);"><span>📅</span> 饮食计划</div>
@@ -1985,7 +2230,6 @@
         <div class="brand-badge">🍚</div>
         <div>
           <h2 class="text-sm font-black m-0 leading-tight">搭饭小馆</h2>
-          <p class="text-[10px] font-bold text-stone-400 m-0">让每一餐都更美好</p>
         </div>
       </div>
 
@@ -1997,7 +2241,7 @@
             <span>🏠</span> <span>首页概览</span>
           </div>
           <div class="sidebar-link" onclick="switchPage('wheel', this)">
-            <span>🎯</span> <span>菜谱推荐 / 转盘</span>
+            <span>🎯</span> <span>菜谱推荐</span>
           </div>
           <div class="sidebar-link" onclick="switchPage('recipes', this)">
             <span>📖</span> <span>我的菜谱</span>
@@ -2069,8 +2313,8 @@
         <!-- 板块 1: Hero 主厨小羊问候区 -->
         <div id="homeGreetingCard" class="neo-card bg-[#FFF7ED] border border-[#FEDBC5]">
           <div class="flex items-center justify-between mb-3">
-            <span class="greeting-badge text-xs font-black bg-[#FF6B57] text-white px-3 py-1 rounded-full shadow-[0_2px_8px_rgba(255,107,87,0.25)]">
-              <span data-binding="branding">🛎️ 搭饭食堂 · 今日营业</span>
+            <span class="greeting-badge text-xs font-black bg-[#C4442F] text-white px-3 py-1 rounded-full shadow-[0_2px_8px_rgba(196,68,47,0.28)]">
+              <span data-binding="branding"></span>
             </span>
             <span data-binding="currentDate" class="greeting-weather text-xs font-bold text-stone-500"></span>
           </div>
@@ -2099,21 +2343,19 @@
                   <h4 class="compact-action-title">随机决定</h4>
                   <span class="compact-action-arrow">→</span>
                 </div>
-                <p class="compact-action-desc" title="纠结吃啥转一下">纠结吃啥转一下</p>
               </div>
             </div>
 
-            <!-- 2. 搭配一顿饭 -->
+            <!-- 2. 我的菜谱 -->
             <div class="compact-action-card compact-action-card--yellow" onclick="switchPage('recipes')">
               <div class="compact-action-icon bg-[#FFF8E6] text-[#D97706]">
                 <span>🍲</span>
               </div>
               <div class="compact-action-body">
                 <div class="flex items-center justify-between">
-                  <h4 class="compact-action-title">搭配一顿饭</h4>
+                  <h4 class="compact-action-title">我的菜谱</h4>
                   <span class="compact-action-arrow">→</span>
                 </div>
-                <p class="compact-action-desc" title="荤素营养搭一餐">荤素营养搭一餐</p>
               </div>
             </div>
 
@@ -2127,11 +2369,10 @@
                   <h4 class="compact-action-title">库存消耗</h4>
                   <span class="compact-action-arrow">→</span>
                 </div>
-                <p class="compact-action-desc" title="消灭临期不浪费">消灭临期不浪费</p>
               </div>
             </div>
 
-            <!-- 4. 库存推荐 (智能现有食材匹配菜谱) -->
+            <!-- 4. 库存推荐 (现有食材匹配菜谱) -->
             <div class="compact-action-card compact-action-card--purple" onclick="BentoModal.open('pantryRecommend')">
               <div class="compact-action-icon bg-[#F5F0FF] text-[#7C3AED]">
                 <span>🥫</span>
@@ -2141,7 +2382,6 @@
                   <h4 class="compact-action-title">库存推荐</h4>
                   <span class="compact-action-arrow">→</span>
                 </div>
-                <p class="compact-action-desc" title="现有食材聪明配">现有食材聪明配</p>
               </div>
             </div>
           </div>
@@ -2152,89 +2392,89 @@
           <div class="flex items-center justify-between mb-3">
             <div>
               <h3 class="text-base font-black m-0">今日推荐菜谱</h3>
-              <p class="text-xs text-stone-500 m-0">从本地菜谱中挑选几道今天的灵感。</p>
             </div>
             <button class="text-xs font-black text-[#FF6B57] hover:underline" onclick="switchPage('recipes')">查看更多 →</button>
           </div>
 
           <div data-binding="recommendedRecipes" class="recipe-scroller-track">
-            <!-- 菜谱 1 -->
-            <div class="w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer hover:-translate-y-1 transition-all" onclick="BentoModal.open('recipeDetail', 'recipe-6')">
-              <div class="h-24 bg-[#FFF0ED] flex items-center justify-center text-3xl">🥘</div>
+            <!-- 推荐卡结构：文案与封面全部由 adapter 写入真实数据，未下发时整卡隐藏 -->
+            <div class="recommend-card w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer transition-all" hidden>
+              <div class="h-24 bg-[#FFF0ED] flex items-center justify-center text-3xl"></div>
               <div class="p-2.5">
-                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1">西红柿牛腩煲</h5>
-                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#FFF0ED] text-[#FF6B57] px-2 py-0.5 rounded-full border border-[#FEDBC5]">快手炖菜</span>
+                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1"></h5>
+                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#FFF0ED] text-[#FF6B57] px-2 py-0.5 rounded-full border border-[#FEDBC5]"></span>
                 <div class="flex justify-between items-center text-[10px] text-stone-500 mt-2 font-bold">
-                  <span data-business-value="time">⏱ 45分钟</span>
-                  <span data-business-value="rating" class="text-[#D97706]"><span class="text-[#D97706]">★ 4.9</span></span>
+                  <span data-business-value="time"></span>
+                  <span data-business-value="rating" class="text-[#D97706]"></span>
                 </div>
               </div>
             </div>
 
-            <!-- 菜谱 2 -->
-            <div class="w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer hover:-translate-y-1 transition-all" onclick="switchPage('recipes')">
-              <div class="h-24 bg-[#FFFDF0] flex items-center justify-center text-3xl">🍳</div>
+            <div class="recommend-card w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer transition-all" hidden>
+              <div class="h-24 bg-[#FFFDF0] flex items-center justify-center text-3xl"></div>
               <div class="p-2.5">
-                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1">番茄炒蛋</h5>
-                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#FFF8E6] text-[#B26A00] px-2 py-0.5 rounded-full border border-[#FEE8B8]">国民家常</span>
+                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1"></h5>
+                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#FFF8E6] text-[#92400E] px-2 py-0.5 rounded-full border border-[#FEE8B8]"></span>
                 <div class="flex justify-between items-center text-[10px] text-stone-500 mt-2 font-bold">
-                  <span data-business-value="time">⏱ 15分钟</span>
-                  <span class="text-[#D97706]">★ 4.8</span>
+                  <span data-business-value="time"></span>
+                  <span data-business-value="rating" class="text-[#D97706]"></span>
                 </div>
               </div>
             </div>
 
-            <!-- 菜谱 3 -->
-            <div class="w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer hover:-translate-y-1 transition-all" onclick="switchPage('recipes')">
-              <div class="h-24 bg-[#F4FAF6] flex items-center justify-center text-3xl">🥦</div>
+            <div class="recommend-card w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer transition-all" hidden>
+              <div class="h-24 bg-[#F4FAF6] flex items-center justify-center text-3xl"></div>
               <div class="p-2.5">
-                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1">蒜蓉西兰花</h5>
-                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#EDF7EE] text-[#2E7D32] px-2 py-0.5 rounded-full border border-[#D8EEDB]">清新时蔬</span>
+                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1"></h5>
+                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#EDF7EE] text-[#2E7D32] px-2 py-0.5 rounded-full border border-[#D8EEDB]"></span>
                 <div class="flex justify-between items-center text-[10px] text-stone-500 mt-2 font-bold">
-                  <span data-business-value="time">⏱ 10分钟</span>
-                  <span data-business-value="rating" class="text-[#D97706]"><span class="text-[#D97706]">★ 4.7</span></span>
+                  <span data-business-value="time"></span>
+                  <span data-business-value="rating" class="text-[#D97706]"></span>
                 </div>
               </div>
             </div>
 
-            <!-- 菜谱 4 -->
-            <div class="w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer hover:-translate-y-1 transition-all" onclick="switchPage('recipes')">
-              <div class="h-24 bg-[#F0FDF4] flex items-center justify-center text-3xl">🐟</div>
+            <div class="recommend-card w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer transition-all" hidden>
+              <div class="h-24 bg-[#F0FDF4] flex items-center justify-center text-3xl"></div>
               <div class="p-2.5">
-                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1">清蒸鲜鲈鱼</h5>
-                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#E0F2FE] text-[#0284C7] px-2 py-0.5 rounded-full border border-[#BAE6FD]">高蛋白</span>
+                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1"></h5>
+                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#E0F2FE] text-[#0369A1] px-2 py-0.5 rounded-full border border-[#BAE6FD]"></span>
                 <div class="flex justify-between items-center text-[10px] text-stone-500 mt-2 font-bold">
-                  <span data-business-value="time">⏱ 20分钟</span>
-                  <span class="text-[#D97706]">★ 5.0</span>
+                  <span data-business-value="time"></span>
+                  <span data-business-value="rating" class="text-[#D97706]"></span>
                 </div>
               </div>
             </div>
 
-            <!-- 菜谱 5 -->
-            <div class="w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer hover:-translate-y-1 transition-all" onclick="switchPage('recipes')">
-              <div class="h-24 bg-[#FAF5FF] flex items-center justify-center text-3xl">🍲</div>
+            <div class="recommend-card w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer transition-all" hidden>
+              <div class="h-24 bg-[#FAF5FF] flex items-center justify-center text-3xl"></div>
               <div class="p-2.5">
-                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1">麻婆嫩豆腐</h5>
-                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#F5F0FF] text-[#7C3AED] px-2 py-0.5 rounded-full border border-[#E9DDFC]">下饭必备</span>
+                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1"></h5>
+                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#F5F0FF] text-[#7C3AED] px-2 py-0.5 rounded-full border border-[#E9DDFC]"></span>
                 <div class="flex justify-between items-center text-[10px] text-stone-500 mt-2 font-bold">
-                  <span data-business-value="time">⏱ 18分钟</span>
-                  <span data-business-value="rating" class="text-[#D97706]">★ 4.8</span>
+                  <span data-business-value="time"></span>
+                  <span data-business-value="rating" class="text-[#D97706]"></span>
                 </div>
               </div>
             </div>
 
-            <!-- 菜谱 6 -->
-            <div class="w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer hover:-translate-y-1 transition-all" onclick="switchPage('recipes')">
-              <div class="h-24 bg-[#FFF5F7] flex items-center justify-center text-3xl">🍗</div>
+            <div class="recommend-card w-40 flex-shrink-0 border border-[#F0E8DC] shadow-[0_4px_16px_rgba(180,140,120,0.06)] rounded-2xl overflow-hidden bg-white cursor-pointer transition-all" hidden>
+              <div class="h-24 bg-[#FFF5F7] flex items-center justify-center text-3xl"></div>
               <div class="p-2.5">
-                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1">可乐鸡翅</h5>
-                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#FCE7F3] text-[#DB2777] px-2 py-0.5 rounded-full border border-[#FBCFE8]">经典宴客</span>
+                <h5 data-business-value="name" class="text-xs font-black m-0 mb-1"></h5>
+                <span data-business-value="tags" class="text-[9px] font-extrabold bg-[#FCE7F3] text-[#9D174D] px-2 py-0.5 rounded-full border border-[#FBCFE8]"></span>
                 <div class="flex justify-between items-center text-[10px] text-stone-500 mt-2 font-bold">
-                  <span data-business-value="time">⏱ 25分钟</span>
-                  <span data-business-value="rating" class="text-[#D97706]"><span class="text-[#D97706]">★ 4.9</span></span>
+                  <span data-business-value="time"></span>
+                  <span data-business-value="rating" class="text-[#D97706]"></span>
                 </div>
               </div>
             </div>
+          </div>
+          <!-- 零推荐空态：容器外渲染，避免被 adapter 的卡片遍历吞掉 -->
+          <div data-binding="recommendedRecipesEmpty" class="hidden text-center text-xs font-bold text-stone-500 py-6">
+            还没有推荐菜谱，先去
+            <button type="button" class="text-[#B3402F] font-black underline" onclick="switchPage('recipes')">我的菜谱</button>
+            添加几道吧
           </div>
         </div>
 
@@ -2298,21 +2538,22 @@
                   <span class="text-xs text-stone-500 font-bold block stat-label">记录天数</span>
                   <span data-binding="weeklyStat-recordedDays" class="text-xl font-black text-[#FF6B57]"></span>
                 </div>
-                <div class="p-2.5 rounded-xl bg-[#F4FAF6] border border-[#D8EEDB] shadow-[0_2px_6px_rgba(180,140,120,0.04)]">
-                  <span class="text-xs text-stone-500 font-bold block">总餐次</span>
+                <div class="p-2.5 rounded-xl bg-[#F4FAF6] border border-[#D8EEDB] shadow-[0_2px_6px_rgba(180,140,120,0.04)] stat-card-total-meals">
+                  <span class="text-xs text-stone-500 font-bold block stat-label">总餐次</span>
                   <span data-binding="weeklyStat-totalMeals" class="text-xl font-black text-[#2E7D32]"></span>
                 </div>
-                <div class="p-2.5 rounded-xl bg-[#FFFDF0] border border-[#FEE8B8] shadow-[0_2px_6px_rgba(180,140,120,0.04)]">
-                  <span class="text-xs text-stone-500 font-bold block">平均评分</span>
+                <div class="p-2.5 rounded-xl bg-[#FFFDF0] border border-[#FEE8B8] shadow-[0_2px_6px_rgba(180,140,120,0.04)] stat-card-average-rating">
+                  <span class="text-xs text-stone-500 font-bold block stat-label">平均评分</span>
                   <span data-binding="weeklyStat-averageRating" class="text-xl font-black text-[#D97706]"></span>
                 </div>
-                <div class="p-2.5 rounded-xl bg-[#FAF5FF] border border-[#E9DDFC] shadow-[0_2px_6px_rgba(180,140,120,0.04)]">
-                  <span class="text-xs text-stone-500 font-bold block">消耗食材</span>
+                <div class="p-2.5 rounded-xl bg-[#FAF5FF] border border-[#E9DDFC] shadow-[0_2px_6px_rgba(180,140,120,0.04)] stat-card-consumed">
+                  <span class="text-xs text-stone-500 font-bold block stat-label">消耗食材</span>
                   <span data-binding="weeklyStat-consumedIngredientCount" class="text-xl font-black text-[#7C3AED]"></span>
                 </div>
               </div>
             </div>
-            <p class="text-[11px] text-stone-400 m-0 mt-3 font-medium">连续记录 <span data-binding="streakDays"></span> 天，饮食节律健康稳定！</p>
+            <!-- 连续记录天数：仅保留数据绑定节点供 adapter 写入，不再展示口号句 -->
+            <span data-binding="streakDays" class="hidden" aria-hidden="true"></span>
           </div>
 
           <!-- 板块 6: 库存概览与临期食材 -->
@@ -2358,51 +2599,50 @@
           <div class="flex items-center justify-between mb-3">
             <div>
               <h3 class="text-base font-black m-0">饮食日历</h3>
-              <p class="text-xs text-stone-500 m-0">看看这一周的计划和记录。</p>
             </div>
             <div class="flex items-center gap-2">
-              <button class="pill-btn py-1 px-2.5 text-xs" onclick="switchPage('calendar')">◀</button>
+              <button class="pill-btn py-1 px-2.5 text-xs" onclick="switchPage('calendar')" aria-label="查看饮食日历">◀</button>
               <span class="text-xs font-black" id="weeklyCalendarRange">本周</span>
-              <button class="pill-btn py-1 px-2.5 text-xs" onclick="switchPage('calendar')">▶</button>
+              <button class="pill-btn py-1 px-2.5 text-xs" onclick="switchPage('calendar')" aria-label="查看饮食日历">▶</button>
             </div>
           </div>
 
           <div data-binding="calendarDays" class="desktop-week-calendar-grid grid grid-cols-7 gap-2 text-center">
-            <div data-binding="calendarDay-0" class="p-2.5 rounded-2xl border border-[#D8EEDB] bg-white border-b-4 border-b-[#2E7D32] shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer hover:scale-105 transition-all" data-empty-action="dailyDiary">
-              <span data-business-value="weekday" class="text-[10px] font-bold text-stone-500 block"></span>
+            <div data-binding="calendarDay-0" class="week-cell p-2.5 rounded-2xl border border-[#D8EEDB] bg-white shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer transition-all" data-empty-action="dailyDiary">
+              <span data-business-value="weekday" class="text-[10px] font-bold block"></span>
               <strong data-business-value="dayOfMonth" class="text-base font-black"></strong>
-              <small data-business-value="label" class="text-[9px] font-black text-[#2E7D32] block"></small>
+              <small data-business-value="label" class="text-[9px] font-black block"></small>
             </div>
-            <div data-binding="calendarDay-1" class="p-2.5 rounded-2xl border border-[#D8EEDB] bg-white border-b-4 border-b-[#2E7D32] shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer hover:scale-105 transition-all" data-empty-action="dailyDiary">
-              <span data-business-value="weekday" class="text-[10px] font-bold text-stone-500 block"></span>
+            <div data-binding="calendarDay-1" class="week-cell p-2.5 rounded-2xl border border-[#D8EEDB] bg-white shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer transition-all" data-empty-action="dailyDiary">
+              <span data-business-value="weekday" class="text-[10px] font-bold block"></span>
               <strong data-business-value="dayOfMonth" class="text-base font-black"></strong>
-              <small data-business-value="label" class="text-[9px] font-black text-[#2E7D32] block"></small>
+              <small data-business-value="label" class="text-[9px] font-black block"></small>
             </div>
-            <div data-binding="calendarDay-2" class="p-2.5 rounded-2xl border border-[#D8EEDB] bg-white border-b-4 border-b-[#2E7D32] shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer hover:scale-105 transition-all" data-empty-action="dailyDiary">
-              <span data-business-value="weekday" class="text-[10px] font-bold text-stone-500 block"></span>
+            <div data-binding="calendarDay-2" class="week-cell p-2.5 rounded-2xl border border-[#D8EEDB] bg-white shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer transition-all" data-empty-action="dailyDiary">
+              <span data-business-value="weekday" class="text-[10px] font-bold block"></span>
               <strong data-business-value="dayOfMonth" class="text-base font-black"></strong>
-              <small data-business-value="label" class="text-[9px] font-black text-[#2E7D32] block"></small>
+              <small data-business-value="label" class="text-[9px] font-black block"></small>
             </div>
-            <div data-binding="calendarDay-3" class="p-2.5 rounded-2xl border border-[#D8EEDB] bg-white border-b-4 border-b-[#2E7D32] shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer hover:scale-105 transition-all" data-empty-action="dailyDiary">
-              <span data-business-value="weekday" class="text-[10px] font-bold text-stone-500 block"></span>
+            <div data-binding="calendarDay-3" class="week-cell p-2.5 rounded-2xl border border-[#D8EEDB] bg-white shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer transition-all" data-empty-action="dailyDiary">
+              <span data-business-value="weekday" class="text-[10px] font-bold block"></span>
               <strong data-business-value="dayOfMonth" class="text-base font-black"></strong>
-              <small data-business-value="label" class="text-[9px] font-black text-[#2E7D32] block"></small>
+              <small data-business-value="label" class="text-[9px] font-black block"></small>
             </div>
-            <div data-binding="calendarDay-4" class="p-2.5 rounded-2xl border border-[#D8EEDB] bg-white border-b-4 border-b-[#2E7D32] shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer hover:scale-105 transition-all" data-empty-action="dailyDiary">
-              <span data-business-value="weekday" class="text-[10px] font-bold text-stone-500 block"></span>
+            <div data-binding="calendarDay-4" class="week-cell p-2.5 rounded-2xl border border-[#D8EEDB] bg-white shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer transition-all" data-empty-action="dailyDiary">
+              <span data-business-value="weekday" class="text-[10px] font-bold block"></span>
               <strong data-business-value="dayOfMonth" class="text-base font-black"></strong>
-              <small data-business-value="label" class="text-[9px] font-black text-[#2E7D32] block"></small>
+              <small data-business-value="label" class="text-[9px] font-black block"></small>
             </div>
-            <div data-binding="calendarDay-5" class="p-2.5 rounded-2xl border border-[#FEE8B8] bg-white border-b-4 border-b-[#D97706] shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer hover:scale-105 transition-all" data-empty-action="dailyDiary">
-              <span data-business-value="weekday" class="text-[10px] font-bold text-stone-500 block"></span>
+            <div data-binding="calendarDay-5" class="week-cell p-2.5 rounded-2xl border border-[#D8EEDB] bg-white shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer transition-all" data-empty-action="dailyDiary">
+              <span data-business-value="weekday" class="text-[10px] font-bold block"></span>
               <strong data-business-value="dayOfMonth" class="text-base font-black"></strong>
-              <small data-business-value="label" class="text-[9px] font-black text-[#D97706] block"></small>
+              <small data-business-value="label" class="text-[9px] font-black block"></small>
             </div>
-            <!-- 今日 -->
-            <div data-binding="calendarDay-6" class="p-2.5 rounded-2xl border-2 border-[#FF6B57] bg-[#FFF8F5] shadow-[0_4px_12px_rgba(255,107,87,0.2)] scale-105 cursor-pointer hover:scale-110 transition-all" data-empty-action="dailyDiary">
-              <span data-business-value="weekday" class="text-[10px] font-black text-[#FF6B57] block"></span>
-              <strong data-business-value="dayOfMonth" class="text-base font-black text-[#FF6B57]"></strong>
-              <small data-business-value="label" class="text-[9px] font-black text-[#2E7D32] block"></small>
+            <!-- 今日（高亮由 JS 依据真实 isToday 动态切换，模板不预置今日态） -->
+            <div data-binding="calendarDay-6" class="week-cell p-2.5 rounded-2xl border border-[#D8EEDB] bg-white shadow-[0_2px_6px_rgba(180,140,120,0.04)] cursor-pointer transition-all" data-empty-action="dailyDiary">
+              <span data-business-value="weekday" class="text-[10px] font-bold block"></span>
+              <strong data-business-value="dayOfMonth" class="text-base font-black"></strong>
+              <small data-business-value="label" class="text-[9px] font-black block"></small>
             </div>
           </div>
 
@@ -2410,59 +2650,59 @@
           <div class="mobile-week-calendar-list flex flex-col gap-2">
             <div data-binding="mobileCalendarDay-0" class="p-2.5 rounded-xl border border-[#D8EEDB] bg-white flex items-center justify-between cursor-pointer hover:border-[#FEDBC5] transition-all shadow-[0_2px_6px_rgba(180,140,120,0.04)]" data-empty-action="dailyDiary">
               <div class="flex items-center gap-2.5">
-                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black bg-stone-100 text-stone-600"></span>
-                <span data-business-value="statusText" class="text-xs font-bold text-stone-700"></span>
+                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black"></span>
+                <span data-business-value="statusText" class="text-xs font-bold"></span>
               </div>
-              <span data-business-value="statusPill" class="text-[10px] font-black text-[#2E7D32] bg-[#EDF7EE] px-2 py-0.5 rounded-full"></span>
+              <span data-business-value="statusPill" class="text-[10px] font-black px-2 py-0.5 rounded-full"></span>
             </div>
 
             <div data-binding="mobileCalendarDay-1" class="p-2.5 rounded-xl border border-[#D8EEDB] bg-white flex items-center justify-between cursor-pointer hover:border-[#FEDBC5] transition-all shadow-[0_2px_6px_rgba(180,140,120,0.04)]" data-empty-action="dailyDiary">
               <div class="flex items-center gap-2.5">
-                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black bg-stone-100 text-stone-600"></span>
-                <span data-business-value="statusText" class="text-xs font-bold text-stone-700"></span>
+                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black"></span>
+                <span data-business-value="statusText" class="text-xs font-bold"></span>
               </div>
-              <span data-business-value="statusPill" class="text-[10px] font-black text-[#2E7D32] bg-[#EDF7EE] px-2 py-0.5 rounded-full"></span>
+              <span data-business-value="statusPill" class="text-[10px] font-black px-2 py-0.5 rounded-full"></span>
             </div>
 
             <div data-binding="mobileCalendarDay-2" class="p-2.5 rounded-xl border border-[#D8EEDB] bg-white flex items-center justify-between cursor-pointer hover:border-[#FEDBC5] transition-all shadow-[0_2px_6px_rgba(180,140,120,0.04)]" data-empty-action="dailyDiary">
               <div class="flex items-center gap-2.5">
-                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black bg-stone-100 text-stone-600"></span>
-                <span data-business-value="statusText" class="text-xs font-bold text-stone-700"></span>
+                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black"></span>
+                <span data-business-value="statusText" class="text-xs font-bold"></span>
               </div>
-              <span data-business-value="statusPill" class="text-[10px] font-black text-[#2E7D32] bg-[#EDF7EE] px-2 py-0.5 rounded-full"></span>
+              <span data-business-value="statusPill" class="text-[10px] font-black px-2 py-0.5 rounded-full"></span>
             </div>
 
             <div data-binding="mobileCalendarDay-3" class="p-2.5 rounded-xl border border-[#D8EEDB] bg-white flex items-center justify-between cursor-pointer hover:border-[#FEDBC5] transition-all shadow-[0_2px_6px_rgba(180,140,120,0.04)]" data-empty-action="dailyDiary">
               <div class="flex items-center gap-2.5">
-                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black bg-stone-100 text-stone-600"></span>
-                <span data-business-value="statusText" class="text-xs font-bold text-stone-700"></span>
+                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black"></span>
+                <span data-business-value="statusText" class="text-xs font-bold"></span>
               </div>
-              <span data-business-value="statusPill" class="text-[10px] font-black text-[#2E7D32] bg-[#EDF7EE] px-2 py-0.5 rounded-full"></span>
+              <span data-business-value="statusPill" class="text-[10px] font-black px-2 py-0.5 rounded-full"></span>
             </div>
 
             <div data-binding="mobileCalendarDay-4" class="p-2.5 rounded-xl border border-[#D8EEDB] bg-white flex items-center justify-between cursor-pointer hover:border-[#FEDBC5] transition-all shadow-[0_2px_6px_rgba(180,140,120,0.04)]" data-empty-action="dailyDiary">
               <div class="flex items-center gap-2.5">
-                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black bg-stone-100 text-stone-600"></span>
-                <span data-business-value="statusText" class="text-xs font-bold text-stone-700"></span>
+                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black"></span>
+                <span data-business-value="statusText" class="text-xs font-bold"></span>
               </div>
-              <span data-business-value="statusPill" class="text-[10px] font-black text-[#2E7D32] bg-[#EDF7EE] px-2 py-0.5 rounded-full"></span>
+              <span data-business-value="statusPill" class="text-[10px] font-black px-2 py-0.5 rounded-full"></span>
             </div>
 
-            <div data-binding="mobileCalendarDay-5" class="p-2.5 rounded-xl border border-[#FEE8B8] bg-white flex items-center justify-between cursor-pointer hover:border-[#FEDBC5] transition-all shadow-[0_2px_6px_rgba(180,140,120,0.04)]" data-empty-action="dailyDiary">
+            <div data-binding="mobileCalendarDay-5" class="p-2.5 rounded-xl border border-[#D8EEDB] bg-white flex items-center justify-between cursor-pointer hover:border-[#FEDBC5] transition-all shadow-[0_2px_6px_rgba(180,140,120,0.04)]" data-empty-action="dailyDiary">
               <div class="flex items-center gap-2.5">
-                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black bg-stone-100 text-stone-600"></span>
-                <span data-business-value="statusText" class="text-xs font-bold text-stone-700"></span>
+                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black"></span>
+                <span data-business-value="statusText" class="text-xs font-bold"></span>
               </div>
-              <span data-business-value="statusPill" class="text-[10px] font-black text-[#D97706] bg-[#FFF8E6] px-2 py-0.5 rounded-full border border-[#FEE8B8]"></span>
+              <span data-business-value="statusPill" class="text-[10px] font-black px-2 py-0.5 rounded-full"></span>
             </div>
 
             <!-- 今日 -->
-            <div data-binding="mobileCalendarDay-6" class="p-2.5 rounded-xl border-2 border-[#FF6B57] bg-[#FFF8F5] flex items-center justify-between cursor-pointer shadow-[0_3px_10px_rgba(255,107,87,0.18)]" data-empty-action="dailyDiary">
+            <div data-binding="mobileCalendarDay-6" class="p-2.5 rounded-xl border border-[#D8EEDB] bg-white flex items-center justify-between cursor-pointer transition-all shadow-[0_2px_6px_rgba(180,140,120,0.04)]" data-empty-action="dailyDiary">
               <div class="flex items-center gap-2.5">
-                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black bg-[#FF6B57] text-white"></span>
-                <span data-business-value="statusText" class="text-xs font-black text-[#FF6B57]"></span>
+                <span data-business-value="dateBadge" class="px-2 py-0.5 rounded-lg text-xs font-black"></span>
+                <span data-business-value="statusText" class="text-xs font-bold"></span>
               </div>
-              <span data-business-value="statusPill" class="text-[10px] font-black text-[#FF6B57] bg-[#FFF0ED] px-2.5 py-0.5 rounded-full border border-[#FEDBC5]"></span>
+              <span data-business-value="statusPill" class="text-[10px] font-black px-2 py-0.5 rounded-full"></span>
             </div>
           </div>
         </div>
@@ -2475,9 +2715,7 @@
       <section class="view-panel" id="page-wheel">
         <div class="neo-card p-5 text-center flex-1 flex flex-col justify-between min-h-[calc(100vh-140px)]">
           <div class="flex flex-col sm:flex-row items-center justify-between gap-2.5 mb-4">
-            <span class="text-xs font-black bg-[#FFF0ED] text-[#FF6B57] px-3.5 py-1.5 rounded-full border border-[#FEDBC5] whitespace-nowrap shadow-sm">
-              🍱 便当决策盘
-            </span>
+            <h2 class="text-base font-black m-0">菜谱推荐</h2>
             <div class="flex items-center gap-1 sm:gap-1.5 w-full sm:w-auto justify-center flex-nowrap" id="wheelModeGroup">
               <button class="pill-btn active text-[11px] sm:text-xs py-1 px-2 sm:px-3 flex-1 sm:flex-none justify-center whitespace-nowrap" id="btnWheelMode-all" onclick="setWheelCandidateMode('all')">全选混抽</button>
               <button class="pill-btn text-[11px] sm:text-xs py-1 px-2 sm:px-3 flex-1 sm:flex-none justify-center whitespace-nowrap" id="btnWheelMode-cook" onclick="setWheelCandidateMode('cook')">仅下厨</button>
@@ -2504,68 +2742,25 @@
                 <div class="wheel-rotor" id="wheelRotor">
                   <svg viewBox="0 0 320 320" width="100%" height="100%">
                     <!-- 便当盘衬底 -->
-                    <circle cx="160" cy="160" r="156" fill="#FAF7F2" />
-                    <circle cx="160" cy="160" r="150" fill="none" stroke="#EFE6DA" stroke-width="2" />
-                    <circle cx="160" cy="160" r="144" fill="none" stroke="#FEDBC5" stroke-width="1.5" stroke-dasharray="6, 8" />
+                    <circle cx="160" cy="160" r="156" class="wheel-svg-base-fill" />
+                    <circle cx="160" cy="160" r="150" fill="none" class="wheel-svg-base-ring" stroke-width="2" />
+                    <circle cx="160" cy="160" r="144" fill="none" class="wheel-svg-base-dash" stroke-width="1.5" stroke-dasharray="6, 8" />
 
-                    <!-- 8 个扇形食材几何切片 (半径 R = 142，扇区之间以 3px 柔和米白间隔，无黑线) -->
-                    <!-- 1. 番茄炒蛋 (0° - 45°) -->
-                    <path d="M 160 160 L 302 160 A 142 142 0 0 1 260.4 260.4 Z" fill="#FF8575" stroke="#FAF7F2" stroke-width="3"/>
-                    <text x="255" y="160" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-size="11.5" font-weight="900" transform="rotate(22.5 160 160)"><tspan x="255" dy="0">番茄炒蛋</tspan></text>
-
-                    <!-- 2. 蒜蓉西兰花 (45° - 90°) -->
-                    <path d="M 160 160 L 260.4 260.4 A 142 142 0 0 1 160 302 Z" fill="#6ABF69" stroke="#FAF7F2" stroke-width="3"/>
-                    <text x="255" y="160" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-size="11.5" font-weight="900" transform="rotate(67.5 160 160)"><tspan x="255" dy="0">蒜蓉西兰花</tspan></text>
-
-                    <!-- 3. 厚蛋烧 (90° - 135°) -->
-                    <path d="M 160 160 L 160 302 A 142 142 0 0 1 59.6 260.4 Z" fill="#FFC53D" stroke="#FAF7F2" stroke-width="3"/>
-                    <text x="255" y="160" text-anchor="middle" dominant-baseline="central" fill="#2D2621" font-size="11.5" font-weight="900" transform="rotate(112.5 160 160)"><tspan x="255" dy="0">日式厚蛋烧</tspan></text>
-
-                    <!-- 4. 西红柿牛腩 (135° - 180°) -->
-                    <path d="M 160 160 L 59.6 260.4 A 142 142 0 0 1 18 160 Z" fill="#F7931E" stroke="#FAF7F2" stroke-width="3"/>
-                    <text x="255" y="160" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-size="11.5" font-weight="900" transform="rotate(157.5 160 160)"><tspan x="255" dy="0">西红柿牛腩</tspan></text>
-
-                    <!-- 5. 紫薯糯米糕 (180° - 225°) -->
-                    <path d="M 160 160 L 18 160 A 142 142 0 0 1 59.6 59.6 Z" fill="#B388FF" stroke="#FAF7F2" stroke-width="3"/>
-                    <text x="255" y="160" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-size="11.5" font-weight="900" transform="rotate(202.5 160 160)"><tspan x="255" dy="0">紫薯糯米糕</tspan></text>
-
-                    <!-- 6. 清炒时蔬 (225° - 270°) -->
-                    <path d="M 160 160 L 59.6 59.6 A 142 142 0 0 1 160 18 Z" fill="#4DB6AC" stroke="#FAF7F2" stroke-width="3"/>
-                    <text x="255" y="160" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-size="11.5" font-weight="900" transform="rotate(247.5 160 160)"><tspan x="255" dy="0">清炒时蔬</tspan></text>
-
-                    <!-- 7. 家常排骨汤 (270° - 315°) -->
-                    <path d="M 160 160 L 160 18 A 142 142 0 0 1 260.4 59.6 Z" fill="#FFAAA6" stroke="#FAF7F2" stroke-width="3"/>
-                    <text x="255" y="160" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-size="11.5" font-weight="900" transform="rotate(292.5 160 160)"><tspan x="255" dy="0">家常排骨汤</tspan></text>
-
-                    <!-- 8. 可乐鸡翅 (315° - 360°) -->
-                    <path d="M 160 160 L 260.4 59.6 A 142 142 0 0 1 302 160 Z" fill="#FF7865" stroke="#FAF7F2" stroke-width="3"/>
-                    <text x="255" y="160" text-anchor="middle" dominant-baseline="central" fill="#FFFFFF" font-size="11.5" font-weight="900" transform="rotate(337.5 160 160)"><tspan x="255" dy="0">可乐鸡翅</tspan></text>
-
-                    <!-- 中心轮座底圈 -->
-                    <circle cx="160" cy="160" r="38" fill="#FAF7F2" stroke="#EFE6DA" stroke-width="2" />
+                    <!-- 扇区由 renderWheelSlices 依据真实候选动态绘制 -->
+                    <circle cx="160" cy="160" r="38" class="wheel-svg-center-fill" stroke-width="2" />
                   </svg>
                 </div>
 
                 <!-- 3. 中心固定 GO 按钮 (白胖软糯梅子小饭团造型，正立不转) -->
-                <button class="wheel-go-btn" id="wheelGoBtn" onclick="triggerSpin()">
-                  <span id="wheelGoText">GO!</span>
+                <button class="wheel-go-btn" id="wheelGoBtn" onclick="triggerSpin()" aria-label="开始菜谱推荐">
+                  <span id="wheelGoText">GO</span>
                 </button>
-              </div>
-            </div>
-
-            <!-- 命中庆祝横幅 (温润柔光) -->
-            <div class="result-banner" id="resultBanner">
-              <span class="text-xs font-black bg-[#FF6B57] text-white px-3 py-1 rounded-full shadow-[0_2px_8px_rgba(255,107,87,0.25)]">🎉 撒花命中！</span>
-              <h2 class="text-xl font-black my-2" id="resultDishText">✨ 今天就吃：西红柿牛腩煲！</h2>
-              <div class="flex items-center justify-center gap-2 mt-2">
-                <button class="neo-btn-secondary text-xs py-1.5 px-4" onclick="triggerSpin()">换一个</button>
-                <button class="neo-btn-primary text-xs py-1.5 px-4 shadow-[var(--shadow-primary)]" onclick="BentoModal.handleWheelResult()">就吃这个</button>
               </div>
             </div>
 
             <div class="w-full flex justify-center mt-2 mb-1">
               <button class="neo-btn-primary w-full max-w-sm py-3 text-sm font-black" id="btnSpinBottom" onclick="triggerSpin()">
-                🎯 启动便当转盘做决定
+                开始推荐
               </button>
             </div>
           </div>
@@ -2597,9 +2792,6 @@
           <div>
             <div class="flex items-center gap-2">
               <h2 class="text-lg font-black m-0 text-[#2D2621]">觅食小馆</h2>
-              <span class="text-[10px] font-black bg-[#FFF0ED] text-[#FF6B57] px-2.5 py-0.5 rounded-full border border-[#FEDBC5]">
-                🍱 探店 · 堂食 · 外卖 · 私藏
-              </span>
             </div>
           </div>
           <button class="neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]" onclick="toggleStoreForm(true)">
@@ -2611,15 +2803,15 @@
         <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4 favorites-stats-grid">
           <div class="p-3 rounded-2xl bg-white border border-[#F0E8DC] shadow-[var(--shadow-bento-sm)] text-center">
             <span class="text-[10px] text-stone-400 font-bold block">全部店铺</span>
-            <span class="text-xl font-black text-[#2D2621]" id="statStoreTotal">6</span>
+            <span class="text-xl font-black text-[#2D2621]" id="statStoreTotal">0</span>
           </div>
           <div class="p-3 rounded-2xl bg-[#FFF9F6] border border-[#FFE4DE] shadow-[var(--shadow-bento-sm)] text-center">
             <span class="text-[10px] text-stone-400 font-bold block">🍽️ 到店堂食</span>
-            <span class="text-xl font-black text-[#FF6B57]" id="statStoreDineIn">5</span>
+            <span class="text-xl font-black text-[#FF6B57]" id="statStoreDineIn">0</span>
           </div>
           <div class="p-3 rounded-2xl bg-[#FFFDF0] border border-[#FEE8B8] shadow-[var(--shadow-bento-sm)] text-center">
             <span class="text-[10px] text-stone-400 font-bold block">🛵 品质外卖</span>
-            <span class="text-xl font-black text-[#D97706]" id="statStoreTakeout">4</span>
+            <span class="text-xl font-black text-[#D97706]" id="statStoreTakeout">0</span>
           </div>
         </div>
 
@@ -2628,9 +2820,9 @@
           <div class="discovery-toolbar-wrap flex items-center justify-between gap-3">
             <!-- 场景药丸切换 (防折行横滑胶囊轨道) -->
             <div class="discovery-pills-box pill-scroll-track flex-1">
-              <button class="pill-btn active" id="tabStore-all" onclick="setStoreFilter('all')">全部 (<span id="count-all">6</span>)</button>
-              <button class="pill-btn" id="tabStore-dinein" onclick="setStoreFilter('dinein')">🍽️ 到店堂食 (<span id="count-dinein">5</span>)</button>
-              <button class="pill-btn" id="tabStore-takeout" onclick="setStoreFilter('takeout')">🛵 品质外卖 (<span id="count-takeout">4</span>)</button>
+              <button class="pill-btn active" id="tabStore-all" onclick="setStoreFilter('all')">全部 (<span id="count-all">0</span>)</button>
+              <button class="pill-btn" id="tabStore-dinein" onclick="setStoreFilter('dinein')">🍽️ 到店堂食 (<span id="count-dinein">0</span>)</button>
+              <button class="pill-btn" id="tabStore-takeout" onclick="setStoreFilter('takeout')">🛵 品质外卖 (<span id="count-takeout">0</span>)</button>
             </div>
             <!-- 实时搜索输入框 -->
             <div class="discovery-search-box relative flex-shrink-0 w-64">
@@ -2683,11 +2875,11 @@
               <div>
                 <label class="block text-[11px] font-bold text-stone-500 mb-1">综合评分</label>
                 <select id="formStoreRating" class="w-full text-xs font-bold p-2.5 rounded-xl border border-[#F0E8DC] bg-white focus:outline-none focus:border-[#FF6B57]">
-                  <option value="5.0">★★★★★ 5.0 (心头极力推荐)</option>
-                  <option value="4.9" selected>★★★★★ 4.9 (超赞品质绝绝子)</option>
-                  <option value="4.8">★★★★☆ 4.8 (品质稳定常吃)</option>
-                  <option value="4.7">★★★★☆ 4.7 (好吃实惠好去处)</option>
-                  <option value="4.5">★★★★☆ 4.5 (日常备选食堂)</option>
+                  <option value="5.0">5.0 分</option>
+                  <option value="4.9" selected>4.9 分</option>
+                  <option value="4.8">4.8 分</option>
+                  <option value="4.7">4.7 分</option>
+                  <option value="4.5">4.5 分</option>
                 </select>
               </div>
               <div>
@@ -2699,7 +2891,7 @@
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label class="block text-[11px] font-bold text-stone-500 mb-1">地址 / 商圈距离</label>
-                <input type="text" id="formStoreAddress" placeholder="浅草食街 108 号 (距家 800m)" class="w-full text-xs font-bold p-2.5 rounded-xl border border-[#F0E8DC] bg-white focus:outline-none focus:border-[#FF6B57]" />
+                <input type="text" id="formStoreAddress" placeholder="填写店铺地址或商圈距离" class="w-full text-xs font-bold p-2.5 rounded-xl border border-[#F0E8DC] bg-white focus:outline-none focus:border-[#FF6B57]" />
               </div>
               <div>
                 <label class="block text-[11px] font-bold text-stone-500 mb-1">招牌必点推荐菜 *</label>
@@ -2839,8 +3031,6 @@
             <div class="flex items-center gap-2">
               <h2 class="text-lg font-black m-0 text-[#2D2621]">厨房工具与设备库</h2>
               <span class="text-[10px] font-black bg-[#FFF0ED] text-[#FF6B57] px-2.5 py-0.5 rounded-full border border-[#FEDBC5]" id="toolsCountBadge">
-                4 件设备在库
-              </span>
             </div>
           </div>
           <button class="neo-btn-primary text-xs py-2 px-4 shadow-[var(--shadow-primary)]" onclick="BentoModal.open('toolForm')">+ 新增工具</button>
@@ -2861,9 +3051,9 @@
               <h2 class="text-lg font-black m-0">饮食大日历</h2>
             </div>
             <div class="calendar-nav-box flex items-center gap-2">
-              <button class="pill-btn py-1 px-3 text-xs" onclick="changeCalendarMonth(-1)">◀ 上个月</button>
+              <button class="pill-btn py-1 px-3 text-xs" onclick="changeCalendarMonth(-1)" aria-label="上个月">◀ 上个月</button>
               <span class="text-xs font-black px-2 whitespace-nowrap flex-shrink-0" id="calendarCurrentMonthLabel"></span>
-              <button class="pill-btn py-1 px-3 text-xs" onclick="changeCalendarMonth(1)">下个月 ▶</button>
+              <button class="pill-btn py-1 px-3 text-xs" onclick="changeCalendarMonth(1)" aria-label="下个月">下个月 ▶</button>
             </div>
           </div>
 
@@ -2886,9 +3076,6 @@
           <div>
             <div class="flex items-center gap-2">
               <h2 class="text-lg font-black m-0 text-[#2D2621]">餐饮消费与营养洞察</h2>
-              <span class="text-[10px] font-black bg-[#EBF7EE] text-[#2E7D32] px-2.5 py-0.5 rounded-full border border-[#BCE3C1]">
-                实时数据看板
-              </span>
             </div>
           </div>
           <div class="flex items-center gap-1.5">
@@ -2902,7 +3089,7 @@
           <div class="neo-card p-3.5 text-center m-0 border-l-4 border-l-[#FF6B57]">
             <span class="text-[11px] text-stone-400 font-bold block mb-1">💰 餐饮总支出</span>
             <span class="text-xl font-black text-[#FF6B57]" id="statTotalExpense"></span>
-            <span class="text-[10px] text-stone-400 block mt-1" id="statExpenseSub">周期内全部餐次记录累计</span>
+            <span class="text-[10px] text-stone-400 block mt-1" id="statExpenseSub"></span>
           </div>
           <div class="neo-card p-3.5 text-center m-0 border-l-4 border-l-[#D97706]">
             <span class="text-[11px] text-stone-400 font-bold block mb-1">🛵 外卖花费</span>
@@ -2963,7 +3150,7 @@
             </div>
             <span class="text-xs font-black text-[#FF6B57]" id="statSatietyScore"></span>
           </div>
-          <div class="w-full h-3.5 bg-stone-100 rounded-full overflow-hidden flex border border-[#F0E8DC] dark:bg-stone-800 dark:border-stone-700" id="satietyBarContainer"></div>
+          <div class="w-full h-3.5 bg-stone-100 rounded-full overflow-hidden flex border border-[#F0E8DC]" id="satietyBarContainer"></div>
           <div class="flex justify-between text-[10.5px] font-bold text-stone-500 mt-2"></div>
         </div>
       </section>
@@ -2977,9 +3164,6 @@
           <div>
             <div class="flex items-center gap-2">
               <h2 class="favorites-header-title text-lg font-black m-0 text-[#2D2621]">我的收藏</h2>
-              <span class="favorites-header-badge text-[10px] font-black bg-[#FFF0ED] text-[#FF6B57] px-2.5 py-0.5 rounded-full border border-[#FEDBC5]">
-                ♥ 私藏心动美味集
-              </span>
             </div>
           </div>
           <button class="favorites-header-btn neo-btn-secondary text-xs py-2 px-3.5" onclick="switchPage('discovery')">
@@ -2991,15 +3175,15 @@
         <div class="favorites-top-stats grid grid-cols-1 sm:grid-cols-3 gap-2.5 mb-4">
           <div class="p-3 rounded-2xl bg-[#FFF9F6] border border-[#FFE4DE] shadow-[var(--shadow-bento-sm)] text-center cursor-pointer hover:border-[#FEDBC5] transition-all" onclick="setFavoriteFilter('cook')">
             <span class="text-[10px] text-stone-400 font-bold block">🍳 自己做的菜</span>
-            <span class="stat-num text-xl font-black text-[#FF6B57]" id="favCountStatCook">3 道</span>
+            <span class="stat-num text-xl font-black text-[#FF6B57]" id="favCountStatCook">0 道</span>
           </div>
           <div class="p-3 rounded-2xl bg-[#FFFDF0] border border-[#FEE8B8] shadow-[var(--shadow-bento-sm)] text-center cursor-pointer hover:border-[#FDD888] transition-all" onclick="setFavoriteFilter('takeout')">
             <span class="text-[10px] text-stone-400 font-bold block">🛵 外卖店铺</span>
-            <span class="stat-num text-xl font-black text-[#D97706]" id="favCountStatTakeout">2 家</span>
+            <span class="stat-num text-xl font-black text-[#D97706]" id="favCountStatTakeout">0 家</span>
           </div>
           <div class="p-3 rounded-2xl bg-[#F4FAF6] border border-[#D8EEDB] shadow-[var(--shadow-bento-sm)] text-center cursor-pointer hover:border-[#BCE3C1] transition-all" onclick="setFavoriteFilter('dinein')">
             <span class="text-[10px] text-stone-400 font-bold block">🍽️ 堂食店铺</span>
-            <span class="stat-num text-xl font-black text-[#2E7D32]" id="favCountStatDineIn">3 家</span>
+            <span class="stat-num text-xl font-black text-[#2E7D32]" id="favCountStatDineIn">0 家</span>
           </div>
         </div>
 
@@ -3008,10 +3192,10 @@
           <div class="favorites-toolbar-wrap flex items-center justify-between gap-3">
             <!-- 收藏场景药丸切换 (防折行横滑胶囊轨道) -->
             <div class="favorites-pills-box pill-scroll-track flex-1">
-              <button class="pill-btn active" id="tabFav-all" onclick="setFavoriteFilter('all')">全部收藏 (<span id="favCountBadgeAll">6</span>)</button>
-              <button class="pill-btn" id="tabFav-cook" onclick="setFavoriteFilter('cook')"><span class="pill-emoji">🍳 </span>自己做的菜 (<span id="favCountBadgeCook">3</span>)</button>
-              <button class="pill-btn" id="tabFav-takeout" onclick="setFavoriteFilter('takeout')"><span class="pill-emoji">🛵 </span>外卖店铺 (<span id="favCountBadgeTakeout">2</span>)</button>
-              <button class="pill-btn" id="tabFav-dinein" onclick="setFavoriteFilter('dinein')"><span class="pill-emoji">🍽️ </span>堂食店铺 (<span id="favCountBadgeDineIn">3</span>)</button>
+              <button class="pill-btn active" id="tabFav-all" onclick="setFavoriteFilter('all')">全部收藏 (<span id="favCountBadgeAll">0</span>)</button>
+              <button class="pill-btn" id="tabFav-cook" onclick="setFavoriteFilter('cook')"><span class="pill-emoji">🍳 </span>自己做的菜 (<span id="favCountBadgeCook">0</span>)</button>
+              <button class="pill-btn" id="tabFav-takeout" onclick="setFavoriteFilter('takeout')"><span class="pill-emoji">🛵 </span>外卖店铺 (<span id="favCountBadgeTakeout">0</span>)</button>
+              <button class="pill-btn" id="tabFav-dinein" onclick="setFavoriteFilter('dinein')"><span class="pill-emoji">🍽️ </span>堂食店铺 (<span id="favCountBadgeDineIn">0</span>)</button>
             </div>
             <!-- 实时搜索输入框 -->
             <div class="favorites-search-box relative flex-shrink-0 w-64">
@@ -3051,23 +3235,25 @@
         <div class="flex items-center justify-between mb-4">
           <div>
             <h2 class="text-lg font-black m-0">系统与偏好设置</h2>
-            <p class="text-xs text-stone-500 m-0">个性化定制你的搭饭小馆</p>
           </div>
         </div>
         <div class="neo-card m-0 flex flex-col gap-3">
-          <div class="flex items-center justify-between pb-3 border-b border-stone-100">
-            <div>
-              <h4 class="text-xs font-black m-0">视觉风格</h4>
-              <p class="text-[11px] text-stone-400 m-0">视觉风格已启用</p>
+          <div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 pb-3 border-b border-stone-100">
+            <div class="min-w-0">
+              <h4 class="text-xs font-black m-0">外观主题</h4>
             </div>
-            <span class="text-xs font-black bg-[#FFF0ED] text-[#FF6B57] px-3 py-1 rounded-full border border-[#FEDBC5]">已激活</span>
+            <div class="flex flex-wrap items-center gap-1.5 shrink-0" id="themeSwitchGroup" role="group" aria-label="外观主题切换">
+              <button type="button" class="pill-btn active py-1 px-2.5 text-xs" id="btnThemeLight" aria-pressed="true" onclick="setAppTheme('light')">☀️ 浅色</button>
+              <button type="button" class="pill-btn py-1 px-2.5 text-xs" id="btnThemeDark" aria-pressed="false" onclick="setAppTheme('dark')">🌙 深色</button>
+              <button type="button" class="pill-btn py-1 px-2.5 text-xs" id="btnThemeSystem" aria-pressed="false" onclick="setAppTheme('system')">💻 系统</button>
+            </div>
           </div>
           <div class="flex items-center justify-between pb-3 border-b border-stone-100">
             <div>
               <h4 class="text-xs font-black m-0">食用者忌口偏好</h4>
-              <p class="text-[11px] text-stone-400 m-0">暂无可用数据</p>
+              <p class="text-[11px] text-stone-400 m-0" id="google2TabooDescription">当前版本暂未开放编辑</p>
             </div>
-            <button class="text-xs font-bold text-[#FF6B57] hover:underline" >修改 →</button>
+            <button class="text-xs font-bold text-stone-500 hover:text-[#FF6B57] hover:underline" type="button">当前版本暂未开放</button>
           </div>
           <div class="flex flex-wrap sm:flex-nowrap items-center justify-between gap-3 pb-3 border-b border-stone-100">
             <div class="min-w-0">
@@ -3084,7 +3270,6 @@
           <div class="flex items-center justify-between gap-3">
             <div>
               <h4 class="text-xs font-black m-0">数据备份与导出</h4>
-              <p class="text-[11px] text-stone-400 m-0">导出本地 ZIP，或从备份安全恢复</p>
             </div>
             <div class="flex items-center gap-2 shrink-0">
               <button class="text-xs font-bold text-[#FF6B57] hover:underline" >立即备份 →</button>
@@ -3105,7 +3290,7 @@
       </div>
       <div class="dock-tab" onclick="switchPage('wheel', this)">
         <span class="text-base">🎯</span>
-        <span>转盘</span>
+        <span>菜谱推荐</span>
       </div>
       <div class="dock-tab" onclick="switchPage('inventory', this)">
         <span class="text-base">🥬</span>
@@ -3136,13 +3321,13 @@
           <div class="flex items-center gap-2.5 min-w-0">
             <span class="text-2xl w-10 h-10 rounded-2xl bg-white border border-[#FEDBC5] flex items-center justify-center shadow-sm" id="storeDetailIcon">🍱</span>
             <div class="min-w-0">
-              <h3 class="text-base font-black text-[#2D2621] m-0 truncate" id="storeDetailName">浅草和风便当屋</h3>
-              <div class="flex items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5" id="storeDetailMetaRow">
-                <span class="text-[#FF6B57]" id="storeDetailCategory">日式料理</span>
-                <span id="storeDetailMetaSeparator1">•</span>
-                <span class="text-amber-600 font-extrabold" id="storeDetailRating">★ 4.9</span>
-                <span id="storeDetailMetaSeparator2">•</span>
-                <span id="storeDetailPrice">人均 ¥36</span>
+              <h3 class="text-base font-black text-[#2D2621] m-0 truncate" id="storeDetailName"></h3>
+              <div class="hidden flex-wrap items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5" id="storeDetailMetaRow">
+                <span class="text-[#FF6B57]" id="storeDetailCategory"></span>
+                <span id="storeDetailMetaSeparator1"></span>
+                <span class="text-amber-600 font-extrabold" id="storeDetailRating"></span>
+                <span id="storeDetailMetaSeparator2"></span>
+                <span id="storeDetailPrice"></span>
               </div>
             </div>
           </div>
@@ -3154,24 +3339,21 @@
           <!-- 履约信息与店家随记 -->
           <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm space-y-2">
             <div class="flex items-center justify-between">
-              <div class="flex items-center gap-1.5" id="storeDetailBadges">
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-50 text-emerald-600 border border-emerald-200">🍽️ 支持堂食</span>
-                <span class="px-2 py-0.5 rounded-full text-[10px] font-black bg-orange-50 text-orange-600 border border-orange-200">🛵 品质外卖</span>
-              </div>
-              <span class="text-[11px] text-stone-400 font-bold" id="storeDetailHours">营业时间 · 10:30 - 21:30</span>
+              <div class="flex items-center gap-1.5" id="storeDetailBadges"></div>
+              <span class="text-[11px] text-stone-400 font-bold hidden" id="storeDetailHours"></span>
             </div>
             <div class="text-[11.5px] text-stone-600 flex items-start gap-1.5 pt-1 border-t border-stone-100" id="storeDetailAddressRow">
               <span>📍</span>
-              <span class="flex-1" id="storeDetailAddress">浅草食街 108 号 (距家 800m)</span>
+              <span class="flex-1" id="storeDetailAddress"></span>
             </div>
             <div class="flex items-center justify-between text-[11px] text-stone-500 pt-0.5">
-              <span class="text-[#FF6B57] font-bold flex items-center gap-1" id="storeDetailPhoneRow">
-                <span>📞</span> <span id="storeDetailPhone">0512-68219901</span>
+              <span class="text-[#FF6B57] font-bold flex items-center gap-1 hidden" id="storeDetailPhoneRow">
+                <span>📞</span> <span id="storeDetailPhone"></span>
               </span>
-              <span id="storeDetailDeliveryNote" class="text-stone-400 font-medium">起送 ¥25 · 配送费 ¥3</span>
+              <span id="storeDetailDeliveryNote" class="text-stone-500 font-medium"></span>
             </div>
-            <div id="storeDetailNotesBox" class="p-2.5 rounded-xl bg-[#FAF7F2] border border-[#F0E8DC] text-[11px] text-stone-500 leading-relaxed">
-              <span class="font-bold text-stone-700">店家随记：</span><span id="storeDetailNotes">午市点单建议提前 15 分钟；米饭软糯超治愈</span>
+            <div id="storeDetailNotesBox" class="hidden p-2.5 rounded-xl bg-[#FAF7F2] border border-[#F0E8DC] text-[11px] text-stone-500 leading-relaxed">
+              <span class="font-bold text-stone-700">店家随记：</span><span id="storeDetailNotes"></span>
             </div>
           </div>
 
@@ -3181,7 +3363,7 @@
               <h4 class="text-xs font-black text-stone-700 m-0 flex items-center gap-1.5">
                 <span>📖</span> 专属招牌菜单 (到店/外卖点单)
               </h4>
-              <span class="text-[10px] font-bold text-stone-400">收录 <span id="storeDetailMenuCount">3</span> 道好味</span>
+              <span class="text-[10px] font-bold text-stone-400">收录 <span id="storeDetailMenuCount"></span> 道好味</span>
             </div>
             <div class="space-y-2" id="storeDetailMenuList">
               <!-- 动态菜单 -->
@@ -3192,9 +3374,9 @@
           <div>
             <div class="flex items-center justify-between mb-2">
               <h4 class="text-xs font-black text-stone-700 m-0 flex items-center gap-1.5">
-                <span>🗓️</span> 历史就餐记录与避雷笔记
+                <span>🗓️</span> 历史就餐记录
               </h4>
-              <span class="text-[10px] font-bold text-stone-400">吃过 <span id="storeDetailHistoryCount">2</span> 次</span>
+              <span class="text-[10px] font-bold text-stone-400">吃过 <span id="storeDetailHistoryCount"></span> 次</span>
             </div>
             <div class="space-y-1.5" id="storeDetailHistoryList">
               <!-- 动态历史记录 -->
@@ -3211,7 +3393,7 @@
             <button type="button" class="text-xs font-bold text-stone-400 hover:text-stone-700 py-1.5 px-2 rounded-lg" onclick="BentoModal.open('storeForm', BentoModal.currentPayload)">
               ✏️ 编辑
             </button>
-            <button type="button" class="text-xs font-bold text-stone-300 hover:text-red-500 py-1.5 px-2 rounded-lg" onclick="confirmDeleteStore(BentoModal.currentPayload)">
+            <button type="button" class="text-xs font-bold text-stone-500 hover:text-red-500 py-1.5 px-2 rounded-lg" onclick="confirmDeleteStore(BentoModal.currentPayload)">
               🗑️
             </button>
           </div>
@@ -3235,11 +3417,11 @@
         <div class="w-16 h-16 mx-auto mb-2 rounded-2xl bg-[#FFF5E8] border border-[#FEE8B8] flex items-center justify-center text-3xl shadow-inner" id="winnerModalIcon">
           🍱
         </div>
-        <span class="inline-block text-[11px] font-black bg-[#FF6B57] text-white px-3 py-0.5 rounded-full mb-1.5 shadow-[0_2px_8px_rgba(255,107,87,0.25)]">
-          🎉 转盘命中！今日注定相遇
+        <span class="inline-block text-[11px] font-black bg-[#C4442F] text-white px-3 py-0.5 rounded-full mb-1.5 shadow-[0_2px_8px_rgba(196,68,47,0.24)]">
+          已选中推荐
         </span>
-        <h3 class="text-base font-black text-[#2D2621] m-0" id="winnerModalTitle">西红柿牛腩煲</h3>
-        <p class="text-xs text-stone-500 mt-1 mb-4" id="winnerModalSub">自烹 · ⏱ 35分钟 · 营养暖胃</p>
+        <h3 class="text-base font-black text-[#2D2621] m-0" id="winnerModalTitle"></h3>
+        <p class="text-xs text-stone-500 mt-1 mb-4" id="winnerModalSub"></p>
         
         <div class="space-y-2">
           <button class="neo-btn-primary w-full py-2.5 text-xs font-black shadow-[var(--shadow-primary)]" onclick="confirmWheelWinner()">
@@ -3260,25 +3442,21 @@
       </div>
     </div>
 
-    <!-- 11. 🥫 冰箱食材智能配菜中心弹窗 (Pantry Recipe Recommendation Modal) -->
+    <!-- 11. 🥫 冰箱现有食材配菜弹窗 (Pantry Recipe Recommendation Modal) -->
     <div id="modalPantryRecommend" class="hidden fixed inset-0 z-[130] flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
       <div class="fixed inset-0 modal-backdrop" onclick="BentoModal.close()"></div>
       <div class="modal-dialog relative w-full max-w-lg bg-[#FCFAF7] border-2 border-[#FEDBC5] rounded-3xl shadow-2xl p-4 sm:p-5 z-10 max-h-[90vh] flex flex-col overflow-hidden">
         <div class="flex items-center justify-between pb-2.5 border-b border-[#F0E8DC] flex-shrink-0 mb-3">
           <div class="flex items-center gap-2">
             <span class="text-xl">🥫</span>
-            <div>
-              <h3 class="text-sm font-black text-[#2D2621] m-0">冰箱现有食材智能配菜中心</h3>
-              <p class="text-[10px] text-stone-400 m-0">根据冰箱已有生鲜库存，智能算力测算可下锅的私房好菜</p>
-            </div>
+            <h3 class="text-sm font-black text-[#2D2621] m-0">冰箱现有食材配菜</h3>
           </div>
           <button class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
         </div>
         <div class="overflow-y-auto pr-1 text-xs space-y-3" id="pantryRecommendContent">
-          <!-- 动态算力匹配菜谱列表 -->
+          <!-- 动态匹配菜谱列表 -->
         </div>
-        <div class="flex items-center justify-between pt-2.5 border-t border-[#F0E8DC] flex-shrink-0">
-          <span class="text-[10px] text-stone-400">💡 提示：缺料支持一键加入购物清单</span>
+        <div class="flex items-center justify-end pt-2.5 border-t border-[#F0E8DC] flex-shrink-0">
           <button type="button" class="neo-btn-secondary text-xs py-1.5 px-4" onclick="BentoModal.close()">关闭</button>
         </div>
       </div>
@@ -3372,7 +3550,7 @@
           <div class="flex items-center gap-2.5 min-w-0">
             <span class="text-2xl w-10 h-10 rounded-2xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center shadow-sm overflow-hidden relative" id="recipeDetailIcon">🥘</span>
             <div class="min-w-0">
-              <h3 class="text-base font-black text-[#2D2621] m-0 truncate" id="recipeDetailName">西红柿牛腩煲</h3>
+              <h3 class="text-base font-black text-[#2D2621] m-0 truncate" id="recipeDetailName"></h3>
               <div class="hidden flex-wrap items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5" id="recipeDetailMetaRow"></div>
             </div>
           </div>
@@ -3441,7 +3619,7 @@
           <div class="flex items-center gap-2.5 min-w-0">
             <span class="text-2xl w-10 h-10 rounded-2xl bg-white border border-[#FEDBC5] flex items-center justify-center shadow-sm" id="ingredientDetailIcon">🥩</span>
             <div class="min-w-0">
-              <h3 class="text-base font-black text-[#2D2621] m-0 truncate" id="ingredientDetailName">精选牛腩肉</h3>
+              <h3 class="text-base font-black text-[#2D2621] m-0 truncate" id="ingredientDetailName"></h3>
               <div class="hidden flex-wrap items-center gap-2 text-[11px] text-stone-500 font-bold mt-0.5" id="ingredientDetailMetaRow"></div>
             </div>
           </div>
@@ -3453,20 +3631,20 @@
           <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl shadow-sm space-y-2">
             <div class="flex items-center justify-between">
               <span class="text-stone-500 font-bold">当前在库余量</span>
-              <span class="text-sm font-black text-stone-800" id="ingredientDetailStock">600 g</span>
+              <span class="text-sm font-black text-stone-800" id="ingredientDetailStock"></span>
             </div>
             <div class="space-y-1">
               <div class="flex items-center justify-between text-[11px]">
                 <span class="text-stone-400 font-bold">保质期追踪</span>
-                <span class="font-black" id="ingredientDetailExpiryBadge">还剩 11 天过期</span>
+                <span class="font-black" id="ingredientDetailExpiryBadge"></span>
               </div>
               <div class="w-full h-2 bg-stone-100 rounded-full overflow-hidden">
-                <div class="h-full bg-emerald-500 transition-all" id="ingredientDetailExpiryBar" style="width: 75%;"></div>
+                <div class="h-full bg-emerald-500 transition-all" id="ingredientDetailExpiryBar" style="width: 0%;"></div>
               </div>
             </div>
             <div class="flex items-center justify-between text-[10.5px] text-stone-400 pt-1 border-t border-stone-100">
-              <span>采购日期: <span id="ingredientDetailPurchaseDate">2026-09-06</span></span>
-              <span>到期日期: <span id="ingredientDetailExpireDate">2026-09-20</span></span>
+              <span>采购日期: <span id="ingredientDetailPurchaseDate"></span></span>
+              <span>到期日期: <span id="ingredientDetailExpireDate"></span></span>
             </div>
           </div>
 
@@ -3528,7 +3706,7 @@
           <div>
             <label class="block text-stone-500 font-bold mb-1.5 flex items-center justify-between">
               <span>选择排餐菜品或外卖店铺</span>
-              <span class="text-[10px] text-stone-400 font-normal">支持即时拼音/名称搜索</span>
+              <span class="text-[10px] text-stone-400 font-normal">支持按名称搜索</span>
             </label>
             <div class="relative" id="planPickerComboboxWrap">
               <!-- 触发器按钮 -->
@@ -3565,7 +3743,7 @@
             <div class="p-2.5 bg-white border border-[#F0E8DC] rounded-2xl space-y-2">
               <div class="flex items-center justify-between text-[11px] font-bold text-stone-500">
                 <span>📅 自定义就餐日期与时间</span>
-                <span class="text-[10px] text-stone-400 font-normal">精确到分 · 自动同步闹钟</span>
+                <span class="text-[10px] text-stone-400 font-normal">精确到分</span>
               </div>
               <div class="grid grid-cols-2 gap-2">
                 <div>
@@ -3642,9 +3820,9 @@
             <div>
               <h3 class="text-sm sm:text-base font-black text-[#2D2621] m-0 flex items-center gap-1.5">
                 就餐小闹钟 · 排餐提醒
-                <span id="reminderAlertCountBadge" class="px-2 py-0.2 rounded-full text-[10px] font-black bg-[#FF6B57] text-white">1</span>
+                <span id="reminderAlertCountBadge" class="px-2 py-0.2 rounded-full text-[10px] font-black bg-[#C4442F] text-white"></span>
               </h3>
-              <p class="text-[11px] text-stone-500 m-0">主人，检测到以下排餐时间已过/已到，请尽快就餐打卡或调整哦~</p>
+              <p class="text-[11px] text-stone-500 m-0">检测到以下排餐时间已过或已到，请尽快打卡或调整。</p>
             </div>
           </div>
           <button type="button" class="w-7 h-7 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57] transition-all" onclick="PlanReminderScheduler.handleModalDismiss()" title="10分钟后再提醒">✕</button>
@@ -3698,7 +3876,7 @@
             <span class="text-xl">📅</span>
             <div>
               <h3 class="text-base font-black text-[#2D2621] m-0" id="dailyDiaryDateTitle">饮食日记全景</h3>
-              <p class="text-[11px] text-stone-400 font-bold m-0 mt-0.5" id="dailyDiarySubtitle">共摄入约 1280 kcal · 记录 2 餐</p>
+              <p class="text-[11px] text-stone-400 font-bold m-0 mt-0.5" id="dailyDiarySubtitle"></p>
             </div>
           </div>
           <button class="w-7 h-7 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
@@ -3722,7 +3900,6 @@
             <span class="text-xl" id="formRecipeIconPreview">🍳</span>
             <div>
               <h3 class="text-sm font-black text-[#2D2621] m-0">录入我的私房菜谱</h3>
-              <p class="text-[10px] text-stone-400 m-0">结构化录入食材配方与分步计时器，1:1 还原烹饪详情</p>
             </div>
           </div>
           <button class="w-6 h-6 rounded-full border border-[#F0E8DC] bg-white text-stone-400 text-xs font-black hover:bg-[#FFECE8] hover:text-[#FF6B57]" onclick="BentoModal.close()">✕</button>
@@ -3779,7 +3956,6 @@
               <label class="text-xs font-black text-stone-700 flex items-center gap-1.5 m-0">
                 <span>📸</span> 菜谱成品封面图（可选 · 支持 JPG / PNG / WEBP，≤ 8MB）
               </label>
-              <span class="text-[10px] text-stone-400">未上传时展示分类图标</span>
             </div>
             <input type="file" id="recipeCoverFileInput" accept="image/jpeg,image/png,image/webp" class="hidden" />
             <button type="button" id="btnChooseRecipeCover" class="w-full py-1.5 border-2 border-dashed border-[#FEDBC5] rounded-xl text-[#FF6B57] hover:bg-[#FFF5F2] font-black text-xs transition-all flex items-center justify-center gap-1">
@@ -3797,9 +3973,8 @@
           <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl">
             <div class="flex items-center justify-between mb-2">
               <label class="text-xs font-black text-stone-700 flex items-center gap-1.5 m-0">
-                <span>🥩</span> 食材配方清单 (逐项录入，用于自动比对冰箱库存)
+                <span>🥩</span> 食材配方清单
               </label>
-              <span class="text-[10px] text-stone-400">品名 + 份量规格</span>
             </div>
             <div id="formRecipeIngList" class="space-y-1.5 mb-2">
               <!-- 动态条目将由 JS 初始化 -->
@@ -3813,9 +3988,8 @@
           <div class="p-3 bg-white border border-[#F0E8DC] rounded-2xl">
             <div class="flex items-center justify-between mb-2">
               <label class="text-xs font-black text-stone-700 flex items-center gap-1.5 m-0">
-                <span>🔥</span> 分步烹饪指南 (可为关键步骤设定计时器)
+                <span>🔥</span> 分步烹饪指南
               </label>
-              <span class="text-[10px] text-stone-400">步骤标题 + 做法 + 倒计时</span>
             </div>
             <div id="formRecipeStepList" class="space-y-2 mb-2">
               <!-- 动态步骤将由 JS 初始化 -->
@@ -3865,7 +4039,7 @@
           <div class="grid grid-cols-2 gap-2">
             <div>
               <label class="block text-stone-600 font-black mb-1">电话号码</label>
-              <input type="text" id="formStorePhone" placeholder="0512-68219901" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+              <input type="text" id="formStorePhone" placeholder="填写店铺联系电话" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
             </div>
             <div>
               <label class="block text-stone-600 font-black mb-1">营业时间</label>
@@ -3874,7 +4048,7 @@
           </div>
           <div>
             <label class="block text-stone-600 font-black mb-1">店铺地址</label>
-            <input type="text" id="formStoreAddress" placeholder="浅草食街 108 号 (距家 800m)" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
+                <input type="text" id="formStoreAddress" placeholder="填写店铺地址或商圈距离" class="w-full px-3 py-2 rounded-xl border border-[#F0E8DC] bg-white text-xs font-bold text-stone-800 focus:outline-none focus:border-[#FF6B57]" />
           </div>
 
           <!-- 招牌菜品菜单清单 (动态行化，告别逗号分割与假随机数) -->
@@ -4210,12 +4384,12 @@
 
     <!-- 移动端安全删除/移除确认弹窗 (必须在移动端视口内部渲染，层级高于所有Modal与Drawer) -->
     <div id="mobileDestructiveConfirmOverlay" class="hidden fixed z-[300] flex items-center justify-center p-4 bg-black/50 backdrop-blur-[2px] transition-opacity duration-150">
-      <div id="mobileConfirmModalBox" class="w-full max-w-[320px] bg-white dark:bg-[#2C2723] rounded-3xl p-5 border-2 border-[#FEDBC5] dark:border-[#423930] shadow-2xl flex flex-col items-center text-center animate-[modalPop_0.2s_ease-out]">
-        <div class="w-12 h-12 rounded-2xl bg-[#FFF0ED] dark:bg-[#3D2825] border border-[#FEDBC5] dark:border-[#523530] flex items-center justify-center text-2xl mb-3 flex-shrink-0">
+      <div id="mobileConfirmModalBox" class="w-full max-w-[320px] bg-white rounded-3xl p-5 border-2 border-[#FEDBC5] shadow-2xl flex flex-col items-center text-center animate-[modalPop_0.2s_ease-out]">
+        <div class="w-12 h-12 rounded-2xl bg-[#FFF0ED] border border-[#FEDBC5] flex items-center justify-center text-2xl mb-3 flex-shrink-0">
           <span id="mobileConfirmIcon">🗑️</span>
         </div>
-        <h3 id="mobileConfirmTitle" class="text-base font-black text-stone-900 dark:text-[#F2EAE0] m-0 mb-1.5">确认删除</h3>
-        <p id="mobileConfirmMessage" class="text-xs text-stone-500 dark:text-[#B5A89A] font-medium m-0 mb-4 leading-relaxed">此操作将移除该内容，确认要继续吗？</p>
+        <h3 id="mobileConfirmTitle" class="text-base font-black text-stone-900 m-0 mb-1.5">确认删除</h3>
+        <p id="mobileConfirmMessage" class="text-xs text-stone-500 font-medium m-0 mb-4 leading-relaxed">此操作将移除该内容，确认要继续吗？</p>
         <div class="flex items-center gap-2.5 w-full">
           <button type="button" id="mobileConfirmCancelBtn" class="flex-1 neo-btn-secondary text-xs py-2.5 rounded-xl font-bold">取消</button>
           <button type="button" id="mobileConfirmOkBtn" class="flex-1 text-xs py-2.5 rounded-xl font-black bg-[#DC2626] hover:bg-[#B91C1C] text-white shadow-[0_4px_12px_rgba(220,38,38,0.25)] transition-all">确认删除</button>
@@ -7650,13 +7824,15 @@
         const id = document.getElementById('formStoreId').value || `store-${Date.now()}`;
         const name = document.getElementById('formStoreName').value.trim();
         const category = document.getElementById('formStoreCategory').value;
-        const price = parseInt(document.getElementById('formStorePrice').value) || 35;
-        const phone = document.getElementById('formStorePhone').value.trim() || '0512-68219901';
-        const hours = document.getElementById('formStoreHours').value.trim() || '10:00 - 21:00';
-        const address = document.getElementById('formStoreAddress').value.trim() || '本地优选商圈';
+        const priceRaw = document.getElementById('formStorePrice').value.trim();
+        // 未填写即 null：不臆造人均价格；招牌菜价格留空时同样不落假数值
+        const price = priceRaw === '' ? null : Number(priceRaw);
+        const phone = document.getElementById('formStorePhone').value.trim();
+        const hours = document.getElementById('formStoreHours').value.trim();
+        const address = document.getElementById('formStoreAddress').value.trim();
         const supportsDineIn = document.getElementById('formStoreDineIn').checked;
         const supportsTakeout = document.getElementById('formStoreTakeout').checked;
-        const notes = document.getElementById('formStoreNotes').value.trim() || '味道地道，软糯便当超治愈。';
+        const notes = document.getElementById('formStoreNotes').value.trim();
 
         const icons = { '日式料理': '🍱', '江南面点': '🍜', '轻食低卡': '🥗', '特色正餐': '🥩', '粤式烧味': '🍗', '滋补靓汤': '🍲', '川湘小厨': '🌶️' };
 
@@ -7664,7 +7840,8 @@
         const dishRows = document.querySelectorAll('#formStoreMenuList .store-dish-row');
         const menuItems = Array.from(dishRows).map((row, i) => {
           const dName = row.querySelector('.store-dish-name').value.trim();
-          const dPrice = parseInt(row.querySelector('.store-dish-price').value) || price;
+          const dPriceRaw = row.querySelector('.store-dish-price').value.trim();
+          const dPrice = dPriceRaw === '' ? null : Number(dPriceRaw);
           const isSig = row.querySelector('.store-dish-sig').checked;
           return {
             id: `m-${id}-${i}`,
@@ -7684,7 +7861,11 @@
           category,
           icon: icons[category] || '🍱',
           price,
-          rating: 4.8,
+          rating: (() => {
+            const raw = document.getElementById('formStoreRating')?.value;
+            const value = raw == null || String(raw).trim() === '' ? NaN : Number(raw);
+            return Number.isFinite(value) ? value : null;
+          })(),
           phone,
           hours,
           address,
@@ -7891,16 +8072,16 @@
 
 
       handleWheelResult() {
-        const banner = document.getElementById('resultBanner');
-        if (!banner) return;
-        const text = banner.innerText;
-        const recipe = BentoService.recipes.data.find(r => text.includes(r.name));
-        const store = BentoService.stores.data.find(s => text.includes(s.name));
-
-        if (recipe) {
-          this.open('recipeDetail', recipe.id);
-        } else if (store) {
-          this.open('storeDetail', store.id);
+        // 旧静态结果横幅已移除：直接复用当前命中项，绝不依赖不可见 DOM 文本
+        const item = currentWheelWinnerItem;
+        if (!item) {
+          showToast('还没有命中的推荐，请先开始推荐', 'info');
+          return;
+        }
+        if (item.type === 'store') {
+          this.open('storeDetail', item.id);
+        } else if (item.type === 'recipe') {
+          this.open('recipeDetail', item.id);
         } else {
           showToast('已锁定今日选择，已加入待办便当！', '🍱');
         }
@@ -9492,15 +9673,17 @@
       const viewport = document.getElementById('appViewport');
       const btnMobile = document.getElementById('btnMobileMode');
       const btnDesktop = document.getElementById('btnDesktopMode');
+      // 顶栏展厅控件已移除：任何残留调用都必须安全降级，不得因缺少按钮抛错
+      if (!viewport) return;
 
       if (mode === 'mobile') {
         viewport.classList.add('mobile-mode');
-        btnMobile.classList.add('active');
-        btnDesktop.classList.remove('active');
+        if (btnMobile) btnMobile.classList.add('active');
+        if (btnDesktop) btnDesktop.classList.remove('active');
       } else {
         viewport.classList.remove('mobile-mode');
-        btnDesktop.classList.add('active');
-        btnMobile.classList.remove('active');
+        if (btnDesktop) btnDesktop.classList.add('active');
+        if (btnMobile) btnMobile.classList.remove('active');
         toggleDrawer(false);
       }
       setTimeout(resizeConfetti, 350);
@@ -9556,8 +9739,13 @@
 
       toggleDrawer(false);
 
-      // 切离转盘页面时，中止未完成转盘并停止 Winner 音频
+      // 切离转盘页面时，中止未完成转盘并停止 Winner 音频；同时作废在途请求代次，
+      // 避免晚到的推荐响应在返回转盘页后重新起转
       if (pageId !== 'wheel') {
+        wheelRequestRunId++;
+        // 作废 adapter 侧在途推荐请求：旧请求晚到不得写扇区/toast/busy，
+        // 返回转盘后的首次 GO 必须能立即发起新请求
+        cancelPendingWheelRequest();
         if (typeof cleanupActiveSpin === 'function') cleanupActiveSpin('page_switch');
         if (typeof BentoAudioManager !== 'undefined') BentoAudioManager.stopWheelWinner();
       }
@@ -9585,6 +9773,80 @@
       if (show) drawer.classList.remove('hidden');
       else drawer.classList.add('hidden');
     }
+
+    // -------------------------------------------------------------------------
+    // 首页周历 7 格状态统一样式维护：adapter 只写 data-status / is-today-week-cell /
+    // hidden，具体背景、边框与文字由这里按四态统一挂类（今日 > 已记录 > 已排餐 > 普通）。
+    // -------------------------------------------------------------------------
+    const HOME_WEEK_CELLS = () =>
+      document.querySelectorAll(
+        '[data-binding="calendarDays"] [data-binding^="calendarDay-"], .mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]'
+      );
+
+    let applyingWeekCellStyles = false;
+
+    function applyHomeWeekCellStyles() {
+      if (applyingWeekCellStyles) return;
+      applyingWeekCellStyles = true;
+      try {
+        HOME_WEEK_CELLS().forEach((cell) => {
+          const isToday = cell.classList.contains('is-today-week-cell');
+          const status = cell.dataset.status || '';
+          const recorded = !isToday && status === 'recorded';
+          const planned = !isToday && status === 'planned';
+          cell.classList.toggle('week-cell', true);
+          cell.classList.toggle('week-cell-today', isToday);
+          cell.classList.toggle('week-cell-recorded', recorded);
+          cell.classList.toggle('week-cell-planned', planned);
+        });
+      } finally {
+        applyingWeekCellStyles = false;
+      }
+    }
+
+    function observeHomeWeekCells() {
+      const roots = [
+        document.querySelector('[data-binding="calendarDays"]'),
+        document.querySelector('.mobile-week-calendar-list')
+      ].filter(Boolean);
+      if (!roots.length || typeof MutationObserver === 'undefined') return;
+      const observer = new MutationObserver(() => applyHomeWeekCellStyles());
+      roots.forEach((root) =>
+        observer.observe(root, {
+          childList: true,
+          subtree: true,
+          attributes: true,
+          attributeFilter: ['data-status', 'hidden', 'class']
+        })
+      );
+      applyHomeWeekCellStyles();
+    }
+
+    window.applyHomeWeekCellStyles = applyHomeWeekCellStyles;
+
+    // 首页「今日推荐菜谱」零推荐空态：adapter 只负责逐卡 hidden，这里按可见卡片数切换引导文案。
+    function syncRecommendedRecipesEmpty() {
+      const track = document.querySelector('[data-binding="recommendedRecipes"]');
+      const empty = document.querySelector('[data-binding="recommendedRecipesEmpty"]');
+      if (!track || !empty) return;
+      const cards = track.querySelectorAll('.recommend-card');
+      const visible = Array.from(cards).filter((card) => !card.hidden).length;
+      empty.classList.toggle('hidden', visible > 0);
+    }
+
+    function observeRecommendedRecipes() {
+      const track = document.querySelector('[data-binding="recommendedRecipes"]');
+      if (!track || typeof MutationObserver === 'undefined') return;
+      const observer = new MutationObserver(() => syncRecommendedRecipesEmpty());
+      observer.observe(track, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['hidden', 'class']
+      });
+    }
+
+    window.syncRecommendedRecipesEmpty = syncRecommendedRecipesEmpty;
 
     // Toast 浮动气泡提示 (防重入闭环)
     function showToast(text, icon = '✨') {
@@ -9628,12 +9890,67 @@
       '#FF8575', '#6ABF69', '#FFC53D', '#F7931E',
       '#B388FF', '#4DB6AC', '#FFAAA6', '#FF7865'
     ];
+    // 扇区文字按底色亮度选色：浅黄/浅绿/浅桃底用深色字，其余用白字
+    const WHEEL_SLICE_TEXT_COLOR = {
+      '#FF8575': '#2D2621',
+      '#6ABF69': '#2D2621',
+      '#FFC53D': '#2D2621',
+      '#F7931E': '#2D2621',
+      '#B388FF': '#2D2621',
+      '#4DB6AC': '#2D2621',
+      '#FFAAA6': '#2D2621',
+      '#FF7865': '#2D2621'
+    };
+    const wheelSliceTextColor = (fill) => WHEEL_SLICE_TEXT_COLOR[fill] || '#2D2621';
+    const WHEEL_GO_LABEL = 'GO';
+    const WHEEL_IDLE_BOTTOM_LABEL = '开始推荐';
+    const WHEEL_AGAIN_BOTTOM_LABEL = '再转一次决定';
+    let wheelSpinPending = false;
+    let wheelRequestRunId = 0;
+
+    // 请求作用域失效：切换页面/分类时作废在途推荐请求并释放 adapter 等待锁。
+    // 旧请求即使稍后落定，也只按自身 identity 收尾，不会写扇区、不弹 toast、不释放新锁。
+    function cancelPendingWheelRequest() {
+      const adapter = window.DafanWheelAdapter;
+      if (adapter && typeof adapter.cancelPending === 'function') {
+        try {
+          adapter.cancelPending();
+        } catch (error) {
+          // 取消失败不得阻断切页/切模式本身
+        }
+      }
+    }
+
+    // 转盘按钮并发锁：等待与旋转期统一 disabled + aria-busy
+    function setWheelBusy(busy) {
+      const goBtn = document.getElementById('wheelGoBtn');
+      const bottomBtn = document.getElementById('btnSpinBottom');
+      [goBtn, bottomBtn].forEach((btn) => {
+        if (!btn) return;
+        if (busy) {
+          btn.disabled = true;
+          btn.setAttribute('aria-busy', 'true');
+        } else {
+          btn.disabled = false;
+          btn.removeAttribute('aria-busy');
+        }
+      });
+    }
 
     function setWheelCandidateMode(mode) {
       if (mode === 'store') mode = 'all';
-      // 切换分类视为新一轮决策：上一轮排除项不再约束新的候选池
+      // 切换分类视为新一轮决策：上一轮排除项不再约束新的候选池，
+      // 在途推荐请求代次作废，晚到响应不得以旧模式重启动画
+      wheelRequestRunId++;
+      // 真正取消在途推荐请求：作废其作用域并释放 adapter 侧等待锁，
+      // 下一次点击才能立即发起新请求（不必等旧 promise 落定）
+      cancelPendingWheelRequest();
       clearWheelExclusions();
       wheelCandidateMode = mode;
+      if (!isSpinning) {
+        wheelSpinPending = false;
+        setWheelBusy(false);
+      }
       ['all', 'cook', 'dinein', 'takeout', 'store'].forEach(m => {
         const btn = document.getElementById('btnWheelMode-' + m);
         if (btn) btn.classList.remove('active');
@@ -9741,10 +10058,11 @@
 
     function buildWheelSvgBase() {
       const svg = createSvgElement('svg', { viewBox: '0 0 320 320', width: '100%', height: '100%' });
+      // 衬底与分隔线由 CSS 类按主题着色，深色下不残留亮米白圆盘与亮描边
       svg.append(
-        createSvgElement('circle', { cx: 160, cy: 160, r: 156, fill: '#FAF7F2' }),
-        createSvgElement('circle', { cx: 160, cy: 160, r: 150, fill: 'none', stroke: '#EFE6DA', 'stroke-width': 2 }),
-        createSvgElement('circle', { cx: 160, cy: 160, r: 144, fill: 'none', stroke: '#FEDBC5', 'stroke-width': 1.5, 'stroke-dasharray': '6, 8' })
+        createSvgElement('circle', { cx: 160, cy: 160, r: 156, class: 'wheel-svg-base-fill' }),
+        createSvgElement('circle', { cx: 160, cy: 160, r: 150, fill: 'none', class: 'wheel-svg-base-ring', 'stroke-width': 2 }),
+        createSvgElement('circle', { cx: 160, cy: 160, r: 144, fill: 'none', class: 'wheel-svg-base-dash', 'stroke-width': 1.5, 'stroke-dasharray': '6, 8' })
       );
       return svg;
     }
@@ -9758,15 +10076,15 @@
       if (n === 0) {
         const svg = buildWheelSvgBase();
         svg.append(
-          createSvgElement('circle', { cx: 160, cy: 160, r: 120, fill: '#F3EDE2' })
+          createSvgElement('circle', { cx: 160, cy: 160, r: 120, class: 'wheel-svg-empty-fill' })
         );
-        const leaf = createSvgElement('text', { x: 160, y: 145, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#A8A29E', 'font-size': 28 });
+        const leaf = createSvgElement('text', { x: 160, y: 145, 'text-anchor': 'middle', 'dominant-baseline': 'central', class: 'wheel-svg-empty-icon', 'font-size': 28 });
         leaf.textContent = '🍃';
-        const emptyTitle = createSvgElement('text', { x: 160, y: 180, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#78716C', 'font-size': 12, 'font-weight': 900 });
+        const emptyTitle = createSvgElement('text', { x: 160, y: 180, 'text-anchor': 'middle', 'dominant-baseline': 'central', class: 'wheel-svg-empty-title', 'font-size': 12, 'font-weight': 900 });
         emptyTitle.textContent = '暂无可转候选';
-        const emptyHint = createSvgElement('text', { x: 160, y: 200, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#A8A29E', 'font-size': 10, 'font-weight': 700 });
+        const emptyHint = createSvgElement('text', { x: 160, y: 200, 'text-anchor': 'middle', 'dominant-baseline': 'central', class: 'wheel-svg-empty-hint', 'font-size': 10, 'font-weight': 700 });
         emptyHint.textContent = '请前往对应专区添加';
-        svg.append(leaf, emptyTitle, emptyHint, createSvgElement('circle', { cx: 160, cy: 160, r: 38, fill: '#FAF7F2', stroke: '#EFE6DA', 'stroke-width': 2 }));
+        svg.append(leaf, emptyTitle, emptyHint, createSvgElement('circle', { cx: 160, cy: 160, r: 38, class: 'wheel-svg-center-fill', 'stroke-width': 2 }));
         rotor.replaceChildren(svg);
         return;
       }
@@ -9777,10 +10095,11 @@
         if (displayTitle.length > 6) displayTitle = displayTitle.slice(0, 6) + '..';
         const color = WHEEL_PALETTE[0];
         const svg = buildWheelSvgBase();
-        svg.append(createSvgElement('circle', { cx: 160, cy: 160, r: 142, fill: color, stroke: '#FAF7F2', 'stroke-width': 3 }));
-        const label = createSvgElement('text', { x: 160, y: 75, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: '#FFFFFF', 'font-size': 13, 'font-weight': 900 });
+        svg.append(createSvgElement('circle', { cx: 160, cy: 160, r: 142, fill: color, class: 'wheel-svg-separator', 'stroke-width': 3 }));
+        const label = createSvgElement('text', { x: 160, y: 75, 'text-anchor': 'middle', 'dominant-baseline': 'central', fill: wheelSliceTextColor(color), 'font-size': 13, 'font-weight': 900 });
         label.textContent = displayTitle;
-        svg.append(label, createSvgElement('circle', { cx: 160, cy: 160, r: 38, fill: '#FAF7F2', stroke: '#EFE6DA', 'stroke-width': 2 }));
+        const center = createSvgElement('circle', { cx: 160, cy: 160, r: 38, class: 'wheel-svg-center-fill', 'stroke-width': 2 });
+        svg.append(label, center);
         rotor.replaceChildren(svg);
         return;
       }
@@ -9814,7 +10133,7 @@
         svg.append(createSvgElement('path', {
           d: `M 160 160 L ${x1} ${y1} A 142 142 0 ${largeArc} 1 ${x2} ${y2} Z`,
           fill: color,
-          stroke: '#FAF7F2',
+          class: 'wheel-svg-separator',
           'stroke-width': 3
         }));
 
@@ -9823,7 +10142,7 @@
           y: 160,
           'text-anchor': 'middle',
           'dominant-baseline': 'central',
-          fill: '#FFFFFF',
+          fill: wheelSliceTextColor(color),
           'font-size': 11,
           'font-weight': 900,
           transform: textTransform
@@ -9835,7 +10154,7 @@
         svg.append(text);
       });
 
-      svg.append(createSvgElement('circle', { cx: 160, cy: 160, r: 38, fill: '#FAF7F2', stroke: '#EFE6DA', 'stroke-width': 2 }));
+      svg.append(createSvgElement('circle', { cx: 160, cy: 160, r: 38, class: 'wheel-svg-center-fill', 'stroke-width': 2 }));
       rotor.replaceChildren(svg);
     }
 
@@ -9857,13 +10176,16 @@
       }
       activeSpinRunId++;
       isSpinning = false;
+      wheelSpinPending = false;
+      setWheelBusy(false);
 
       const pin = document.getElementById('wheelPin');
       const goText = document.getElementById('wheelGoText');
       const bottomBtn = document.getElementById('btnSpinBottom');
       if (pin) pin.classList.remove('pin-shake');
-      if (goText) goText.innerText = 'GO!';
-      if (bottomBtn) bottomBtn.innerText = '再转一次决定';
+      if (goText) goText.innerText = WHEEL_GO_LABEL;
+      // 取消/切页只回到初始文案：未曾产生结果时绝不再写「再转一次」
+      if (bottomBtn) bottomBtn.innerText = WHEEL_IDLE_BOTTOM_LABEL;
 
       if (typeof BentoAudioManager !== 'undefined') {
         BentoAudioManager.stopWheelWinner();
@@ -9888,13 +10210,15 @@
         activeSpinWatchdogTimer = null;
       }
       isSpinning = false;
+      wheelSpinPending = false;
+      setWheelBusy(false);
 
       const pin = document.getElementById('wheelPin');
       const goText = document.getElementById('wheelGoText');
       const bottomBtn = document.getElementById('btnSpinBottom');
       if (pin) pin.classList.remove('pin-shake');
-      if (goText) goText.innerText = 'GO!';
-      if (bottomBtn) bottomBtn.innerText = '再转一次决定';
+      if (goText) goText.innerText = WHEEL_GO_LABEL;
+      if (bottomBtn) bottomBtn.innerText = WHEEL_AGAIN_BOTTOM_LABEL;
 
       currentWheelWinnerItem = winningItem;
       BentoAudioManager.playWheelWinner();
@@ -9902,26 +10226,54 @@
       BentoModal.open('wheelWinner', winningItem);
     }
 
+    // 空候选按当前模式给出准确原因与去处（cook 指向我的菜谱，不误导到觅食小馆）
+    const WHEEL_EMPTY_GUIDE = {
+      cook: { text: '还没有可下厨的菜谱，快去【我的菜谱】添加吧', page: 'recipes' },
+      dinein: { text: '还没有支持堂食的店铺，快去【觅食小馆】添加吧', page: 'discovery' },
+      takeout: { text: '还没有支持外卖的店铺，快去【觅食小馆】添加吧', page: 'discovery' },
+      all: { text: '还没有可用候选，去【我的菜谱】或【觅食小馆】添加吧', page: 'recipes' }
+    };
+
     async function triggerSpin() {
-      if (isSpinning) return;
+      if (isSpinning || wheelSpinPending) return;
       if (!dynamicWheelItems || dynamicWheelItems.length === 0) {
         updateWheelCandidates();
       }
       if (!dynamicWheelItems || dynamicWheelItems.length === 0) {
-        const modeLabel = wheelCandidateMode === 'dinein' ? '堂食' : (wheelCandidateMode === 'takeout' ? '外卖' : '当前');
+        const guide = WHEEL_EMPTY_GUIDE[wheelCandidateMode] || WHEEL_EMPTY_GUIDE.all;
         if (typeof showToast === 'function') {
-          showToast(`当前分类下暂无${modeLabel}店铺，快去【觅食小馆】添加吧！`, 'info');
+          showToast(guide.text, 'info');
         }
         return;
       }
-      // 真实推荐驱动落点：由正式 recommendation API 决定转盘停在哪一格
-      // fail-closed：推荐不可用时不起转、不伪造随机结果
-      const recommendedIndex = window.DafanWheelAdapter
-        ? await window.DafanWheelAdapter.resolveTargetIndex(
-            typeof getWheelCandidateMode === 'function' ? getWheelCandidateMode() : wheelCandidateMode
-          )
-        : null;
-      if (recommendedIndex == null) return;
+      // 请求等待期即上锁：整个请求 + 动画生命周期单实例，晚到响应不得复活旧模式
+      wheelSpinPending = true;
+      const requestRunId = ++wheelRequestRunId;
+      const requestMode = wheelCandidateMode;
+      setWheelBusy(true);
+      let recommendedIndex = null;
+      try {
+        // 真实推荐驱动落点：由正式 recommendation API 决定转盘停在哪一格
+        // fail-closed：推荐不可用时不起转、不伪造随机结果
+        recommendedIndex = window.DafanWheelAdapter
+          ? await window.DafanWheelAdapter.resolveTargetIndex(requestMode)
+          : null;
+      } catch (error) {
+        recommendedIndex = null;
+      }
+      // 晚到响应（已切模式/已离开转盘/已有更新一轮）直接丢弃，并释放本次锁
+      const stale =
+        requestRunId !== wheelRequestRunId ||
+        requestMode !== wheelCandidateMode ||
+        recommendedIndex == null ||
+        !document.getElementById('page-wheel')?.classList.contains('active');
+      if (stale) {
+        if (requestRunId === wheelRequestRunId) {
+          wheelSpinPending = false;
+          setWheelBusy(false);
+        }
+        return;
+      }
       initAudio();
       cleanupActiveSpin('new_spin');
       isSpinning = true;
@@ -9929,14 +10281,14 @@
 
       const rotor = document.getElementById('wheelRotor');
       const pin = document.getElementById('wheelPin');
-      const banner = document.getElementById('resultBanner');
       const goText = document.getElementById('wheelGoText');
       const bottomBtn = document.getElementById('btnSpinBottom');
 
-      if (goText) goText.innerText = '转...';
-      if (bottomBtn) bottomBtn.innerText = '旋转中...';
+      // 所有分支按钮文字恒为 GO
+      if (goText) goText.innerText = WHEEL_GO_LABEL;
+      if (bottomBtn) bottomBtn.innerText = '推荐中…';
       if (pin) pin.classList.add('pin-shake');
-      if (banner) banner.classList.add('hidden');
+      setWheelBusy(true);
 
       const items = dynamicWheelItems;
       const targetIndex = Math.min(Math.max(recommendedIndex, 0), items.length - 1);
@@ -10951,16 +11303,26 @@
     }
 
     function toggleAudio() {
-      initAudio();
+      try {
+        initAudio();
+      } catch (error) {
+        // 音频不可用不得阻断其它交互
+      }
       isAudioEnabled = !isAudioEnabled;
       if (!isAudioEnabled && typeof BentoAudioManager !== 'undefined') {
-        BentoAudioManager.stopAll();
+        try {
+          BentoAudioManager.stopAll();
+        } catch (error) {}
       }
+      // 顶栏音效按钮已移除：DOM 查询做安全判空，仅保留状态与提示
       const btn = document.getElementById('btnAudioToggle');
       if (btn) {
         btn.innerText = isAudioEnabled ? '🔊 音效：开启' : '🔈 音效：静音';
       }
-      showToast(isAudioEnabled ? '已开启温馨交互音效' : '已静音', isAudioEnabled ? '🔊' : '🔈');
+      if (typeof showToast === 'function') {
+        showToast(isAudioEnabled ? '已开启交互音效' : '已静音', isAudioEnabled ? '🔊' : '🔈');
+      }
+      return isAudioEnabled;
     }
 
     function playTick() {
@@ -11692,7 +12054,10 @@
 
       ['light', 'dark', 'system'].forEach(t => {
         const btn = document.getElementById('btnTheme' + t.charAt(0).toUpperCase() + t.slice(1));
-        if (btn) btn.classList.toggle('active', t === theme);
+        if (!btn) return;
+        const active = t === theme;
+        btn.classList.toggle('active', active);
+        btn.setAttribute('aria-pressed', active ? 'true' : 'false');
       });
 
       if (theme === 'system') {
@@ -12218,6 +12583,9 @@
       renderStatistics();
       initAppTheme();
       updateWheelCandidates();
+      observeHomeWeekCells();
+      observeRecommendedRecipes();
+      syncRecommendedRecipesEmpty();
       PlanReminderScheduler.start();
       console.log('🍱 [Mochi Bento v1.9] 核心交互与功能收敛架构已成功初始化就绪！');
     });

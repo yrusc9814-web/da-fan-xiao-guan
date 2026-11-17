@@ -668,7 +668,8 @@ describe('Google2 legacy entry adapter', () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(fetchMock).not.toHaveBeenCalled();
     expect(toast).toHaveBeenCalledTimes(1);
-    expect(toast).toHaveBeenCalledWith('Google 2.0 暂无可用的忌口编辑入口', 'warning');
+    // T-006C：忌口行不再宣称「暂无可用数据」，提示改为「当前版本暂未开放编辑」
+    expect(toast).toHaveBeenCalledWith('当前版本暂未开放编辑', 'warning');
   });
 
   it('【VAN-35】boot 之后再调用 wireSettings 不会重复绑定备份入口', async () => {

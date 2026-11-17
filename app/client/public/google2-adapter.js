@@ -2940,6 +2940,32 @@
     fallback.textContent = '🥘';
     box.append(fallback);
   }
+  /**
+   * 今日推荐零条时的简洁空态：
+   * 1) 页面若提供 [data-binding="recommendedRecipesEmpty"]（含切页入口），只切换 hidden，绝不重复渲染；
+   * 2) 否则渲染一行纯文本提示，元素由本函数独占维护，有真实推荐时立即移除。
+   */
+  const RECOMMENDED_EMPTY_TEXT = '暂无推荐菜谱';
+  function renderRecommendedEmptyState(container, hasItems) {
+    const declared = document.querySelector('[data-binding="recommendedRecipesEmpty"]');
+    if (declared) {
+      declared.classList.toggle('hidden', hasItems);
+      return;
+    }
+    if (!container) return;
+    const existing = container.querySelector('[data-recommended-empty]');
+    if (hasItems) {
+      existing?.remove();
+      container.removeAttribute('data-empty');
+      return;
+    }
+    const empty = existing || document.createElement('p');
+    empty.dataset.recommendedEmpty = 'true';
+    empty.className = 'w-full text-center text-xs text-stone-400 py-6 m-0';
+    if (empty.textContent !== RECOMMENDED_EMPTY_TEXT) empty.textContent = RECOMMENDED_EMPTY_TEXT;
+    if (empty.parentElement !== container) container.append(empty);
+    container.setAttribute('data-empty', 'true');
+  }
   function mapDashboard(dto) {
     const data = dto || {};
     sanitizeStaticBusinessState();
@@ -2947,8 +2973,10 @@
     setBinding('currentDate', data.currentDate || '');
     setBinding('tip', data.greetingText || data.tip || '');
     setBinding('greetingTitle', data.greetingTitle || '');
-    document.querySelectorAll('[data-binding="recommendedRecipes"] > div').forEach((card, i) => {
-      const value = (data.recommendedRecipes || [])[i];
+    const recommended = Array.isArray(data.recommendedRecipes) ? data.recommendedRecipes : [];
+    const recommendedCards = document.querySelectorAll('[data-binding="recommendedRecipes"] > div');
+    recommendedCards.forEach((card, i) => {
+      const value = recommended[i];
       card.hidden = !value;
       if (value) {
         card.onclick = () => window.BentoModal?.open('recipeDetail', value.id);
@@ -2970,6 +2998,10 @@
         resetDashboardRecipeCover(card);
       }
     });
+    renderRecommendedEmptyState(
+      document.querySelector('[data-binding="recommendedRecipes"]'),
+      recommended.length > 0 && recommendedCards.length > 0
+    );
     const records = data.todayRecords || [];
     document.querySelectorAll('[data-binding="todayRecords"] [data-binding^="todayRecord-"]').forEach((slot, i) => {
       const value = records[i];
@@ -2979,7 +3011,11 @@
         setText('[data-business-value="status"]', value.recorded ? '已完成' : '未记录', slot);
       }
     });
-    setBinding('todayRecordsCount', `${records.filter((x) => x.recorded).length}/${records.length || 3} 餐`);
+    // 分母只取真实餐次：后端未返回 todayRecords 时不写死 3 餐
+    setBinding(
+      'todayRecordsCount',
+      records.length ? `${records.filter((x) => x.recorded).length}/${records.length} 餐` : ''
+    );
     const inventory = data.inventory || {};
     setBinding('inventory-totalIngredients', inventory.totalIngredients ?? '');
     setBinding(
@@ -3000,6 +3036,104 @@
     setBinding('streakDays', stats.streakDays == null ? '' : stats.streakDays);
     const days = data.calendarDays || [];
     const todayRecorded = (data.todayRecords || []).filter((x) => x.recorded).length;
+    // 首页周历 7 格状态样式只由 adapter 统一维护：先摘掉模板里可能写死的状态类与内联样式，
+    // 再按真实「今日 / 已打卡 / 有计划 / 普通日」挂唯一一套样式。
+    // index 侧的 .week-cell* 与 html[data-theme="dark"] 规则用 !important 覆盖同语义呈现，
+    // 两套机制互补：静态模板怎么精简都不会残留黄边格，摘掉今日态后也仍保留普通边框。
+    const WEEK_STATE_STYLE = {
+      today: {
+        // cell 只保留布局类：底色/边框统一由 data-week-state 规则给出，
+        // 避免与 index 带 !important 的 .bg-white / .bg-[#FFFDF0] 等工具色竞争，
+        // 让 dafan-week-* 与 data-week-state 成为唯一颜色来源。
+        cell: ['border-2', 'scale-105', 'hover:scale-110'],
+        // 强调文字/徽标/胶囊统一走本模块语义类：浅色与深色各一套达标取值。
+        // （#FF6B57 叠在 #FFF0ED 上只有 2.5:1，不能作为正文与徽标文字色）
+        heading: ['dafan-week-today-text'],
+        badge: ['dafan-week-today-badge'],
+        text: ['dafan-week-today-text'],
+        pill: ['dafan-week-today-pill']
+      },
+      recorded: {
+        cell: ['border'],
+        heading: ['dafan-week-muted'],
+        badge: ['dafan-week-recorded-badge'],
+        text: ['dafan-week-recorded-text'],
+        pill: ['dafan-week-recorded-pill']
+      },
+      planned: {
+        cell: ['border'],
+        heading: ['dafan-week-muted'],
+        badge: ['dafan-week-planned-badge'],
+        text: ['dafan-week-planned-text'],
+        pill: ['dafan-week-planned-pill']
+      },
+      normal: {
+        cell: ['border'],
+        heading: ['dafan-week-muted'],
+        badge: ['dafan-week-normal-badge'],
+        text: ['dafan-week-normal-text'],
+        pill: ['dafan-week-normal-pill']
+      }
+    };
+    // 清理集合 = 四态样式并集 + index 侧状态类 + 模板历史工具色（只用于周历四格，不做全局清理）
+    // 历史槽位色（text-[#2E7D32] / bg-[#EDF7EE] / bg-stone-100 等）会被 index 带 !important 的
+    // 深色/浅色全局规则压平四态，因此按 slot 定向摘除，让 dafan-week-* 成为唯一颜色来源。
+    const LEGACY_WEEK_SLOT_CLASSES = [
+      'text-[#2E7D32]',
+      'bg-[#EDF7EE]',
+      'bg-[#FFF8E6]',
+      'text-[#D97706]',
+      'text-stone-600',
+      'text-stone-700',
+      'text-stone-500',
+      'bg-stone-100',
+      'shadow-[0_3px_10px_rgba(255,107,87,0.18)]'
+    ];
+    const WEEK_STATE_CLASSES = [
+      ...new Set([
+        ...Object.values(WEEK_STATE_STYLE).flatMap((style) => Object.values(style).flat()),
+        ...LEGACY_WEEK_SLOT_CLASSES
+      ])
+    ];
+    const weekStateOf = (value) => {
+      if (!value) return null;
+      if (value.isToday) return 'today';
+      if (value.status === 'recorded') return 'recorded';
+      if (value.status === 'planned') return 'planned';
+      return 'normal';
+    };
+    const applyWeekRowStyle = (row, state) => {
+      row.removeAttribute('style');
+      WEEK_STATE_CLASSES.forEach((className) => row.classList.remove(className));
+      row.querySelectorAll('[data-business-value]').forEach((node) => {
+        WEEK_STATE_CLASSES.forEach((className) => node.classList.remove(className));
+      });
+      row.classList.add('week-cell');
+      row.classList.toggle('is-today-week-cell', state === 'today');
+      // 状态同时写到 data-week-state：底板底色/边框由本模块注入的样式按此属性统一呈现，
+      // 不依赖模板遗留类，也不与 index 的 .week-cell* 静态兜底互相叠加。
+      if (state) row.dataset.weekState = state;
+      else delete row.dataset.weekState;
+      if (!state) {
+        row.classList.add('bg-white', 'border');
+        return;
+      }
+      const style = WEEK_STATE_STYLE[state];
+      row.classList.add(...style.cell);
+      row.querySelectorAll('[data-business-value="weekday"], [data-business-value="dayOfMonth"]').forEach((node) => {
+        node.classList.add(...style.heading);
+      });
+      row.querySelectorAll('[data-business-value="dateBadge"]').forEach((node) => node.classList.add(...style.badge));
+      row.querySelectorAll('[data-business-value="label"], [data-business-value="statusText"]').forEach((node) => {
+        node.classList.add(...style.text);
+      });
+      row.querySelectorAll('[data-business-value="statusPill"]').forEach((node) => node.classList.add(...style.pill));
+      // index 的 MutationObserver 只认 data-status / is-today-week-cell，这里同步状态类，
+      // 即使 inline 脚本晚于 adapter 加载，页面侧规则也能在首次渲染时立即生效。
+      row.classList.toggle('week-cell-today', state === 'today');
+      row.classList.toggle('week-cell-recorded', state === 'recorded');
+      row.classList.toggle('week-cell-planned', state === 'planned');
+    };
     const fillWeekRow = (row, value) => {
       const setValue = (slot, text) => {
         const node = row.querySelector(`[data-business-value="${slot}"]`);
@@ -3010,6 +3144,7 @@
         row.onclick = null;
         delete row.dataset.date;
         delete row.dataset.status;
+        applyWeekRowStyle(row, null);
         return;
       }
       const weekdayText = value.isToday ? '今天' : `周${value.weekday || ''}`;
@@ -3065,54 +3200,14 @@
     document
       .querySelectorAll('.mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]')
       .forEach((row, i) => fillWeekRow(row, days[i]));
-    // 今日高亮动态匹配真实当天格：模板里第 7 格写死的「今日」样式必须先摘掉，
-    // 再按真实 isToday 重新挂上，避免今天同时高亮两格或错格。
-    const TODAY_CELL_CLASSES = [
-      'border-2',
-      'border-[#FF6B57]',
-      'bg-[#FFF8F5]',
-      'shadow-[0_4px_12px_rgba(255,107,87,0.2)]',
-      'scale-105',
-      'hover:scale-110'
-    ];
+    // 桌面网格与移动列表的第二遍：按真实数据把每格状态样式收敛到唯一一套。
+    // 两套视图必须分别索引 days[i]，不能合并成一个联合选择器（否则移动端会读到错位索引）。
     document
-      .querySelectorAll(
-        '[data-binding="calendarDays"] [data-binding^="calendarDay-"], .mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]'
-      )
-      .forEach((row) => {
-        const isToday = days.some((day) => day.isToday && day.date === row.dataset.date);
-        row.classList.remove('shadow-[0_3px_10px_rgba(255,107,87,0.18)]');
-        TODAY_CELL_CLASSES.forEach((className) => row.classList.remove(className));
-        if (isToday) row.classList.add(...TODAY_CELL_CLASSES);
-        row.classList.toggle('is-today-week-cell', isToday);
-        row.querySelectorAll('[data-business-value="weekday"], [data-business-value="dayOfMonth"]').forEach((node) => {
-          node.classList.toggle('text-[#FF6B57]', isToday);
-        });
-        // 移动端列表的日期徽标/状态文案有今日专属配色，同样只保留在真实今天那一行
-        const badge = row.querySelector('[data-business-value="dateBadge"]');
-        if (badge) {
-          badge.classList.toggle('bg-[#FF6B57]', isToday);
-          badge.classList.toggle('text-white', isToday);
-          badge.classList.toggle('bg-stone-100', !isToday);
-          badge.classList.toggle('text-stone-600', !isToday);
-        }
-        const statusText = row.querySelector('[data-business-value="statusText"]');
-        if (statusText) {
-          statusText.classList.toggle('text-[#FF6B57]', isToday);
-          statusText.classList.toggle('text-stone-700', !isToday);
-        }
-        const statusPill = row.querySelector('[data-business-value="statusPill"]');
-        if (statusPill) {
-          ['text-[#FF6B57]', 'bg-[#FFF0ED]', 'border-[#FEDBC5]'].forEach((className) =>
-            statusPill.classList.toggle(className, isToday)
-          );
-          ['text-[#2E7D32]', 'bg-[#EDF7EE]', 'text-[#D97706]', 'bg-[#FFF8E6]', 'border-[#FEE8B8]'].forEach(
-            (className) => statusPill.classList.remove(className)
-          );
-          statusPill.classList.toggle('text-stone-600', !isToday);
-          statusPill.classList.toggle('bg-stone-100', !isToday);
-        }
-      });
+      .querySelectorAll('[data-binding="calendarDays"] [data-binding^="calendarDay-"]')
+      .forEach((row, i) => applyWeekRowStyle(row, weekStateOf(days[i])));
+    document
+      .querySelectorAll('.mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]')
+      .forEach((row, i) => applyWeekRowStyle(row, weekStateOf(days[i])));
     const expiring = inventory.expiringIngredients || [];
     document.querySelectorAll('[data-binding^="expiringIngredient-"]').forEach((row, i) => {
       const value = expiring[i];
@@ -3627,13 +3722,33 @@
     }
   }
   const SETTINGS_ROW_TITLES = { backup: '数据备份与导出', taboo: '食用者忌口偏好' };
-  const TABOO_BLOCKED_MESSAGE = 'Google 2.0 暂无可用的忌口编辑入口';
-  const settingsRowButton = (title) => {
+  const TABOO_BLOCKED_MESSAGE = '当前版本暂未开放编辑';
+  const TABOO_ROW_NOTE = '当前版本暂未开放编辑';
+  // h4 标题保持精确匹配（不依赖按钮/整卡文案），只按标题定位到整行再取行内控件
+  const settingsRow = (title) => {
     const row = Array.from(document.querySelectorAll('#page-settings h4')).find(
       (node) => node.textContent?.trim() === title
     )?.parentElement?.parentElement;
-    return row?.querySelector('button') || null;
+    return row || null;
   };
+  const settingsRowButton = (title) => settingsRow(title)?.querySelector('button') || null;
+  /**
+   * 忌口行：正式 settings 契约无忌口编辑能力，这里只把「提示 + 按钮」收敛成诚实的未开放态，
+   * 不发任何写请求、不使用“修改 →”这类诱导性可编辑文案。
+   */
+  function markTabooRowUnavailable(row) {
+    if (!row) return;
+    const note = row.querySelector('p');
+    if (note && note.textContent !== TABOO_ROW_NOTE) note.textContent = TABOO_ROW_NOTE;
+    const button = row.querySelector('button');
+    if (!button) return;
+    // 仅清理诱导性文案；页面若已给出诚实的未开放文案则保持原样
+    if (/修改|→/.test(button.textContent)) button.textContent = '暂未开放';
+    button.classList.remove('hover:underline');
+    button.classList.add('cursor-not-allowed');
+    button.setAttribute('aria-disabled', 'true');
+    button.title = TABOO_ROW_NOTE;
+  }
   async function wireSettings() {
     await loadSettings();
     // 已知正式 settings 契约只有 GET /settings（DTO 无忌口字段；忌口 text 只存在于 Diner，Settings 无目标 id 可取），
@@ -3667,11 +3782,15 @@
         button.addEventListener('click', closeRestoreDialog);
       }
     });
+    // 忌口行：无论按钮是否已绑定，都先把行内文案收敛为「当前版本暂未开放编辑」，
+    // 避免 HTML 旧文案（暂无可用数据 / 修改 →）在任一路径重新露出。
+    const tabooRow = settingsRow(SETTINGS_ROW_TITLES.taboo);
+    markTabooRowUnavailable(tabooRow);
     const tabooButton = settingsRowButton(SETTINGS_ROW_TITLES.taboo);
     if (tabooButton && !tabooButton.dataset.tabooBound) {
       tabooButton.dataset.tabooBound = 'true';
       tabooButton.removeAttribute('onclick');
-      // 无正式忌口编辑能力：保留点击交互形态，但诚实提示未接通，不发任何写请求、不宣称已修改
+      // 无正式忌口编辑能力：不发任何写请求、不宣称已修改，提示与本行状态文案一致
       tabooButton.addEventListener('click', () => toast(TABOO_BLOCKED_MESSAGE, 'warning'));
     }
     wirePinSettingsDialog();
@@ -3801,7 +3920,83 @@
    */
   const CALORIE_REFERENCE_KCAL = 2000;
   const HOMEMADE_COMPARISON_PER_MEAL = 24;
+  function installAdapterThemeStyles() {
+    // adapter 契约样式（周历四态文字 + 图表图例/参考线）：浅色默认 + html[data-theme="dark"] 覆盖，
+    // 沿用页面既有主题机制；只注入一次，只作用于本模块生成的 class，不改任何既有节点或类名。
+    if (document.getElementById('dafan-adapter-theme')) return;
+    const style = document.createElement('style');
+    style.id = 'dafan-adapter-theme';
+    style.textContent = [
+      /* 首页周历 7 格：今日 / 已打卡 / 有计划 / 普通日 的强调文字 */
+      '.dafan-week-muted { color: #6F655C; }',
+      '.dafan-week-today-text { color: #B3402F; }',
+      '.dafan-week-today-badge { background-color: #C8492F; color: #FFFFFF; }',
+      '.dafan-week-today-pill { background-color: #FFF0ED; color: #A63A28; border: 1px solid #FEDBC5; }',
+      '.dafan-week-recorded-text { color: #23611F; }',
+      '.dafan-week-recorded-badge { background-color: #EDF7EE; color: #23611F; }',
+      '.dafan-week-recorded-pill { background-color: #EDF7EE; color: #23611F; }',
+      '.dafan-week-planned-text { color: #8A5300; }',
+      '.dafan-week-planned-badge { background-color: #FFF8E6; color: #8A5300; }',
+      '.dafan-week-planned-pill { background-color: #FFF8E6; color: #8A5300; }',
+      '.dafan-week-normal-text { color: #6B6257; }',
+      '.dafan-week-normal-badge { background-color: #F3EFE9; color: #57534E; }',
+      '.dafan-week-normal-pill { background-color: #F3EFE9; color: #57534E; }',
+      /* 月历「已打卡」徽标：浅色 #8A5300 白底 6.33 / 今日浅粉底 5.71；深色 #FDD37A 暗槽 8.51–11.21 */
+      '.dafan-calendar-checkin { color: #8A5300; }',
+      /* 四态底板：以 data-week-state 为准，压过模板历史类与 index 的静态兜底规则，
+         保证「今日 / 已打卡 / 有计划 / 普通日」只有一套来源；removeAttribute('style') 已清内联残留。
+         border 一律拆成长属性（width/style/color）：shorthand 与非 important 的读侧属性不重叠，
+         会让求解与真实层叠出现歧义；长属性同时保证 recorded/planned 的 4px 底边不被覆盖。 */
+      '.week-cell[data-week-state="recorded"] { background-color: #FFFFFF !important; border-width: 1px !important; border-style: solid !important; border-color: #BCE3C1 !important; border-bottom-width: 4px !important; border-bottom-color: #2E7D32 !important; }',
+      '.week-cell[data-week-state="planned"] { background-color: #FFFFFF !important; border-width: 1px !important; border-style: solid !important; border-color: #FEE8B8 !important; border-bottom-width: 4px !important; border-bottom-color: #B45309 !important; }',
+      '.week-cell[data-week-state="today"] { background-color: #FFF8F5 !important; border-width: 2px !important; border-style: solid !important; border-color: #C2412F !important; box-shadow: 0 4px 12px rgba(194, 65, 47, 0.18) !important; }',
+      '.week-cell[data-week-state="normal"] { background-color: #FFFFFF !important; border-width: 1px !important; border-style: solid !important; border-color: #D6C9BA !important; }',
+      'html[data-theme="dark"] .week-cell[data-week-state="recorded"] { background-color: rgba(46, 125, 50, 0.16) !important; border-color: rgba(76, 175, 80, 0.45) !important; border-bottom-color: #81C784 !important; }',
+      'html[data-theme="dark"] .week-cell[data-week-state="planned"] { background-color: rgba(245, 158, 11, 0.16) !important; border-color: rgba(245, 158, 11, 0.45) !important; border-bottom-color: #FBBF24 !important; }',
+      'html[data-theme="dark"] .week-cell[data-week-state="today"] { background-color: rgba(255, 107, 87, 0.18) !important; border-color: #FF8A7A !important; box-shadow: none !important; }',
+      'html[data-theme="dark"] .week-cell[data-week-state="normal"] { background-color: #2C2723 !important; border-width: 1px !important; border-style: solid !important; border-color: #8E8276 !important; }',
+      /* 统计图表图例与参考线 */
+      '.dafan-legend-cook { color: #2E7D32; }',
+      '.dafan-legend-takeout { color: #8A5300; }',
+      '.dafan-legend-dinein { color: #6D28D9; }',
+      '.dafan-legend-other { color: #57534E; }',
+      '.dafan-legend-comfortable { color: #2E7D32; }',
+      '.dafan-legend-low { color: #8A5300; }',
+      '.dafan-legend-over { color: #A63A28; }',
+      '.dafan-chart-track { stroke: #9C8B79; }',
+      '.dafan-chart-cook-value { fill: #2E7D32; }',
+      '.dafan-chart-reference { stroke: #C2412C; }',
+      '.dafan-chart-reference-label { fill: #B3402F; }',
+      'html[data-theme="dark"] .dafan-week-muted { color: #D1C5B7; }',
+      'html[data-theme="dark"] .dafan-week-today-text { color: #FFB3A6; }',
+      'html[data-theme="dark"] .dafan-week-today-badge { background-color: #FFB4A4; color: #2D2621; }',
+      'html[data-theme="dark"] .dafan-week-today-pill { background-color: #52332C; color: #FFB4A4; border-color: #7A4A3F; }',
+      'html[data-theme="dark"] .dafan-week-recorded-text { color: #A5D6A7; }',
+      'html[data-theme="dark"] .dafan-week-recorded-badge { background-color: #2C3C27; color: #A5D6A7; }',
+      'html[data-theme="dark"] .dafan-week-recorded-pill { background-color: #2C3C27; color: #A5D6A7; }',
+      'html[data-theme="dark"] .dafan-week-planned-text { color: #FDD37A; }',
+      'html[data-theme="dark"] .dafan-week-planned-badge { background-color: #3D3320; color: #FDD37A; }',
+      'html[data-theme="dark"] .dafan-week-planned-pill { background-color: #3D3320; color: #FDD37A; }',
+      'html[data-theme="dark"] .dafan-week-normal-text { color: #E6DCD0; }',
+      'html[data-theme="dark"] .dafan-week-normal-badge { background-color: #332B25; color: #E6DCD0; }',
+      'html[data-theme="dark"] .dafan-week-normal-pill { background-color: #332B25; color: #E6DCD0; }',
+      'html[data-theme="dark"] .dafan-calendar-checkin { color: #FDD37A; }',
+      'html[data-theme="dark"] .dafan-legend-cook { color: #81C784; }',
+      'html[data-theme="dark"] .dafan-legend-takeout { color: #FBBF24; }',
+      'html[data-theme="dark"] .dafan-legend-dinein { color: #C4B5FD; }',
+      'html[data-theme="dark"] .dafan-legend-other { color: #D1C5B7; }',
+      'html[data-theme="dark"] .dafan-legend-comfortable { color: #A5D6A7; }',
+      'html[data-theme="dark"] .dafan-legend-low { color: #FDD37A; }',
+      'html[data-theme="dark"] .dafan-legend-over { color: #FFB4A4; }',
+      'html[data-theme="dark"] .dafan-chart-track { stroke: #8E8276; }',
+      'html[data-theme="dark"] .dafan-chart-cook-value { fill: #81C784; }',
+      'html[data-theme="dark"] .dafan-chart-reference { stroke: #FF9B8B; }',
+      'html[data-theme="dark"] .dafan-chart-reference-label { fill: #FFB4A4; }'
+    ].join('\n');
+    (document.head || document.documentElement).append(style);
+  }
   function installLegacyDataViews() {
+    installAdapterThemeStyles();
     const originalCalendar = window.renderCalendar;
     let calendarRequest = 0;
     let statisticsRequest = 0;
@@ -3891,7 +4086,10 @@
           content.appendChild(dayLabel);
           if (hasRecord) {
             const badge = document.createElement('div');
-            badge.className = 'text-[8px] sm:text-[9px] font-black text-amber-600 truncate leading-tight mt-0.5';
+            // 文字色走主题语义类（浅色 #8A5300 / 深色 #FDD37A，均由 installAdapterThemeStyles 注入），
+            // 不再用 Tailwind 固定琥珀色阶：浅色 600 档(#D97706) 白底 3.19、今日浅粉底 2.87 不达标。
+            badge.className =
+              'dafan-calendar-checkin text-[8px] sm:text-[9px] font-black truncate leading-tight mt-0.5';
             badge.textContent = '🍱 已打卡';
             content.appendChild(badge);
           }
@@ -3985,7 +4183,7 @@
           y1: referenceY,
           x2: w - 10,
           y2: referenceY,
-          stroke: '#FF6B57',
+          class: 'dafan-chart-reference',
           'stroke-dasharray': '4,4',
           'stroke-opacity': '0.4',
           'stroke-width': '1.5'
@@ -3994,7 +4192,7 @@
       const referenceLabel = svgElement('text', {
         x: w - 12,
         y: 12,
-        fill: '#FF6B57',
+        class: 'dafan-chart-reference-label',
         'font-size': '9',
         'font-weight': '900',
         'text-anchor': 'end'
@@ -4057,10 +4255,10 @@
       const legend = document.getElementById('statPctCook')?.parentElement?.parentElement;
       if (!wrap || !legend) return;
       const categories = [
-        { key: 'HOMEMADE', label: '自烹', color: '#6ABF69', textColor: '#2E7D32', id: 'statPctCook' },
-        { key: 'TAKEOUT', label: '外卖', color: '#FFC53D', textColor: '#D97706', id: 'statPctTakeout' },
-        { key: 'DINE_IN', label: '堂食', color: '#B388FF', textColor: '#7C3AED', id: 'statPctDineIn' },
-        { key: 'CUSTOM', label: '其他', color: '#A8A29E', textColor: '#78716C', id: 'statPctCustom' }
+        { key: 'HOMEMADE', label: '自烹', color: '#6ABF69', legendClass: 'dafan-legend-cook', id: 'statPctCook' },
+        { key: 'TAKEOUT', label: '外卖', color: '#FFC53D', legendClass: 'dafan-legend-takeout', id: 'statPctTakeout' },
+        { key: 'DINE_IN', label: '堂食', color: '#B388FF', legendClass: 'dafan-legend-dinein', id: 'statPctDineIn' },
+        { key: 'CUSTOM', label: '其他', color: '#A8A29E', legendClass: 'dafan-legend-other', id: 'statPctCustom' }
       ];
       const values = breakdown || {};
       if (
@@ -4076,7 +4274,7 @@
         .filter((row) => row.key !== 'CUSTOM' || row.count > 0)
         .map((row) => {
           const item = document.createElement('span');
-          item.style.color = row.textColor;
+          item.className = row.legendClass;
           item.appendChild(document.createTextNode(`● ${row.label} `));
           const value = document.createElement('span');
           value.id = row.id;
@@ -4098,7 +4296,16 @@
         role: 'img',
         'aria-label': '就餐渠道构成环形图'
       });
-      svg.appendChild(svgElement('circle', { cx: 70, cy: 70, r, fill: 'none', stroke: '#F5EFE6', 'stroke-width': 16 }));
+      svg.appendChild(
+        svgElement('circle', {
+          cx: 70,
+          cy: 70,
+          r,
+          fill: 'none',
+          class: 'dafan-chart-track',
+          'stroke-width': 16
+        })
+      );
       rows.forEach((row) => {
         if (!row.count) return;
         const length = (row.count / total) * c;
@@ -4139,7 +4346,7 @@
         'text-anchor': 'middle',
         'font-size': '14',
         'font-weight': '900',
-        fill: '#6ABF69'
+        class: 'dafan-chart-cook-value'
       });
       cookValue.appendChild(svgText(`${cookPct}%`));
       svg.appendChild(cookLabel);
@@ -4152,12 +4359,24 @@
       {
         category: 'COMFORTABLE',
         color: '#6ABF69',
-        textColor: '#2E7D32',
+        legendClass: 'dafan-legend-comfortable',
         label: '七八分饱舒适刚好',
         percentKey: 'comfortablePercent'
       },
-      { category: 'LOW', color: '#FFC53D', textColor: '#D97706', label: '三五分饱偏少', percentKey: 'lowPercent' },
-      { category: 'OVER', color: '#FF6B57', textColor: '#FF6B57', label: '十分饱偏撑', percentKey: 'overPercent' }
+      {
+        category: 'LOW',
+        color: '#FFC53D',
+        legendClass: 'dafan-legend-low',
+        label: '三五分饱偏少',
+        percentKey: 'lowPercent'
+      },
+      {
+        category: 'OVER',
+        color: '#FF6B57',
+        legendClass: 'dafan-legend-over',
+        label: '十分饱偏撑',
+        percentKey: 'overPercent'
+      }
     ];
     const renderSatiety = (satiety) => {
       const bar = document.getElementById('satietyBarContainer');
@@ -4201,7 +4420,7 @@
         const legendNodes = segments.map((segment) => {
           const item = document.createElement('span');
           item.dataset.satietyLegend = segment.category;
-          item.style.color = segment.textColor;
+          item.className = segment.legendClass;
           const localPct = `${Math.round((segment.count / recorded) * 1000) / 10}%`;
           item.textContent = `● ${segment.label} (${percentText(satiety[segment.percentKey], localPct)})`;
           return item;
@@ -5018,6 +5237,8 @@
   }
   function boot() {
     clearMockState();
+    // adapter 自持的主题语义类不依赖任何模态/列表初始化，先注入（幂等）
+    installAdapterThemeStyles();
     // 只有正式入口存在解锁界面时才启动会话探测；单元 fixture/嵌入式片段不应凭空占用业务请求序列。
     if (document.getElementById('modalPinUnlock')) void syncPinSession().catch(fail);
     blockUnconnectedWrites();
@@ -5038,19 +5259,72 @@
     }
     return body;
   }
-  async function resolveWheelTargetIndex(mode) {
+  /** 空候选引导按当前模式指向真实入口：下厨→我的菜谱，堂食/外卖→觅食小馆。 */
+  const WHEEL_EMPTY_GUIDE = {
+    cook: '当前分类下暂无下厨菜谱，先去【我的菜谱】添加吧',
+    dinein: '当前分类下暂无堂食店铺，先去【觅食小馆】添加吧',
+    takeout: '当前分类下暂无外卖店铺，先去【觅食小馆】添加吧'
+  };
+  const WHEEL_EMPTY_GUIDE_FALLBACK = '转盘候选为空，先去添加菜谱或店铺吧';
+  /**
+   * 请求等待期并发锁：同一时刻只允许一次落点解析在途；重复点击直接返回 null（不排队、不重复请求），
+   * 避免两次推荐结果交替写扇区。
+   *
+   * 忙态所有权：inline `triggerSpin` 会先置 `disabled + aria-busy` 再调用 adapter，此时忙态属于
+   * inline 整轮锁（切页/复位由 `setWheelBusy(false)` 清理）。adapter 只在按钮确实空闲时才亲手
+   * 上锁并记录所有权，释放时只收回自己写的状态；绝不把别人已清理的 `aria-busy` 重新写回 true
+   * （曾导致切页后又返回转盘：disabled=false 但 aria-busy=true，锁被判定未释放）。
+   * 直接调用 `resolveTargetIndex`（无 inline 锁）时仍由 adapter 自己提供等待期保护。
+   */
+  function setWheelWaiting(waiting, ownerId) {
+    const button = document.getElementById('wheelGoBtn');
+    if (!button) return;
+    if (waiting) {
+      button.dataset.wheelWaiting = 'true';
+      // 等待标记记录所属请求：只有当前请求才能释放它，旧请求的 finally 不得清掉新请求的忙态
+      button.dataset.wheelWaitingOwner = String(ownerId);
+      // 已被他人（inline 整轮锁）置忙：不接管、不记录原值，释放时一个字节都不动
+      if (button.getAttribute('aria-busy') === 'true') return;
+      button.dataset.wheelBusyOwned = 'true';
+      button.setAttribute('aria-busy', 'true');
+      if (button.disabled === false) {
+        button.dataset.wheelDisabledOwned = 'true';
+        button.disabled = true;
+      }
+      return;
+    }
+    // 所有权校验：旧请求晚到的释放不得覆盖新请求的等待标记或忙态
+    if (ownerId != null && button.dataset.wheelWaitingOwner !== String(ownerId)) return;
+    if (button.dataset.wheelBusyOwned === 'true') {
+      delete button.dataset.wheelBusyOwned;
+      button.removeAttribute('aria-busy');
+    }
+    if (button.dataset.wheelDisabledOwned === 'true') {
+      button.disabled = false;
+      delete button.dataset.wheelDisabledOwned;
+    }
+    delete button.dataset.wheelWaiting;
+    delete button.dataset.wheelWaitingOwner;
+  }
+  async function resolveWheelTargetIndexOnce(mode, request) {
+    // 已作废的请求：不发新提示、不写扇区，直接按「无落点」返回，由调用方丢弃
+    const cancelled = () => !!request && request.cancelled === true;
+    const notify = (message, type) => {
+      if (!cancelled()) toast(message, type);
+    };
     const items = window.getDynamicWheelItems ? window.getDynamicWheelItems() : [];
     if (!items.length) {
-      toast('转盘候选为空，先去添加菜谱或店铺吧', 'info');
+      notify(WHEEL_EMPTY_GUIDE[mode] || WHEEL_EMPTY_GUIDE_FALLBACK, 'info');
       return null;
     }
     let payload;
     try {
       payload = await ApiClient.post('/recommendations/random', wheelRecommendationBody(mode));
     } catch (error) {
-      fail(error);
+      if (!cancelled()) fail(error);
       return null;
     }
+    if (cancelled()) return null;
     const results = payload?.results || [];
     // 本轮已排除项不得通过远程推荐重新进入结果：按排除集合过滤后取第一个有效结果
     const isExcluded = (item) => (window.isWheelItemExcluded ? window.isWheelItemExcluded(item) : false);
@@ -5063,7 +5337,7 @@
         })
     );
     if (!pick) {
-      toast(
+      notify(
         results.length ? '剩余候选均已被排除，可切换分类或稍后再试' : '暂无符合条件的真实推荐结果，稍后再试',
         'info'
       );
@@ -5077,13 +5351,13 @@
       (item) => item && item.type === expectedType && item.title === (pick.title || pick.name || '')
     );
     if (mappedCandidate && isExcluded(mappedCandidate)) {
-      toast('推荐结果已被排除，暂不落到该扇区', 'info');
+      notify('推荐结果已被排除，暂不落到该扇区', 'info');
       return null;
     }
     const remoteService = pick.resultType === 'STORE' ? window.BentoService?.stores : window.BentoService?.recipes;
     const cached = remoteService?.getById ? remoteService.getById(pick.resultId) : null;
     if (!cached) {
-      toast('推荐结果无法映射到当前转盘候选', 'error');
+      notify('推荐结果无法映射到当前转盘候选', 'error');
       return null;
     }
     const sector =
@@ -5115,6 +5389,40 @@
     window.renderWheelSlices?.();
     return items.length - 1;
   }
+  /**
+   * 对外落点入口：请求在途时直接拒绝并发调用（不排队、不重复请求、不重复起转）。
+   * 调用方（inline triggerSpin）负责旋转期 isSpinning 锁；adapter 负责「请求等待」这一段的
+   * 并发锁与按钮 disabled / aria-busy，保证等待期重复点击不会产生第二次推荐请求。
+   *
+   * 作用域失效：切页 / 切模式（inline 已作废本轮）时调用 cancelPending()，当前请求对象立即
+   * 标记 cancelled 并释放等待锁，下一次点击可立刻发起新请求；被取消的旧请求即使稍后落定，
+   * 也不得写扇区、不弹 toast、不释放新请求的锁（以请求对象 identity 判断所有权）。
+   */
+  let wheelResolveRequest = null;
+  let wheelResolveRequestSeq = 0;
+  function resolveWheelTargetIndex(mode) {
+    // 保留同一当前请求的重复调用保护：返回 null 而不是复用同一 promise，避免调用方重复起转
+    if (wheelResolveRequest && !wheelResolveRequest.cancelled) return Promise.resolve(null);
+    const request = { id: (wheelResolveRequestSeq += 1), mode, cancelled: false, promise: null };
+    wheelResolveRequest = request;
+    setWheelWaiting(true, request.id);
+    request.promise = resolveWheelTargetIndexOnce(mode, request).finally(() => {
+      // 只有仍是当前请求（且未被取消）才收回忙态；旧请求 late-settle 不得覆盖新请求
+      if (wheelResolveRequest !== request) return;
+      wheelResolveRequest = null;
+      setWheelWaiting(false, request.id);
+    });
+    return request.promise;
+  }
+  /** 作废当前在途请求的作用域并立即释放等待锁；返回是否确有请求被取消。 */
+  function cancelWheelPending() {
+    const request = wheelResolveRequest;
+    if (!request || request.cancelled) return false;
+    request.cancelled = true;
+    wheelResolveRequest = null;
+    setWheelWaiting(false, request.id);
+    return true;
+  }
   sanitizeStaticBusinessState();
   window.DafanApiClient = ApiClient;
   window.DafanPinAdapter = { ensurePinUnlock, cancelPinUnlock, syncPinSession, pinCooldownSeconds };
@@ -5128,6 +5436,7 @@
   window.DafanSettingsAdapter = { loadSettings, wireSettings, openPinSettings, closePinSettings, submitPinSettings };
   window.DafanWheelAdapter = {
     resolveTargetIndex: resolveWheelTargetIndex,
+    cancelPending: cancelWheelPending,
     recommendationBody: wheelRecommendationBody
   };
   window.DafanCoverAdapter = coverStatusAdapter();

@@ -709,8 +709,12 @@ describe('T-006B 审核遗漏回归', () => {
         status: 'empty'
       }))
     });
-    for (const selector of ['[data-binding="calendarDays"] [data-date]', '.mobile-week-calendar-list [data-date]']) {
+    // 桌面网格第 1..7 格带 [data-date]；移动列表同样在 adapter 填充后写入 data-date
+    const desktopSelector = '[data-binding="calendarDays"] > div';
+    const mobileSelector = '.mobile-week-calendar-list [data-binding^="mobileCalendarDay-"]';
+    for (const selector of [desktopSelector, mobileSelector]) {
       const rows = [...document.querySelectorAll(selector)];
+      expect(rows).toHaveLength(7);
       expect(rows.filter((row) => row.classList.contains('is-today-week-cell'))).toHaveLength(1);
       expect(rows[1].classList.contains('is-today-week-cell')).toBe(true);
       expect(

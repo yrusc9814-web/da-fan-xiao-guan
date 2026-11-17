@@ -296,7 +296,9 @@ describe('P1-6 转盘排除项不回流', () => {
       .slice(callsBefore)
       .filter(([, init]) => (init as RequestInit)?.method === 'POST').length;
     expect(recommendCalls).toBe(0);
-    expect(lastToast().text).toContain('店铺');
+    // T-006C：cook 模式候选为空改为按模式准确引导【我的菜谱】，不再笼统说「店铺」
+    expect(lastToast().text).toContain('我的菜谱');
+    expect(lastToast().text).not.toContain('觅食小馆');
   });
 
   it('候选池至少保留两项的护栏仍在，排除保护不破坏动画路径', async () => {
