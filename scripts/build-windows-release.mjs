@@ -385,7 +385,8 @@ async function main() {
     'app/client/package.json',
     'app/client/dist',
     'app/server/package.json',
-    'app/server/prisma',
+    'app/server/prisma/schema.prisma',
+    'app/server/prisma/migrations',
     'app/server/src/database/paths.ts',
     'app/server/src/config/env.ts',
     'dist-server',
@@ -400,12 +401,22 @@ async function main() {
   const extractedDirectory = resolve(temporaryDirectory, 'node');
   await mkdir(temporaryDirectory, { recursive: true });
   await downloadOfficialNodeArchive(archivePath);
-  run('powershell.exe', [
-    '-NoProfile',
-    '-NonInteractive',
-    '-Command',
-    `Expand-Archive -LiteralPath '${archivePath}' -DestinationPath '${extractedDirectory}' -Force`
-  ]);
+  run(
+    'powershell.exe',
+    [
+      '-NoProfile',
+      '-NonInteractive',
+      '-Command',
+      "$ErrorActionPreference='Stop'; Add-Type -AssemblyName System.IO.Compression.FileSystem; [System.IO.Compression.ZipFile]::ExtractToDirectory($env:DAFAN_RELEASE_NODE_ARCHIVE, $env:DAFAN_RELEASE_NODE_DEST)"
+    ],
+    {
+      env: {
+        ...process.env,
+        DAFAN_RELEASE_NODE_ARCHIVE: archivePath,
+        DAFAN_RELEASE_NODE_DEST: extractedDirectory
+      }
+    }
+  );
 
   const extractedNode = resolve(extractedDirectory, `node-${nodeVersion}-win-x64`, 'node.exe');
   if (!existsSync(extractedNode)) {
