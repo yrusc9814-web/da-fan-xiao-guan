@@ -1,5 +1,15 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  writeFileSync
+} from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, sep } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -11,6 +21,35 @@ const formalUploads = resolve(repoRoot, 'data/uploads');
 const formalBackups = resolve(repoRoot, 'data/backups');
 const formalDb = resolve(repoRoot, 'data/app.db');
 const win32 = process.platform === 'win32';
+
+interface FormalDatabaseFingerprint {
+  hash: string;
+  size: number;
+  mtimeMs: number;
+}
+
+/**
+ * 只读探测正式库：仅记录 sha256/size/mtime，不解析业务内容、不打开写句柄、不创建目录或文件。
+ * 全新 clone / CI 未初始化时 data/app.db 不存在，返回 null；后续断言要求它仍为 null，
+ * 因此本文件既不要求正式库存在，也禁止测试过程创建或修改它。
+ */
+function formalDatabaseFingerprint(): FormalDatabaseFingerprint | null {
+  try {
+    const contents = readFileSync(formalDb);
+    const metadata = statSync(formalDb);
+    return {
+      hash: createHash('sha256').update(contents).digest('hex'),
+      size: metadata.size,
+      mtimeMs: metadata.mtimeMs
+    };
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return null;
+    throw error;
+  }
+}
+
+// 模块加载（任何用例执行前）采集基线指纹。
+const formalDatabaseBefore = formalDatabaseFingerprint();
 
 // 探测进程绝不写入正式存储：guard 只做路径判定；runner 探测的安全闸在创建任何目录前拒绝。
 // 唯一允许 runner 触碰的是"已存在目录"（mkdir 为 no-op）与临时 fixture 内部。
@@ -42,6 +81,8 @@ function runGuard(envOverrides: NodeJS.ProcessEnv) {
       ...baseEnv,
       NODE_ENV: 'test',
       TEST_DATABASE_URL: 'file:../../../data/test.db',
+      DAFAN_UPLOADS_PATH: okUploads,
+      DAFAN_BACKUPS_PATH: okBackups,
       ...envOverrides
     }
   });
@@ -184,10 +225,15 @@ describe('测试存储正式边界（统一安全闸：显式配置/父子目录
     expect(rootSame.message).toContain('测试存储安全闸');
   });
 
-  it('正式存储自检：测试执行后正式 uploads/backups 内不得出现探测残留', () => {
+  it('正式存储自检：测试执行后正式 uploads/backups 内不得出现探测残留，正式库仅被哈希读取且指纹不变', () => {
     expect(existsSync(join(formalUploads, '__boundary_probe_child__'))).toBe(false);
     expect(existsSync(join(formalBackups, '__boundary_probe_child__'))).toBe(false);
     expect(existsSync(join(formalUploads, 'boundary-probe.db'))).toBe(false);
-    expect(existsSync(formalDb)).toBe(true);
+    // 不再要求正式库存在：全新 clone / CI（无预存 data/app.db）必须可运行；存在时必须保持逐字节与元数据不变。
+    const formalDatabaseAfter = formalDatabaseFingerprint();
+    expect(
+      formalDatabaseAfter,
+      `正式库指纹必须与模块加载时一致；before=${JSON.stringify(formalDatabaseBefore)}，after=${JSON.stringify(formalDatabaseAfter)}`
+    ).toEqual(formalDatabaseBefore);
   });
 });

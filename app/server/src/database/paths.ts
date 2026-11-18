@@ -1,5 +1,5 @@
-import { existsSync, lstatSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { dirname, isAbsolute, relative, resolve, sep } from 'node:path';
+import { existsSync, lstatSync, readdirSync, readlinkSync, realpathSync, statSync } from 'node:fs';
+import { basename, dirname, isAbsolute, relative, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 
 import '../config/env.js';
@@ -260,39 +260,113 @@ function collectCandidateDatabasePaths(databaseUrl: string): string[] {
   return candidates;
 }
 
+/** 链接展开的最大层数：超过视为循环/异常，fail-closed。 */
+const MAX_COMPARABLE_LINK_HOPS = 32;
+
+/** 去掉 Windows 扩展路径前缀（\\?\ / \\?\UNC\），链接目标可能带此前缀。 */
+function stripWindowsDevicePrefix(path: string): string {
+  if (process.platform !== 'win32') return path;
+  if (/^\\\\?\\UNC\\/i.test(path)) return `\\\\${path.slice(8)}`;
+  if (/^\\\\?\\/i.test(path)) return path.slice(4);
+  return path;
+}
+
+/**
+ * 找到从 `path` 向上最近的"可确定真实位置"的层级，并把解析结果拼回剩余片段。
+ *
+ * 与 `existsSync` 逐级上溯的区别：悬空 symlink/junction（目标尚不存在）`existsSync` 为 false，
+ * 但它本身是 `lstat` 可见的链接，且 `readlink` 仍能给出目标——这正是正式目录尚未创建时
+ * 唯一的线索。跳过它会得到"普通不存在路径"，从而把测试路径误判为与正式范围无关。
+ *
+ * 返回 null 表示一路到根都没有可解析层级（例如盘符不存在），由调用方按字符串形式保守比较。
+ * 链接存在但无法可靠读取/解析时直接抛错（fail-closed），绝不退回"看起来无关"的结果。
+ */
+function expandNearestResolvable(path: string): string | null {
+  const suffix: string[] = [];
+  let current = path;
+  for (;;) {
+    let metadata: Stats | null;
+    try {
+      metadata = lstatSync(current);
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code;
+      if (code !== 'ENOENT' && code !== 'ENOTDIR') {
+        throw new Error(`[测试存储安全闸] 无法解析路径（访问失败 ${code ?? 'unknown'}）：${current}`);
+      }
+      metadata = null;
+    }
+
+    if (metadata) {
+      const rest = suffix.slice().reverse();
+      if (metadata.isSymbolicLink()) {
+        let target: string;
+        try {
+          target = readlinkSync(current);
+        } catch (error) {
+          const code = (error as NodeJS.ErrnoException).code;
+          throw new Error(`[测试存储安全闸] 无法读取链接目标（${code ?? 'unknown'}）：${current}`);
+        }
+        const resolvedTarget = stripWindowsDevicePrefix(target);
+        const targetPath = isAbsolute(resolvedTarget)
+          ? resolve(resolvedTarget)
+          : resolve(dirname(current), resolvedTarget);
+        if (comparableKey(targetPath) === comparableKey(current)) {
+          throw new Error(`[测试存储安全闸] 路径链接指向自身，无法可靠解析：${current}`);
+        }
+        return rest.length === 0 ? targetPath : resolve(targetPath, ...rest);
+      }
+      let real: string;
+      try {
+        real = realpathSync(current);
+      } catch (error) {
+        const code = (error as NodeJS.ErrnoException).code;
+        throw new Error(`[测试存储安全闸] 无法解析真实路径（${code ?? 'unknown'}）：${current}`);
+      }
+      return rest.length === 0 ? real : resolve(real, ...rest);
+    }
+
+    const parent = dirname(current);
+    if (parent === current) return null;
+    suffix.push(basename(current));
+    current = parent;
+  }
+  return null;
+}
+
 /**
  * 统一路径规范化（比较用）：去掉 Windows 扩展路径前缀（\\?\ / \\?\UNC\）→ resolve →
- * 对最近的已存在祖先做 realpath（展开符号链接/junction 与 8.3 短名）后拼回剩余片段，
+ * 逐层展开链接（含目标尚不存在的悬空 symlink/junction）与 8.3 短名后拼回剩余片段，
  * Windows 下统一小写。任何字符串形态的路径改写（大小写、斜杠、冗余段、设备前缀、
  * 链接重定向、短名）都被归一到同一形式，防止安全闸被"换一种写法"绕过。
+ *
+ * 悬空链接必须按其目标规范化：正式目录尚未创建时，经悬空链接写入的路径在目录创建后
+ * 就是正式范围内部路径，若此处跳过链接就会 fail-open。链接层级过深或成环视为无法可靠
+ * 解析，直接抛错（fail-closed）。普通不存在路径仍按最近的已存在祖先规范化。
  */
 function canonicalizeComparablePath(path: string): string {
-  let raw = path.trim();
-  if (process.platform === 'win32') {
-    if (/^\\\\?\\UNC\\/i.test(raw)) raw = `\\\\${raw.slice(8)}`;
-    else if (/^\\\\?\\/i.test(raw)) raw = raw.slice(4);
-  }
-  const candidate = resolve(raw);
-  let existing = candidate;
-  while (!existsSync(existing)) {
-    const parent = dirname(existing);
-    if (parent === existing) {
-      existing = '';
-      break;
+  const raw = stripWindowsDevicePrefix(path.trim());
+  let candidate = resolve(raw);
+  const seen = new Set<string>([comparableKey(candidate)]);
+  for (let hop = 0; hop < MAX_COMPARABLE_LINK_HOPS; hop += 1) {
+    const expanded = expandNearestResolvable(candidate);
+    if (expanded === null) break;
+    const key = comparableKey(expanded);
+    if (key === comparableKey(candidate)) break;
+    if (seen.has(key)) {
+      throw new Error(`[测试存储安全闸] 路径链接存在循环，无法可靠解析：${path.trim()}`);
     }
-    existing = parent;
-  }
-  let real = candidate;
-  if (existing) {
-    try {
-      const expanded = realpathSync(existing);
-      const rest = relative(existing, candidate);
-      real = rest === '' ? expanded : resolve(expanded, rest);
-    } catch {
-      // realpath 失败（权限/竞态）时保留 resolve 结果：比较仍然保守进行
+    seen.add(key);
+    candidate = expanded;
+    if (hop === MAX_COMPARABLE_LINK_HOPS - 1) {
+      throw new Error(`[测试存储安全闸] 路径链接层级过深，无法可靠解析：${path.trim()}`);
     }
   }
-  return process.platform === 'win32' ? real.toLowerCase() : real;
+  return comparableKey(candidate);
+}
+
+/** 比较键：Windows 下大小写不敏感；链接目标已展开，剩余差异仅是字符串书写形式。 */
+function comparableKey(path: string): string {
+  return process.platform === 'win32' ? path.toLowerCase() : path;
 }
 
 /** 已规范化（resolve 过、必要时已小写）路径之间的包含判定。 */

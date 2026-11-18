@@ -130,7 +130,7 @@ npm test
 
 前端构建输出到 `app/client/dist/`，后端输出到 `dist-server/`，生产构建不生成 sourcemap。
 
-质量门禁注意：`npm run format:check` 在干净克隆上仍有 6 个已跟踪文件未通过 Prettier 检查（已复核）：`app/client/public/google2-adapter.js`、`app/client/src/pages/ShoppingPage.vue`、`app/client/tests/google2-adapter.test.ts`、`app/client/tests/google2-t007-taboo.test.ts`、`app/server/src/modules/backup/service.ts`、`app/server/tests/google2-shopping-d5.test.ts`。这是既有基线，会使 GitHub CI 在格式门禁处失败，并阻止自动发行流程继续；本次发布仅格式化 README，保留这些代码文件原样。若在开发工作区执行，未跟踪的验收工件（如 `closeout-browser-sol1/`）也会被 `prettier --check .` 计入，失败清单因此可能多于上述 6 个文件。只需格式化 README 时使用 `npx --no-install prettier --write README.md`，避免改动其他文件。
+质量门禁：GitHub CI 与 Windows 发行流程都会在 `npm run format:check`（即 `prettier --check .`）处失败即中止，因此提交前应保证被跟踪文件全部通过。历史上曾有一批已跟踪代码文件未通过 Prettier 检查，现已按 Prettier 输出对齐格式，干净克隆可直接通过该门禁。若在开发工作区执行，未跟踪的临时验收工件同样会被 `prettier --check .` 计入（`.prettierignore` 只排除 `node_modules`、构建产物、`data`、`runtime`、`docs`、`agent.md`、`package-lock.json` 与少量静态素材），本地失败清单可能多于被跟踪文件的实际问题；请以 `git status` 与 `git ls-files` 区分，并优先用显式路径格式化，避免 `--write .` 波及未跟踪文件。
 
 ## 生产构建与运行
 
@@ -187,9 +187,17 @@ GitHub 的 **Windows Release Artifact** workflow 在 `main` 的 **CI** 成功后
 
 默认数据位置为 `data/app.db`、`data/uploads/`、`data/backups/`，Windows 启动 PID 位于 `data/app.pid`，启动日志为 `logs/app.log`、`logs/app-error.log`。这些文件均被 Git 忽略。不要在服务运行期间手工替换数据库。
 
-### 既有验收脚本的机器绑定限制
+### 隔离验收工具的可配置性
 
-`scripts/isolation-gate.mjs` 内的隔离根固定为原开发机的绝对路径，相关 `start-isolated.mjs`、`prepare-isolated-build.mjs` 等历史验收脚本不能直接用于其他机器。本手册的克隆、迁移、种子、开发、构建、`npm test` 与生产启动流程不使用这些脚本。应用本身可通过上述环境变量设置新环境路径；不要照搬旧验收目录或将 `DAFAN_ISOLATION_ROOT` 指向旧机器路径。
+隔离验收脚本（`scripts/isolation-gate.mjs`、`prepare-isolated-build.mjs`、`formal-storage-gate.mjs` 等）不再硬编码任何开发机路径。隔离根只能通过 `DAFAN_ISOLATION_ROOT` 显式提供：未设置时模块仍可正常导入，`npm test` 与常规开发流程不受影响；一旦设置，必须是仓库外已存在的绝对目录，且本身不能是符号链接或 junction，否则立即报错（不存在默认回退）。本手册的克隆、迁移、种子、开发、构建、`npm test` 与生产启动流程都不依赖这些脚本，只有需要复跑历史隔离/正式存储验收时才配置该变量，并在 shell 与会话中显式导出 `DAFAN_DATABASE_PATH`、`DAFAN_UPLOADS_PATH`、`DAFAN_BACKUPS_PATH` 等配套覆盖。
+
+### Windows 环境与临时目录
+
+Windows 上测试与打包脚本的 scratch 默认使用 OS 临时目录（Node `os.tmpdir()`，通常解析到 `%TMP%`/`%TEMP%`）：`npm test` 的一次性上传/备份目录、发行升级与生命周期脚本的复制目录都在其中。若系统临时目录太小、被安全策略限制，或需要严格复现时把 scratch 限制在新克隆内部，可在执行前把 `TMP` 与 `TEMP` 指向克隆内的新目录（先创建）；`scripts/isolation-gate.test.mjs` 还可用 `DAFAN_ISOLATION_TEST_SCRATCH` 指定其 scratch 父目录。这样做会让 scratch 出现在仓库目录树内，测试结束应自行清理，不要提交。
+
+数据库仍使用新克隆默认位置：应用库 `data/app.db`、测试库 `data/test.db`，测试入口会重建 `test*.db`。未配置隔离根时，`TEST_DATABASE_URL` 必须指向克隆 `data/` 下且文件名为 `test*.db`，不要把测试库放到克隆外部，否则会被测试库安全闸拒绝。恢复暂存/回滚目录默认与测试库同盘，因此不必为保证同卷而额外配置路径。
+
+`.env` 只从 `.env.example` 复制并保持模板内容，不要把 `DAFAN_*` 覆盖写进 `.env`。服务端配置与数据库路径模块会加载根目录 `.env`（`dotenv`），未在 shell 导出的变量会由 `.env` 提供给守卫与业务子进程；一旦把隔离或存储覆盖写进 `.env`，子进程即按“已配置”分支校验，容易与本次显式参数冲突并触发安全闸报错。临时覆盖应在当前 shell 显式导出，只对本次命令生效（shell 已有值优先于 `.env`）。
 
 设置页可导出包含 SQLite、配置快照和上传文件的 ZIP；恢复会验证路径、文件集合、大小、SHA-256、SQLite 完整性与 Migration，并要求一次性高风险授权，替换失败会回滚。PIN 以加盐 scrypt 哈希保存；普通会话不能直接执行恢复。
 

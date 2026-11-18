@@ -2,8 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { spawnSync } from 'node:child_process';
 import { createWriteStream } from 'node:fs';
 import { copyFile, cp, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import { dirname, join, parse, resolve, sep } from 'node:path';
+import { dirname, isAbsolute, join, parse, relative, resolve, sep } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 
 import { ZipArchive } from 'archiver';
@@ -13,6 +12,7 @@ import { buildApp } from '../src/app.js';
 import { createTestPrismaClient } from '../src/database/test-database.js';
 import {
   filePathFromDatabaseUrl,
+  resolveBackupsDirectory,
   resolveDatabaseUrl,
   resolveRestoreTempDirectory,
   resolveUploadsDirectory
@@ -47,6 +47,15 @@ function databaseFilePath(): string {
 
 function sha256(content: Buffer): string {
   return createHash('sha256').update(content).digest('hex');
+}
+
+function samePath(left: string, right: string): boolean {
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+function isInside(directory: string, target: string): boolean {
+  const rel = relative(directory, target);
+  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel));
 }
 
 async function localMigrationNames(): Promise<string[]> {
@@ -318,27 +327,47 @@ describe('备份安全恢复集成', () => {
     }
   });
 
-  it('AC1 导出后修改记录与 uploads 文件，restoreBackup 完整恢复两者；uploads 在临时盘而暂存区为数据库所在目录', async () => {
+  it('AC1 导出后修改记录与 uploads 文件，restoreBackup 完整恢复两者；uploads 在独立 scratch 而暂存区与数据库同卷', async () => {
     const uploads = resolveUploadsDirectory();
     const databasePath = databaseFilePath();
     const staging = resolveRestoreTempDirectory();
-    const defaultDatabasePath = resolve(projectRoot, 'data/test.db');
+    const databaseDirectory = dirname(databasePath);
+    const formalUploads = resolve(projectRoot, 'data/uploads');
+    const formalBackups = resolve(projectRoot, 'data/backups');
+    const testBackups = resolveBackupsDirectory();
 
-    if (process.env.DAFAN_ISOLATION_ROOT !== undefined) {
-      const isolationRoot = resolve(process.env.DAFAN_ISOLATION_ROOT).toLowerCase();
-      expect(uploads.toLowerCase().startsWith(`${isolationRoot}${sep}`)).toBe(true);
-      expect(uploads.toLowerCase()).not.toBe(dirname(databasePath).toLowerCase());
-      expect(uploads.toLowerCase()).not.toBe(resolve(projectRoot, 'data/uploads').toLowerCase());
-      expect(staging.toLowerCase()).toBe(resolve(isolationRoot, '.tmp').toLowerCase());
-      expect(parse(staging).root.toLowerCase()).toBe(parse(databasePath).root.toLowerCase());
-    } else {
-      expect(uploads.toLowerCase().startsWith(resolve(tmpdir()).toLowerCase())).toBe(true);
-      expect(staging.toLowerCase()).toBe(dirname(databasePath).toLowerCase());
-      // 默认 repo/data/test.db 下 uploads 位于另一块磁盘（临时盘）。
-      if (resolve(databasePath).toLowerCase() === defaultDatabasePath.toLowerCase()) {
-        expect(parse(uploads).root.toLowerCase()).not.toBe(parse(databasePath).root.toLowerCase());
-      }
+    // 断言实际解析出的测试路径，而不是假定显式 DAFAN_UPLOADS_PATH 必须位于某个机器临时目录。
+    // 合法显式路径可以在 scratch 外；安全目标是它不触及数据库、恢复暂存/回滚区或正式/测试 backups。
+    expect(samePath(databaseDirectory, uploads), `uploads ${uploads} 不得等于数据库目录 ${databaseDirectory}`).toBe(
+      false
+    );
+    // 暂存/回滚目录就在 restore 的 dataRoot 下；uploads 若是其祖先，切换时的 rm 会连暂存区一起删掉。
+    expect(isInside(uploads, staging), `uploads ${uploads} 不得包含恢复暂存/回滚区 ${staging}`).toBe(false);
+    const mustNotOverlap: Array<[string, string]> = [
+      ['正式 uploads', formalUploads],
+      ['正式 backups', formalBackups],
+      ['测试 backups', testBackups]
+    ];
+    for (const [label, other] of mustNotOverlap) {
+      const overlap = isInside(uploads, other) || isInside(other, uploads);
+      expect(overlap, `uploads ${uploads} 与${label} ${other} 不得重叠`).toBe(false);
     }
+    // 恢复暂存/回滚区与数据库同卷是 backup service assertSameStorageVolume 的守卫前提，此处显式确认。
+    expect(
+      parse(staging).root.toLowerCase(),
+      `暂存区必须与数据库同卷：staging=${staging}, database=${databasePath}`
+    ).toBe(parse(databasePath).root.toLowerCase());
+    const isolationRoot = process.env.DAFAN_ISOLATION_ROOT;
+    if (isolationRoot === undefined) {
+      expect(staging.toLowerCase(), `暂存区应为数据库目录：staging=${staging}`).toBe(databaseDirectory.toLowerCase());
+    } else {
+      expect(staging.toLowerCase(), `隔离模式暂存区应为 <root>/.tmp：staging=${staging}`).toBe(
+        resolve(isolationRoot, '.tmp').toLowerCase()
+      );
+    }
+    // 真实跨卷（如库在仓库盘、uploads 在 OS 临时盘）在当前环境中可能存在，此时下方恢复断言即为跨卷覆盖证据；
+    // 同卷时不跳过任何功能断言，仅标注卷信息便于判定覆盖范围。
+    const crossVolume = !samePath(parse(uploads).root, parse(databasePath).root);
 
     const uploadPath = join(uploads, 'ac1-restore-original.png');
     const recipe = await database.recipe.create({ data: { name: 'AC1 备份前名称' } });
@@ -353,7 +382,15 @@ describe('备份安全恢复集成', () => {
 
       expect((await database.recipe.findUniqueOrThrow({ where: { id: recipe.id } })).name).toBe('AC1 备份前名称');
       expect(await database.recipe.count({ where: { name: 'AC1 备份后新增' } })).toBe(0);
-      expect(await readFile(uploadPath, 'utf8')).toBe('ac1-before');
+      const restoredBytes = await readFile(uploadPath);
+      expect(restoredBytes.toString('utf8'), `备份前图片字节必须恢复（跨卷=${crossVolume}，路径 ${uploadPath}）`).toBe(
+        'ac1-before'
+      );
+      if (crossVolume) {
+        expect(restoredBytes.byteLength, `跨卷恢复后 ${uploadPath} 字节数必须与备份前一致`).toBe(
+          Buffer.byteLength('ac1-before')
+        );
+      }
       expect(maintenanceState().active).toBe(false);
     } finally {
       await backup.cleanup();

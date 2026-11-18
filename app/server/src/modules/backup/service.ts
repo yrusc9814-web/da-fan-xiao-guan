@@ -187,7 +187,8 @@ async function auditStagedDatabase(stagedDatabase: string): Promise<void> {
         throw restoreValidationError('暂存数据库迁移未达到当前版本');
     }
     const integrity = await check!.$queryRawUnsafe<Array<{ integrity_check: string }>>('PRAGMA integrity_check');
-    if (integrity.length !== 1 || integrity[0]?.integrity_check !== 'ok') throw restoreValidationError('数据库完整性检查失败');
+    if (integrity.length !== 1 || integrity[0]?.integrity_check !== 'ok')
+      throw restoreValidationError('数据库完整性检查失败');
     const foreignKeys = await check!.$queryRawUnsafe<Array<Record<string, unknown>>>('PRAGMA foreign_key_check');
     if (foreignKeys.length) throw restoreValidationError('数据库外键检查失败');
     await check!.settings.findUnique({ where: { id: 1 } });
@@ -464,7 +465,8 @@ export async function restoreBackup(
     const sidecars = ['-wal', '-shm'];
     const copySidecars = async (source: string, target: string) => {
       for (const suffix of sidecars) {
-        if (await stat(`${source}${suffix}`).catch(() => null)) await copyFile(`${source}${suffix}`, `${target}${suffix}`);
+        if (await stat(`${source}${suffix}`).catch(() => null))
+          await copyFile(`${source}${suffix}`, `${target}${suffix}`);
       }
     };
     const removeSidecars = async (path: string) => {
@@ -518,7 +520,12 @@ export async function restoreBackup(
           await database.shoppingList.count();
           rolledBackHealthy = true;
         } catch (rollbackError) {
-          throw Object.assign(new Error(`恢复切换失败且回滚未完成，rollback 目录已保留：${rollbackError instanceof Error ? rollbackError.message : '未知错误'}`), { statusCode: 503 });
+          throw Object.assign(
+            new Error(
+              `恢复切换失败且回滚未完成，rollback 目录已保留：${rollbackError instanceof Error ? rollbackError.message : '未知错误'}`
+            ),
+            { statusCode: 503 }
+          );
         }
         throw switchError;
       }

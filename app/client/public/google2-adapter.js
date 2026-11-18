@@ -3735,30 +3735,61 @@
   let tabooPending = false;
   let tabooDialogGeneration = 0;
   let userNickname = null;
-  const tabooFields = { tabooText: 'google2TabooText', allergyText: 'google2AllergyText', dislikesText: 'google2DislikesText' };
+  const tabooFields = {
+    tabooText: 'google2TabooText',
+    allergyText: 'google2AllergyText',
+    dislikesText: 'google2DislikesText'
+  };
   // 与 shared/diner-rules.ts 保持同一分词和大小写匹配口径。
-  const tabooTokens = (value) => value?.split(/[、,，;；\s]+/).map((word) => word.trim().toLocaleLowerCase()).filter(Boolean) || [];
-  const forbiddenWords = () => activeDiners.flatMap((diner) =>
-    [...tabooTokens(diner.tabooText), ...tabooTokens(diner.allergyText), ...tabooTokens(diner.dislikesText)]
-  );
+  const tabooTokens = (value) =>
+    value
+      ?.split(/[、,，;；\s]+/)
+      .map((word) => word.trim().toLocaleLowerCase())
+      .filter(Boolean) || [];
+  const forbiddenWords = () =>
+    activeDiners.flatMap((diner) => [
+      ...tabooTokens(diner.tabooText),
+      ...tabooTokens(diner.allergyText),
+      ...tabooTokens(diner.dislikesText)
+    ]);
   function allowsDinerCandidate(item) {
     if (!dinersReady) return false;
-    const text = [item?.name, item?.title, item?.ingredientsText, item?.notes, item?.cuisine, item?.category,
-      item?.recommendedDishes, item?.dishes, item?.signatureDishes, item?.avoidDishes, item?.tagsText,
-      ...(item?.ingredients || []).flatMap((ingredient) => [ingredient.ingredientNameSnapshot, ingredient.name, ingredient.ingredientName]),
+    const text = [
+      item?.name,
+      item?.title,
+      item?.ingredientsText,
+      item?.notes,
+      item?.cuisine,
+      item?.category,
+      item?.recommendedDishes,
+      item?.dishes,
+      item?.signatureDishes,
+      item?.avoidDishes,
+      item?.tagsText,
+      ...(item?.ingredients || []).flatMap((ingredient) => [
+        ingredient.ingredientNameSnapshot,
+        ingredient.name,
+        ingredient.ingredientName
+      ]),
       ...(item?.menuItems || []).flatMap((dish) => [dish.name, dish.desc])
-    ].filter(Boolean).join(' ').toLocaleLowerCase();
+    ]
+      .filter(Boolean)
+      .join(' ')
+      .toLocaleLowerCase();
     return !forbiddenWords().some((word) => text.includes(word));
   }
   function renderTabooSummary() {
     const summary = document.getElementById('google2TabooDescription');
     if (!summary) return;
     const labels = { tabooText: '忌口', allergyText: '过敏', dislikesText: '不偏好' };
-    const descriptions = activeDiners.map((diner) => {
-      const values = Object.entries(labels).filter(([field]) => tabooTokens(diner[field]).length)
-        .map(([field, label]) => `${label}：${diner[field]}`);
-      return values.length ? `${diner.name}（${values.join('；')}）` : '';
-    }).filter(Boolean);
+    const descriptions = activeDiners
+      .map((diner) => {
+        const values = Object.entries(labels)
+          .filter(([field]) => tabooTokens(diner[field]).length)
+          .map(([field, label]) => `${label}：${diner[field]}`);
+        return values.length ? `${diner.name}（${values.join('；')}）` : '';
+      })
+      .filter(Boolean);
     summary.textContent = descriptions.join('；') || '未设置忌口或过敏原';
   }
   function refreshDinerCandidates() {
@@ -3808,8 +3839,13 @@
   }
   function setTabooBusy(busy) {
     tabooPending = busy;
-    document.querySelectorAll('#google2TabooForm button, #google2TabooForm select, #google2TabooForm textarea, #google2TabooClose')
-      .forEach((control) => { control.disabled = busy; });
+    document
+      .querySelectorAll(
+        '#google2TabooForm button, #google2TabooForm select, #google2TabooForm textarea, #google2TabooClose'
+      )
+      .forEach((control) => {
+        control.disabled = busy;
+      });
   }
   async function openTabooSettings() {
     if (tabooPending) return;
@@ -3857,9 +3893,9 @@
   }
   async function submitTabooSettings() {
     if (tabooPending || !dinersReady) return false;
-    const body = Object.fromEntries(Object.entries(tabooFields).map(([field, id]) =>
-      [field, document.getElementById(id)?.value.trim() || null]
-    ));
+    const body = Object.fromEntries(
+      Object.entries(tabooFields).map(([field, id]) => [field, document.getElementById(id)?.value.trim() || null])
+    );
     if (!tabooSelected && Object.values(body).every((value) => value === null)) {
       closeTabooSettings();
       return true;
@@ -3871,7 +3907,9 @@
       const saved = selected
         ? await ApiClient.put(`/diners/${selected.id}`, { ...body, version: selected.version })
         : await ApiClient.post('/diners', { ...body, name: userNickname || '默认食用者' });
-      activeDiners = selected ? activeDiners.map((diner) => diner.id === selected.id ? saved : diner) : [...activeDiners, saved];
+      activeDiners = selected
+        ? activeDiners.map((diner) => (diner.id === selected.id ? saved : diner))
+        : [...activeDiners, saved];
       cancelWheelPending();
       window.cleanupActiveSpin?.('preferences');
       renderTabooSummary();
@@ -3880,7 +3918,8 @@
       closeTabooSettings();
       toast('忌口偏好已保存', 'success');
       const results = await Promise.allSettled([loadActiveDiners(), loadDashboard()]);
-      if (results.some((result) => result.status === 'rejected')) toast('偏好已保存，部分推荐刷新失败，请稍后重试', 'warning');
+      if (results.some((result) => result.status === 'rejected'))
+        toast('偏好已保存，部分推荐刷新失败，请稍后重试', 'warning');
       return true;
     } catch (error) {
       if (error?.status === 409) {
@@ -3902,23 +3941,42 @@
     const form = document.getElementById('google2TabooForm');
     if (!form || form.dataset.tabooBound) return;
     form.dataset.tabooBound = 'true';
-    form.addEventListener('submit', (event) => { event.preventDefault(); void submitTabooSettings(); });
-    ['google2TabooClose', 'google2TabooCancel'].forEach((id) => document.getElementById(id)?.addEventListener('click', closeTabooSettings));
-    document.getElementById('google2TabooDiner')?.addEventListener('change', (event) => fillTabooDiner(event.target.value));
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      void submitTabooSettings();
+    });
+    ['google2TabooClose', 'google2TabooCancel'].forEach((id) =>
+      document.getElementById(id)?.addEventListener('click', closeTabooSettings)
+    );
+    document
+      .getElementById('google2TabooDiner')
+      ?.addEventListener('change', (event) => fillTabooDiner(event.target.value));
     document.getElementById('google2TabooClear')?.addEventListener('click', () => {
-      Object.values(tabooFields).forEach((id) => { document.getElementById(id).value = ''; });
+      Object.values(tabooFields).forEach((id) => {
+        document.getElementById(id).value = '';
+      });
       setTabooError('已清空当前成员的输入，保存后生效。');
     });
     const root = document.getElementById('modalTabooSettings');
-    root?.addEventListener('click', (event) => { if (event.target === root) closeTabooSettings(); });
+    root?.addEventListener('click', (event) => {
+      if (event.target === root) closeTabooSettings();
+    });
     root?.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape') { event.stopPropagation(); closeTabooSettings(); }
+      if (event.key === 'Escape') {
+        event.stopPropagation();
+        closeTabooSettings();
+      }
       if (event.key === 'Tab') {
         const controls = [...root.querySelectorAll('button, select, textarea')].filter((control) => !control.disabled);
         const first = controls[0];
         const last = controls[controls.length - 1];
-        if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
-        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+        if (event.shiftKey && document.activeElement === first) {
+          event.preventDefault();
+          last?.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+          event.preventDefault();
+          first?.focus();
+        }
       }
     });
   }
@@ -5482,7 +5540,12 @@
       if (!cancelled()) toast(message, type);
     };
     if (!dinersReady) {
-      try { await loadActiveDiners(); } catch (error) { if (!cancelled()) fail(error); return null; }
+      try {
+        await loadActiveDiners();
+      } catch (error) {
+        if (!cancelled()) fail(error);
+        return null;
+      }
     }
     const items = window.getDynamicWheelItems ? window.getDynamicWheelItems() : [];
     if (!items.length) {
@@ -5500,17 +5563,18 @@
     const results = payload?.results || [];
     // 本轮已排除项不得通过远程推荐重新进入结果：按排除集合过滤后取第一个有效结果
     const isExcluded = (item) => (window.isWheelItemExcluded ? window.isWheelItemExcluded(item) : false);
-    const pick = results.find(
-      (result) => {
-        const service = result.resultType === 'STORE' ? window.BentoService?.stores : window.BentoService?.recipes;
-        const cached = service?.getById?.(result.resultId);
-        return allowsDinerCandidate(cached || { name: result.title || result.name }) && !isExcluded({
+    const pick = results.find((result) => {
+      const service = result.resultType === 'STORE' ? window.BentoService?.stores : window.BentoService?.recipes;
+      const cached = service?.getById?.(result.resultId);
+      return (
+        allowsDinerCandidate(cached || { name: result.title || result.name }) &&
+        !isExcluded({
           type: result.resultType === 'STORE' ? 'store' : 'recipe',
           id: result.resultId,
           title: result.title || result.name || ''
-        });
-      }
-    );
+        })
+      );
+    });
     if (!pick) {
       notify(
         results.length ? '剩余候选均已被排除，可切换分类或稍后再试' : '暂无符合条件的真实推荐结果，稍后再试',
@@ -5610,8 +5674,12 @@
   };
   window.DafanSettingsAdapter = { loadSettings, wireSettings, openPinSettings, closePinSettings, submitPinSettings };
   window.DafanDinerAdapter = {
-    loadActiveDiners, openTabooSettings, closeTabooSettings, submitTabooSettings,
-    tokens: tabooTokens, allows: allowsDinerCandidate,
+    loadActiveDiners,
+    openTabooSettings,
+    closeTabooSettings,
+    submitTabooSettings,
+    tokens: tabooTokens,
+    allows: allowsDinerCandidate,
     isReady: () => dinersReady,
     dinerIds: () => activeDiners.map((diner) => diner.id)
   };

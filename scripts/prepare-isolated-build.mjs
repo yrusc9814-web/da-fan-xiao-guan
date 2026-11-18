@@ -1,7 +1,14 @@
 import { spawnSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { configuration, fingerprintBuild, isolatedEnvironment, isolationRoot, repository } from './isolation-gate.mjs';
+import {
+  configuration,
+  fingerprintBuild,
+  isolatedEnvironment,
+  requireIsolationRoot,
+  repository
+} from './isolation-gate.mjs';
+const isolationRoot = requireIsolationRoot();
 const env = isolatedEnvironment();
 await configuration(env);
 const result = spawnSync(

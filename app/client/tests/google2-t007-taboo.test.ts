@@ -94,7 +94,10 @@ function stubMatchMedia() {
     dispatchEvent: () => true
   };
   Object.defineProperty(window, 'matchMedia', { configurable: true, writable: true, value: vi.fn(() => mql) });
-  vi.stubGlobal('matchMedia', vi.fn(() => mql));
+  vi.stubGlobal(
+    'matchMedia',
+    vi.fn(() => mql)
+  );
 }
 
 const settle = async () => {
@@ -117,7 +120,8 @@ function boot(options: BootOptions = {}) {
   const fetchMock = vi.fn((url: string) => {
     const target = String(url);
     if (target.endsWith('/settings/pin/session')) return Promise.resolve(jsonOk({ valid: false }));
-    if (target.endsWith('/settings')) return Promise.resolve(jsonOk(options.settings ?? { version: 1, pinEnabled: false }));
+    if (target.endsWith('/settings'))
+      return Promise.resolve(jsonOk(options.settings ?? { version: 1, pinEnabled: false }));
     if (target.endsWith('/dashboard')) return Promise.resolve(jsonOk(options.dashboard ?? {}));
     if (dinersPath(target)) {
       if (options.diners) return Promise.resolve(options.diners(target));
@@ -140,9 +144,7 @@ const field = (id: string) => document.getElementById(id) as HTMLTextAreaElement
 const errorText = () => document.getElementById('google2TabooError')?.textContent?.trim() || '';
 const summaryText = () => document.getElementById('google2TabooDescription')?.textContent?.trim() || '';
 const submitForm = async () => {
-  document
-    .getElementById('google2TabooForm')
-    ?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
+  document.getElementById('google2TabooForm')?.dispatchEvent(new Event('submit', { bubbles: true, cancelable: true }));
   await settle();
 };
 const openDialog = async () => {
@@ -167,7 +169,13 @@ describe('T-007 忌口弹窗：读取与成员切换', () => {
       diners: (url) =>
         url.includes('page=1')
           ? jsonOk(page([diner({ id: 'd1', name: '小夏' })], { total: 2, totalPages: 2 }))
-          : jsonOk(page([diner({ id: 'd2', name: '阿岚', tabooText: null, version: 1 })], { page: 2, total: 2, totalPages: 2 }))
+          : jsonOk(
+              page([diner({ id: 'd2', name: '阿岚', tabooText: null, version: 1 })], {
+                page: 2,
+                total: 2,
+                totalPages: 2
+              })
+            )
     });
     await settle();
     await openDialog();
@@ -187,7 +195,9 @@ describe('T-007 忌口弹窗：读取与成员切换', () => {
   it('分页结果的非活跃成员被过滤，不出现在可编辑下拉里', async () => {
     boot({
       diners: () =>
-        jsonOk(page([diner({ id: 'd1' }), diner({ id: 'd9', name: '已停用', active: false })], { total: 2, totalPages: 1 }))
+        jsonOk(
+          page([diner({ id: 'd1' }), diner({ id: 'd9', name: '已停用', active: false })], { total: 2, totalPages: 1 })
+        )
     });
     await settle();
     await openDialog();
@@ -217,14 +227,32 @@ describe('T-007 忌口弹窗：读取与成员切换', () => {
     field('google2DislikesText').value = '蒜、洋葱';
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (String(url) === '/api/v1/diners/d2' && init?.method === 'PUT') {
-        return Promise.resolve(jsonOk({ ...diner({ id: 'd2', name: '阿岚', version: 8, tabooText: '虾', allergyText: '花生', dislikesText: '蒜、洋葱' }) }));
+        return Promise.resolve(
+          jsonOk({
+            ...diner({
+              id: 'd2',
+              name: '阿岚',
+              version: 8,
+              tabooText: '虾',
+              allergyText: '花生',
+              dislikesText: '蒜、洋葱'
+            })
+          })
+        );
       }
       if (dinersPath(String(url))) {
         return Promise.resolve(
           jsonOk(
             page([
               diner({ id: 'd1', name: '小夏', version: 3, tabooText: '香菜' }),
-              diner({ id: 'd2', name: '阿岚', version: 8, tabooText: '虾', allergyText: '花生', dislikesText: '蒜、洋葱' })
+              diner({
+                id: 'd2',
+                name: '阿岚',
+                version: 8,
+                tabooText: '虾',
+                allergyText: '花生',
+                dislikesText: '蒜、洋葱'
+              })
             ])
           )
         );
@@ -295,7 +323,9 @@ describe('T-007 忌口弹窗：保存语义', () => {
     field('google2TabooText').value = '香菜';
     await submitForm();
 
-    const posts = fetchMock.mock.calls.filter(([url, init]) => String(url) === '/api/v1/diners' && init?.method === 'POST');
+    const posts = fetchMock.mock.calls.filter(
+      ([url, init]) => String(url) === '/api/v1/diners' && init?.method === 'POST'
+    );
     expect(posts).toHaveLength(1);
     const body = JSON.parse(String(posts[0][1].body));
     expect(body).toEqual({ name: '大明', tabooText: '香菜', allergyText: null, dislikesText: null });
@@ -303,7 +333,8 @@ describe('T-007 忌口弹窗：保存语义', () => {
 
   it('清空三字段保存发送 null，界面摘要回到未设置', async () => {
     const fetchMock = boot({
-      diners: () => jsonOk(page([diner({ id: 'd1', version: 5, tabooText: '香菜', allergyText: '花生', dislikesText: '蒜' })]))
+      diners: () =>
+        jsonOk(page([diner({ id: 'd1', version: 5, tabooText: '香菜', allergyText: '花生', dislikesText: '蒜' })]))
     });
     await settle();
     await openDialog();
@@ -314,9 +345,13 @@ describe('T-007 忌口弹窗：保存语义', () => {
     field('google2DislikesText').value = '';
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (String(url) === '/api/v1/diners/d1' && init?.method === 'PUT')
-        return Promise.resolve(jsonOk(diner({ id: 'd1', version: 6, tabooText: null, allergyText: null, dislikesText: null })));
+        return Promise.resolve(
+          jsonOk(diner({ id: 'd1', version: 6, tabooText: null, allergyText: null, dislikesText: null }))
+        );
       if (dinersPath(String(url)))
-        return Promise.resolve(jsonOk(page([diner({ id: 'd1', version: 6, tabooText: null, allergyText: null, dislikesText: null })])));
+        return Promise.resolve(
+          jsonOk(page([diner({ id: 'd1', version: 6, tabooText: null, allergyText: null, dislikesText: null })]))
+        );
       if (String(url).endsWith('/dashboard')) return Promise.resolve(jsonOk({}));
       return Promise.resolve(jsonOk(page([])));
     });
@@ -343,7 +378,8 @@ describe('T-007 忌口弹窗：保存语义', () => {
     fetchMock.mockImplementation((url: string, init?: RequestInit) => {
       if (String(url) === '/api/v1/diners/d1' && init?.method === 'PUT')
         return Promise.resolve(jsonFail(409, 'VERSION_CONFLICT'));
-      if (dinersPath(String(url))) return Promise.resolve(jsonOk(page([diner({ id: 'd1', version: 4, tabooText: '香菜' })])));
+      if (dinersPath(String(url)))
+        return Promise.resolve(jsonOk(page([diner({ id: 'd1', version: 4, tabooText: '香菜' })])));
       return Promise.resolve(jsonOk({}));
     });
     await submitForm();
@@ -362,7 +398,12 @@ describe('T-007 忌口弹窗：纯文本与 XSS', () => {
       diners: () =>
         jsonOk(
           page([
-            diner({ id: 'd1', name: '<img src=x onerror=alert(2)>坏名', tabooText: evil, allergyText: '<script>alert(3)</script>' })
+            diner({
+              id: 'd1',
+              name: '<img src=x onerror=alert(2)>坏名',
+              tabooText: evil,
+              allergyText: '<script>alert(3)</script>'
+            })
           ])
         )
     });
@@ -415,27 +456,14 @@ describe('T-007 忌口过滤：tokens 与推荐来源', () => {
   it('tokens 分词/大小写与后端 diner-rules 口径一致（顿号逗号分号空格、忽略大小写）', () => {
     boot({ diners: () => jsonOk(page([])) });
     const tokens = (window as any).DafanDinerAdapter.tokens;
-    expect(tokens('香菜、虾，花生;蒜；Milk  milk\t鸡蛋')).toEqual([
-      '香菜',
-      '虾',
-      '花生',
-      '蒜',
-      'milk',
-      'milk',
-      '鸡蛋'
-    ]);
+    expect(tokens('香菜、虾，花生;蒜；Milk  milk\t鸡蛋')).toEqual(['香菜', '虾', '花生', '蒜', 'milk', 'milk', '鸡蛋']);
     expect(tokens(null)).toEqual([]);
     expect(tokens('   ')).toEqual([]);
   });
 
   it('菜谱按名称/配料快照文本过滤，店铺按名称/招牌菜/菜系/备注过滤后再进转盘与厨房推荐', async () => {
     const fetchMock = boot({
-      diners: () =>
-        jsonOk(
-          page([
-            diner({ id: 'd1', tabooText: '香菜', allergyText: '花生', dislikesText: '蒜' })
-          ])
-        )
+      diners: () => jsonOk(page([diner({ id: 'd1', tabooText: '香菜', allergyText: '花生', dislikesText: '蒜' })]))
     });
     await settle();
     seedCandidates();
@@ -465,7 +493,9 @@ describe('T-007 忌口过滤：tokens 与推荐来源', () => {
           })
         );
       if (dinersPath(String(url)))
-        return Promise.resolve(jsonOk(page([diner({ id: 'd1', tabooText: '香菜', allergyText: '花生', dislikesText: '蒜' })])));
+        return Promise.resolve(
+          jsonOk(page([diner({ id: 'd1', tabooText: '香菜', allergyText: '花生', dislikesText: '蒜' })]))
+        );
       return Promise.resolve(jsonOk(page([])));
     });
     const index = await (window as any).DafanWheelAdapter.resolveTargetIndex('all');
@@ -532,7 +562,8 @@ describe('T-007 忌口保存后的即时刷新', () => {
       const target = String(url);
       if (target === '/api/v1/diners/d1' && init?.method === 'PUT')
         return Promise.resolve(jsonOk(diner({ id: 'd1', version: 4, tabooText: '香菜' })));
-      if (dinersPath(target)) return Promise.resolve(jsonOk(page([diner({ id: 'd1', version: 4, tabooText: '香菜' })])));
+      if (dinersPath(target))
+        return Promise.resolve(jsonOk(page([diner({ id: 'd1', version: 4, tabooText: '香菜' })])));
       if (target.endsWith('/dashboard')) {
         dashboardCalls.push(target);
         return Promise.resolve(jsonOk({}));

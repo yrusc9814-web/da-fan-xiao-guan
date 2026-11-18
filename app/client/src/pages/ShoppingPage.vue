@@ -177,7 +177,9 @@ onMounted(() => load());
           ><input type="checkbox" :checked="row.completed" @change="toggle(row)" /><span
             :class="{ 'is-done': row.completed }"
             >{{ row.ingredientNameSnapshot }}</span
-          ><strong>{{ row.amountText || (row.quantity != null && row.unit ? `${row.quantity} ${displayLabel(row.unit)}` : '') }}</strong></label
+          ><strong>{{
+            row.amountText || (row.quantity != null && row.unit ? `${row.quantity} ${displayLabel(row.unit)}` : '')
+          }}</strong></label
         ><AppEmptyState
           v-if="!selected.items.length"
           title="清单是空的"

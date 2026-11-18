@@ -83,7 +83,9 @@ describe('VAN-201 购物清单 amountText 迁移（历史库 → 新迁移）', 
     );
   const indexNamesOf = (db: DatabaseSync, table: string) =>
     (
-      db.prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? ORDER BY name").all(table) as Array<{
+      db
+        .prepare("SELECT name FROM sqlite_master WHERE type = 'index' AND tbl_name = ? ORDER BY name")
+        .all(table) as Array<{
         name: string;
       }>
     ).map((row) => row.name);
@@ -136,15 +138,12 @@ describe('VAN-201 购物清单 amountText 迁移（历史库 → 新迁移）', 
     throw new Error(`临时迁移目录清理失败：${workRoot}`, { cause: lastError });
   });
 
-  it(
-    '存量 ShoppingListItem 全字段保留、amountText 为 NULL，索引与外键完整重建',
-    { timeout: 120000 },
-    async () => {
-      const legacy = deploy();
-      expect(legacy.status, legacy.output).toBe(0);
+  it('存量 ShoppingListItem 全字段保留、amountText 为 NULL，索引与外键完整重建', { timeout: 120000 }, async () => {
+    const legacy = deploy();
+    expect(legacy.status, legacy.output).toBe(0);
 
-      const before = open();
-      before.exec(`
+    const before = open();
+    before.exec(`
         INSERT INTO "Ingredient" ("id","name","quantity","unit","version","createdAt","updatedAt")
         VALUES ('legacy-ing-am','旧米',100,'GRAM',3,CURRENT_TIMESTAMP,CURRENT_TIMESTAMP);
 
@@ -157,104 +156,107 @@ describe('VAN-201 购物清单 amountText 迁移（历史库 → 新迁移）', 
           ('legacy-item-am-1','legacy-list-am','legacy-ing-am','旧米',500.5,'GRAM','RECIPE','legacy-recipe-am',1,3,'旧备注','2026-08-01 08:00:00','2026-08-02 09:30:00'),
           ('legacy-item-am-2','legacy-list-am',NULL,'旧鸡蛋',6,'PIECE','MANUAL',NULL,0,1,NULL,'2026-08-01 08:00:00','2026-08-02 09:30:00');
       `);
-      const columnsBefore = columnsOf(before, 'ShoppingListItem');
-      const indexesBefore = indexNamesOf(before, 'ShoppingListItem');
-      const fksBefore = foreignKeysOf(before, 'ShoppingListItem');
-      before.close();
+    const columnsBefore = columnsOf(before, 'ShoppingListItem');
+    const indexesBefore = indexNamesOf(before, 'ShoppingListItem');
+    const fksBefore = foreignKeysOf(before, 'ShoppingListItem');
+    before.close();
 
-      await cp(join(migrationsSource, AMOUNT_TEXT_MIGRATION), join(workRoot, 'prisma/migrations', AMOUNT_TEXT_MIGRATION), {
+    await cp(
+      join(migrationsSource, AMOUNT_TEXT_MIGRATION),
+      join(workRoot, 'prisma/migrations', AMOUNT_TEXT_MIGRATION),
+      {
         recursive: true
-      });
-      const migrated = deploy();
-      expect(migrated.status, migrated.output).toBe(0);
-      expect(migrated.output).toContain(AMOUNT_TEXT_MIGRATION);
+      }
+    );
+    const migrated = deploy();
+    expect(migrated.status, migrated.output).toBe(0);
+    expect(migrated.output).toContain(AMOUNT_TEXT_MIGRATION);
 
-      const after = open();
-      const columnsAfter = columnsOf(after, 'ShoppingListItem');
-      // 结构差异：quantity/unit 放宽为可空，并在 unit 之后新增 amountText、category，其余列顺序不变
-      expect(columnsAfter.map((column) => column.name)).toEqual([
-        'id',
-        'shoppingListId',
-        'ingredientId',
-        'ingredientNameSnapshot',
-        'quantity',
-        'unit',
-        'amountText',
-        'category',
-        'sourceType',
-        'sourceId',
-        'completed',
-        'sortOrder',
-        'notes',
-        'createdAt',
-        'updatedAt'
-      ]);
-      expect(columnsAfter.find((column) => column.name === 'quantity')?.notnull).toBe(0);
-      expect(columnsAfter.find((column) => column.name === 'unit')?.notnull).toBe(0);
-      expect(columnsAfter.find((column) => column.name === 'amountText')?.notnull).toBe(0);
-      expect(columnsAfter.find((column) => column.name === 'category')?.notnull).toBe(0);
-      expect(columnsBefore.find((column) => column.name === 'quantity')?.notnull).toBe(1);
-      expect(columnsBefore.find((column) => column.name === 'unit')?.notnull).toBe(1);
+    const after = open();
+    const columnsAfter = columnsOf(after, 'ShoppingListItem');
+    // 结构差异：quantity/unit 放宽为可空，并在 unit 之后新增 amountText、category，其余列顺序不变
+    expect(columnsAfter.map((column) => column.name)).toEqual([
+      'id',
+      'shoppingListId',
+      'ingredientId',
+      'ingredientNameSnapshot',
+      'quantity',
+      'unit',
+      'amountText',
+      'category',
+      'sourceType',
+      'sourceId',
+      'completed',
+      'sortOrder',
+      'notes',
+      'createdAt',
+      'updatedAt'
+    ]);
+    expect(columnsAfter.find((column) => column.name === 'quantity')?.notnull).toBe(0);
+    expect(columnsAfter.find((column) => column.name === 'unit')?.notnull).toBe(0);
+    expect(columnsAfter.find((column) => column.name === 'amountText')?.notnull).toBe(0);
+    expect(columnsAfter.find((column) => column.name === 'category')?.notnull).toBe(0);
+    expect(columnsBefore.find((column) => column.name === 'quantity')?.notnull).toBe(1);
+    expect(columnsBefore.find((column) => column.name === 'unit')?.notnull).toBe(1);
 
-      expect(indexNamesOf(after, 'ShoppingListItem')).toEqual(indexesBefore);
-      expect(indexNamesOf(after, 'ShoppingListItem')).toEqual(
-        expect.arrayContaining([
-          'ShoppingListItem_shoppingListId_completed_sortOrder_idx',
-          'ShoppingListItem_ingredientId_idx'
-        ])
-      );
-      expect(foreignKeysOf(after, 'ShoppingListItem')).toEqual(fksBefore);
+    expect(indexNamesOf(after, 'ShoppingListItem')).toEqual(indexesBefore);
+    expect(indexNamesOf(after, 'ShoppingListItem')).toEqual(
+      expect.arrayContaining([
+        'ShoppingListItem_shoppingListId_completed_sortOrder_idx',
+        'ShoppingListItem_ingredientId_idx'
+      ])
+    );
+    expect(foreignKeysOf(after, 'ShoppingListItem')).toEqual(fksBefore);
 
-      const items = after
-        .prepare(
-          'SELECT id, shoppingListId, ingredientId, ingredientNameSnapshot, quantity, unit, amountText, category, sourceType, sourceId, completed, sortOrder, notes, createdAt, updatedAt FROM "ShoppingListItem" ORDER BY id'
-        )
-        .all() as Array<Record<string, unknown>>;
-      expect(items).toEqual([
-        {
-          id: 'legacy-item-am-1',
-          shoppingListId: 'legacy-list-am',
-          ingredientId: 'legacy-ing-am',
-          ingredientNameSnapshot: '旧米',
-          quantity: 500.5,
-          unit: 'GRAM',
-          amountText: null,
-          category: null,
-          sourceType: 'RECIPE',
-          sourceId: 'legacy-recipe-am',
-          completed: 1,
-          sortOrder: 3,
-          notes: '旧备注',
-          createdAt: '2026-08-01 08:00:00',
-          updatedAt: '2026-08-02 09:30:00'
-        },
-        {
-          id: 'legacy-item-am-2',
-          shoppingListId: 'legacy-list-am',
-          ingredientId: null,
-          ingredientNameSnapshot: '旧鸡蛋',
-          quantity: 6,
-          unit: 'PIECE',
-          amountText: null,
-          category: null,
-          sourceType: 'MANUAL',
-          sourceId: null,
-          completed: 0,
-          sortOrder: 1,
-          notes: null,
-          createdAt: '2026-08-01 08:00:00',
-          updatedAt: '2026-08-02 09:30:00'
-        }
-      ]);
+    const items = after
+      .prepare(
+        'SELECT id, shoppingListId, ingredientId, ingredientNameSnapshot, quantity, unit, amountText, category, sourceType, sourceId, completed, sortOrder, notes, createdAt, updatedAt FROM "ShoppingListItem" ORDER BY id'
+      )
+      .all() as Array<Record<string, unknown>>;
+    expect(items).toEqual([
+      {
+        id: 'legacy-item-am-1',
+        shoppingListId: 'legacy-list-am',
+        ingredientId: 'legacy-ing-am',
+        ingredientNameSnapshot: '旧米',
+        quantity: 500.5,
+        unit: 'GRAM',
+        amountText: null,
+        category: null,
+        sourceType: 'RECIPE',
+        sourceId: 'legacy-recipe-am',
+        completed: 1,
+        sortOrder: 3,
+        notes: '旧备注',
+        createdAt: '2026-08-01 08:00:00',
+        updatedAt: '2026-08-02 09:30:00'
+      },
+      {
+        id: 'legacy-item-am-2',
+        shoppingListId: 'legacy-list-am',
+        ingredientId: null,
+        ingredientNameSnapshot: '旧鸡蛋',
+        quantity: 6,
+        unit: 'PIECE',
+        amountText: null,
+        category: null,
+        sourceType: 'MANUAL',
+        sourceId: null,
+        completed: 0,
+        sortOrder: 1,
+        notes: null,
+        createdAt: '2026-08-01 08:00:00',
+        updatedAt: '2026-08-02 09:30:00'
+      }
+    ]);
 
-      expect(after.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
-      after.close();
+    expect(after.prepare('PRAGMA foreign_key_check').all()).toEqual([]);
+    after.close();
 
-      const second = deploy();
-      expect(second.status, second.output).toBe(0);
-      expect(second.output).toContain('No pending migrations to apply');
-    }
-  );
+    const second = deploy();
+    expect(second.status, second.output).toBe(0);
+    expect(second.output).toContain('No pending migrations to apply');
+  });
 });
 
 const database = createTestPrismaClient();
@@ -343,7 +345,14 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
     expect(structured.statusCode, structured.body).toBe(201);
     const created = structured.json().data;
     trackedListIds.push(created.id);
-    expect(created.items.map((item: Record<string, unknown>) => [item.ingredientNameSnapshot, item.quantity, item.unit, item.amountText])).toEqual([
+    expect(
+      created.items.map((item: Record<string, unknown>) => [
+        item.ingredientNameSnapshot,
+        item.quantity,
+        item.unit,
+        item.amountText
+      ])
+    ).toEqual([
       [`${PREFIX}-土豆`, 200, 'GRAM', null],
       [`${PREFIX}-盐`, null, null, '少许']
     ]);
@@ -351,13 +360,19 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
     const freeItem = await app.inject({
       method: 'POST',
       url: `/api/v1/shopping-lists/${created.id}/items`,
-      payload: { version: created.version, ingredientName: `${PREFIX}-姜`, quantity: null, unit: null, amountText: '2块' }
+      payload: {
+        version: created.version,
+        ingredientName: `${PREFIX}-姜`,
+        quantity: null,
+        unit: null,
+        amountText: '2块'
+      }
     });
     expect(freeItem.statusCode, freeItem.body).toBe(200);
     const freeBody = freeItem.json().data;
-    expect(freeBody.items.find((item: Record<string, unknown>) => item.ingredientNameSnapshot === `${PREFIX}-姜`)).toMatchObject(
-      { quantity: null, unit: null, amountText: '2块' }
-    );
+    expect(
+      freeBody.items.find((item: Record<string, unknown>) => item.ingredientNameSnapshot === `${PREFIX}-姜`)
+    ).toMatchObject({ quantity: null, unit: null, amountText: '2块' });
 
     const invalidPayloads: Array<Record<string, unknown>> = [
       { ingredientName: `${PREFIX}-非法1`, quantity: 0, unit: 'GRAM' },
@@ -391,7 +406,13 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
     const first = await app.inject({
       method: 'POST',
       url: `/api/v1/shopping-lists/${list.id}/items`,
-      payload: { version: list.version, ingredientName: `${PREFIX}-米`, quantity: 200, unit: 'GRAM', amountText: '200克' }
+      payload: {
+        version: list.version,
+        ingredientName: `${PREFIX}-米`,
+        quantity: 200,
+        unit: 'GRAM',
+        amountText: '200克'
+      }
     });
     expect(first.statusCode, first.body).toBe(200);
     const second = await app.inject({
@@ -417,9 +438,16 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
       payload: { version: freeA.json().data.version, ingredientName: `${PREFIX}-葱`, amountText: '适量' }
     });
     expect(freeB.statusCode, freeB.body).toBe(200);
-    const onionRows = freeB.json().data.items.filter((item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-葱`);
+    const onionRows = freeB
+      .json()
+      .data.items.filter((item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-葱`);
     expect(onionRows).toHaveLength(2);
-    expect(onionRows.every((item: { quantity: unknown; unit: unknown; amountText: string }) => item.quantity === null && item.unit === null && item.amountText === '适量')).toBe(true);
+    expect(
+      onionRows.every(
+        (item: { quantity: unknown; unit: unknown; amountText: string }) =>
+          item.quantity === null && item.unit === null && item.amountText === '适量'
+      )
+    ).toBe(true);
   });
 
   it('replenish-recipe 同菜谱严格幂等对齐最新差额，整批只推进一次版本', async () => {
@@ -439,10 +467,14 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
     expect(firstBody.version).toBe(list.version + 1);
     const recipeRows = firstBody.items.filter((item: { sourceId: string | null }) => item.sourceId === recipe.id);
     expect(recipeRows).toHaveLength(2);
-    expect(recipeRows.every((item: { sourceType: string; completed: boolean }) => item.sourceType === 'RECIPE' && !item.completed)).toBe(true);
-    expect(recipeRows.find((item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-葱`)).toMatchObject(
-      { quantity: null, unit: null, amountText: '适量' }
-    );
+    expect(
+      recipeRows.every(
+        (item: { sourceType: string; completed: boolean }) => item.sourceType === 'RECIPE' && !item.completed
+      )
+    ).toBe(true);
+    expect(
+      recipeRows.find((item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-葱`)
+    ).toMatchObject({ quantity: null, unit: null, amountText: '适量' });
 
     // 重复点击同一菜谱（同缺口）：对齐 update，绝不翻倍，版本仍只 +1
     const repeat = await replenish(list.id, { ...payload, version: firstBody.version });
@@ -451,9 +483,9 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
     expect(repeatBody.version).toBe(firstBody.version + 1);
     const repeatRows = repeatBody.items.filter((item: { sourceId: string | null }) => item.sourceId === recipe.id);
     expect(repeatRows).toHaveLength(2);
-    expect(repeatRows.find((item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-土豆`)).toMatchObject(
-      { quantity: 200, unit: 'GRAM' }
-    );
+    expect(
+      repeatRows.find((item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-土豆`)
+    ).toMatchObject({ quantity: 200, unit: 'GRAM' });
 
     // 最新差额（300g）覆盖而不是累加已有 200g
     const latest = await replenish(list.id, {
@@ -500,7 +532,9 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
       .json()
       .data.items.filter((item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-葱`);
     expect(rows).toHaveLength(3);
-    expect(rows.find((item: { sourceType: string }) => item.sourceType === 'MANUAL')).toMatchObject({ amountText: '手动适量' });
+    expect(rows.find((item: { sourceType: string }) => item.sourceType === 'MANUAL')).toMatchObject({
+      amountText: '手动适量'
+    });
     const aRow = rows.find((item: { sourceId: string | null }) => item.sourceId === recipeA.id);
     const bRow = rows.find((item: { sourceId: string | null }) => item.sourceId === recipeB.id);
     expect(aRow).toMatchObject({ amountText: '1根', sourceType: 'RECIPE' });
@@ -516,9 +550,9 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
       items: [{ ingredientId: `${PREFIX}-not-exist`, ingredientName: `${PREFIX}-姜`, quantity: 2, unit: 'PIECE' }]
     });
     expect(response.statusCode, response.body).toBe(200);
-    const created = response.json().data.items.find(
-      (item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-姜`
-    );
+    const created = response
+      .json()
+      .data.items.find((item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-姜`);
     expect(created).toMatchObject({ ingredientId: null, quantity: 2, unit: 'PIECE', sourceType: 'RECIPE' });
 
     const beforeVersion = response.json().data.version;
@@ -529,7 +563,10 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
     });
     expect(stale.statusCode, stale.body).toBe(409);
     expect(JSON.parse(stale.body).error.code).toBe('VERSION_CONFLICT');
-    const afterStale = await database.shoppingList.findUniqueOrThrow({ where: { id: list.id }, include: { items: true } });
+    const afterStale = await database.shoppingList.findUniqueOrThrow({
+      where: { id: list.id },
+      include: { items: true }
+    });
     expect(afterStale.version).toBe(beforeVersion);
     expect(afterStale.items.find((item) => item.ingredientNameSnapshot === `${PREFIX}-姜`)?.quantity).toBe(2);
 
@@ -562,7 +599,14 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
         sourceType: 'MANUAL',
         completed: true
       },
-      { ingredientNameSnapshot: `${PREFIX}-盐`, quantity: null, unit: null, amountText: '少许', sourceType: 'MANUAL', completed: true }
+      {
+        ingredientNameSnapshot: `${PREFIX}-盐`,
+        quantity: null,
+        unit: null,
+        amountText: '少许',
+        sourceType: 'MANUAL',
+        completed: true
+      }
     ]);
     const [riceItem, saltItem] = list.items;
     const logsBefore = await database.inventoryLog.count({ where: { ingredientId: ingredient.id } });
@@ -641,9 +685,10 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
     });
     const ok = responses.filter((response) => response.statusCode === 200);
     const conflicts = responses.filter((response) => response.statusCode === 409);
-    expect(responses.map((response) => response.statusCode).sort(), responses.map((response) => response.body).join(' | ')).toEqual([
-      200, 409
-    ]);
+    expect(
+      responses.map((response) => response.statusCode).sort(),
+      responses.map((response) => response.body).join(' | ')
+    ).toEqual([200, 409]);
     expect(ok).toHaveLength(1);
     expect(conflicts).toHaveLength(1);
     const after = await database.shoppingList.findUniqueOrThrow({ where: { id: list.id }, include: { items: true } });
@@ -780,9 +825,11 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
       }
     });
     expect(added.statusCode, added.body).toBe(200);
-    const salt = added.json().data.items.find(
-      (item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-分类盐`
-    );
+    const salt = added
+      .json()
+      .data.items.find(
+        (item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-分类盐`
+      );
     expect(salt).toMatchObject({ category: '调味品', quantity: null, unit: null, amountText: '少许' });
 
     const updated = await app.inject({
@@ -820,7 +867,9 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
     expect(replenished.statusCode, replenished.body).toBe(200);
     const replenishedItems = replenished.json().data.items;
     expect(
-      replenishedItems.find((item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-分类姜`)
+      replenishedItems.find(
+        (item: { ingredientNameSnapshot: string }) => item.ingredientNameSnapshot === `${PREFIX}-分类姜`
+      )
     ).toMatchObject({ category: '蔬菜', quantity: 2, unit: 'PIECE' });
     // 同菜谱幂等对齐时未传 category（非空才对齐）不影响既有分类
     expect(
@@ -830,8 +879,9 @@ describe('VAN-201 购物清单 D5 后端契约（真实 HTTP + 真实持久化�
       )
     ).toMatchObject({ category: null });
     expect(
-      replenishedItems.find((item: { ingredientNameSnapshot: string; sourceType: string }) =>
-        item.ingredientNameSnapshot === `${PREFIX}-分类盐` && item.sourceType === 'MANUAL'
+      replenishedItems.find(
+        (item: { ingredientNameSnapshot: string; sourceType: string }) =>
+          item.ingredientNameSnapshot === `${PREFIX}-分类盐` && item.sourceType === 'MANUAL'
       )
     ).toMatchObject({ category: '调料' });
 

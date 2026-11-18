@@ -518,7 +518,9 @@ describe('Google2 legacy entry adapter', () => {
 
   // 忌口成员读取是推荐请求的前置输入：diners 走真实分页响应，random 按用例给固定结果
   const dinersPage = {
-    items: [{ id: 'd1', name: '小夏', active: true, version: 1, tabooText: null, allergyText: null, dislikesText: null }],
+    items: [
+      { id: 'd1', name: '小夏', active: true, version: 1, tabooText: null, allergyText: null, dislikesText: null }
+    ],
     page: 1,
     pageSize: 100,
     total: 1,
@@ -611,9 +613,7 @@ describe('Google2 legacy entry adapter', () => {
     fetchMock.mockReset();
     fetchMock.mockImplementation((url: string) =>
       Promise.resolve(
-        String(url).includes('/diners')
-          ? jsonOk(dinersPage)
-          : jsonOk({ historyId: 'h3', type: 'SINGLE', results: [] })
+        String(url).includes('/diners') ? jsonOk(dinersPage) : jsonOk({ historyId: 'h3', type: 'SINGLE', results: [] })
       )
     );
     const emptyIndex = await (window as any).DafanWheelAdapter.resolveTargetIndex('cook');

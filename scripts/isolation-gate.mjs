@@ -1,9 +1,60 @@
 import { createHash } from 'node:crypto';
-import { readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
-import { resolve, relative } from 'node:path';
+import { lstatSync, readFileSync, readdirSync, realpathSync, statSync } from 'node:fs';
+import { isAbsolute, relative, resolve, sep } from 'node:path';
 
 export const repository = resolve(import.meta.dirname, '..');
-export const isolationRoot = 'D:\\Vanta-pro\\google2-isolation-20261003-r1';
+
+function samePath(left, right) {
+  return process.platform === 'win32' ? left.toLowerCase() === right.toLowerCase() : left === right;
+}
+
+function isInside(root, value) {
+  const rel = relative(root, value);
+  return rel === '' || (!rel.startsWith(`..${sep}`) && rel !== '..' && !isAbsolute(rel));
+}
+
+/**
+ * 隔离根不再硬编码为原开发机路径，只能由 DAFAN_ISOLATION_ROOT 显式提供。
+ * 未设置时返回 undefined，保证常规 import 与 npm test 仍可加载；
+ * 一旦设置，必须是仓库外已存在的绝对目录，且本身不是 symlink/junction。
+ * 不存在任何默认回退。
+ */
+export function resolveConfiguredIsolationRoot(source = process.env) {
+  const raw = source.DAFAN_ISOLATION_ROOT;
+  if (raw === undefined) return undefined;
+  if (typeof raw !== 'string' || raw.trim() === '')
+    throw new Error('DAFAN_ISOLATION_ROOT must be a non-empty absolute path');
+  const value = raw.trim();
+  if (!isAbsolute(value)) throw new Error(`DAFAN_ISOLATION_ROOT must be an absolute path: ${value}`);
+  const normalized = resolve(value);
+  if (isInside(repository, normalized))
+    throw new Error(`DAFAN_ISOLATION_ROOT must be outside the repository: ${normalized}`);
+  let real;
+  try {
+    real = realpathSync(normalized);
+  } catch (error) {
+    throw new Error(
+      `DAFAN_ISOLATION_ROOT must be an existing directory: ${normalized} (${error.code ?? error.message})`
+    );
+  }
+  if (!samePath(normalized, real) || lstatSync(normalized).isSymbolicLink())
+    throw new Error(`DAFAN_ISOLATION_ROOT must not be a symlink/junction: ${normalized}`);
+  if (!statSync(real).isDirectory()) throw new Error(`DAFAN_ISOLATION_ROOT must be a directory: ${normalized}`);
+  return normalized;
+}
+
+export function requireIsolationRoot(source = process.env) {
+  const root = resolveConfiguredIsolationRoot(source);
+  if (root === undefined)
+    throw new Error(
+      'DAFAN_ISOLATION_ROOT is required for isolated tooling: set it to an existing absolute scratch directory outside the repository'
+    );
+  return root;
+}
+
+// 兼容旧导出名；未配置时为 undefined，显式配置时经过同样校验。
+export const isolationRoot = resolveConfiguredIsolationRoot(process.env);
+
 export function fingerprintBuild() {
   const files = {};
   function walk(directory) {
@@ -46,13 +97,17 @@ export function verifyBuildReceipt(receipt, files = fingerprintBuild()) {
     throw new Error('stale build: rerun node scripts/prepare-isolated-build.mjs');
   }
 }
-export function assertFreshBuild() {
-  const receipt = JSON.parse(readFileSync(resolve(isolationRoot, 'evidence/build-receipt.json'), 'utf8'));
+export function assertFreshBuild(source = process.env) {
+  const receipt = JSON.parse(
+    readFileSync(resolve(requireIsolationRoot(source), 'evidence/build-receipt.json'), 'utf8')
+  );
   verifyBuildReceipt(receipt);
 }
 export function isolatedEnvironment(input = process.env) {
-  if (input.DAFAN_ISOLATION_ROOT !== isolationRoot || realpathSync(isolationRoot) !== isolationRoot)
-    throw new Error('immutable isolation root mismatch');
+  const ambient = resolveConfiguredIsolationRoot(process.env);
+  const root = requireIsolationRoot(input);
+  if (ambient !== undefined && root !== ambient)
+    throw new Error(`immutable isolation root mismatch: ${root} !== ${ambient}`);
   if (input.NODE_ENV !== 'production') throw new Error('isolated service requires explicit NODE_ENV=production');
   if (input.HOST !== '127.0.0.1') throw new Error('isolated service requires HOST=127.0.0.1');
   if (!/^\d+$/.test(input.PORT ?? '') || Number(input.PORT) < 1 || Number(input.PORT) > 65535)
@@ -62,10 +117,11 @@ export function isolatedEnvironment(input = process.env) {
   return { ...input };
 }
 export async function configuration(env, built = false) {
+  const root = requireIsolationRoot(env);
   const paths = await import(
     built ? '../dist-server/server/src/database/paths.js' : '../app/server/src/database/paths.ts'
   );
-  const checked = paths.validateStoragePaths(paths.resolveStoragePaths(env), isolationRoot);
+  const checked = paths.validateStoragePaths(paths.resolveStoragePaths(env), root);
   if (statSync(checked.databaseRealPath).nlink !== 1) throw new Error('DB hard link forbidden');
   return {
     root: checked.root,
