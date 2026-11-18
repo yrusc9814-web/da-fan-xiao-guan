@@ -21,6 +21,7 @@ const manifestFilePaths = [
   'app/server/prisma/schema.prisma',
   'app/server/prisma/migrations/migration_lock.toml',
   'app/server/src/database/paths.ts',
+  'app/server/src/config/env.ts',
   'prisma.config.ts',
   'scripts/ensure-sqlite-file.mjs',
   'scripts/launch-server.mjs',
@@ -386,6 +387,7 @@ async function main() {
     'app/server/package.json',
     'app/server/prisma',
     'app/server/src/database/paths.ts',
+    'app/server/src/config/env.ts',
     'dist-server',
     'scripts/ensure-sqlite-file.mjs',
     'scripts/launch-server.mjs'
