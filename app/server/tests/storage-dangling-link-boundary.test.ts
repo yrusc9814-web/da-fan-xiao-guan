@@ -112,7 +112,11 @@ describe('无法可靠解析的链接 fail-closed', () => {
   it('自指链接抛错而不是当作不存在路径', () => {
     const selfLink = join(fixture, 'self-link');
     symlinkSync(selfLink, selfLink, linkKind);
-    expect(guard('DAFAN_UPLOADS_PATH', join(selfLink, 'x'))).toThrow(/无法可靠解析/);
+    // POSIX 可能在 lstat 阶段直接返回 ELOOP；Windows junction 通常由显式环检测拒绝。
+    // 两条路径都必须以测试存储安全闸拒绝，不能要求相同的底层错误文案。
+    expect(guard('DAFAN_UPLOADS_PATH', join(selfLink, 'x'))).toThrow(
+      /\[测试存储安全闸\].*(?:无法可靠解析|无法解析路径（访问失败 ELOOP）)/
+    );
   });
 
   it('链接环抛错而不是无限循环', () => {
@@ -120,7 +124,9 @@ describe('无法可靠解析的链接 fail-closed', () => {
     const ringB = join(fixture, 'ring-b');
     symlinkSync(ringB, ringA, linkKind);
     symlinkSync(ringA, ringB, linkKind);
-    expect(guard('DAFAN_UPLOADS_PATH', join(ringA, 'deep', 'path'))).toThrow(/无法可靠解析/);
+    expect(guard('DAFAN_UPLOADS_PATH', join(ringA, 'deep', 'path'))).toThrow(
+      /\[测试存储安全闸\].*(?:无法可靠解析|无法解析路径（访问失败 ELOOP）)/
+    );
   });
 });
 
